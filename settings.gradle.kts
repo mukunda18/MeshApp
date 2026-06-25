@@ -25,4 +25,10 @@ dependencyResolutionManagement {
 rootProject.name = "MeshApp"
 include(":app")
 include(":model")
-include(":network")
+include(":transport")
+include(":ui")
+include(":messaging")
+include(":routing")
+include(":packetProcessor")
+include(":security")
+include(":meshControl")

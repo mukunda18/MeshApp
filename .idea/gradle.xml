@@ -10,8 +10,14 @@
           <set>
             <option value="$PROJECT_DIR$" />
             <option value="$PROJECT_DIR$/app" />
+            <option value="$PROJECT_DIR$/meshControl" />
+            <option value="$PROJECT_DIR$/messaging" />
             <option value="$PROJECT_DIR$/model" />
-            <option value="$PROJECT_DIR$/network" />
+            <option value="$PROJECT_DIR$/packetProcessor" />
+            <option value="$PROJECT_DIR$/routing" />
+            <option value="$PROJECT_DIR$/security" />
+            <option value="$PROJECT_DIR$/transport" />
+            <option value="$PROJECT_DIR$/ui" />
           </set>
         </option>
       </GradleProjectSettings>
