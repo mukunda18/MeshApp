@@ -14,7 +14,8 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetSocketAddress
 import java.net.SocketTimeoutException
-import com.minor.model.Datagram
+import com.minor.model.NetworkMessage
+import kotlinx.coroutines.channels.ReceiveChannel
 
 class UdpSocket(
     context: Context,
@@ -37,12 +38,11 @@ class UdpSocket(
         bind(InetSocketAddress(port))
     }
 
-    private val channel = Channel<Datagram>(
+    private val channel = Channel<NetworkMessage>(
         capacity = BUFFER_CAPACITY,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
-
-    val incoming: Channel<Datagram> get() = channel
+    val incoming: ReceiveChannel<NetworkMessage> get() = channel
 
     private var job: Job? = null
 
@@ -56,15 +56,15 @@ class UdpSocket(
         if (job != null) return
         multicastLock?.acquire()
         job = scope.launch(Dispatchers.IO) {
+            val buffer = ByteArray(MAX_PACKET_SIZE)
             while (isActive) {
-                val buffer = ByteArray(MAX_PACKET_SIZE)
                 val packet = DatagramPacket(buffer, buffer.size)
                 try {
                     socket.receive(packet)
-                    channel.trySend(Datagram(
-                        address = packet.address.hostAddress!!,
-                        port = packet.port,
-                        data = packet.data
+                    val dataCopy = packet.data.copyOfRange(packet.offset, packet.offset + packet.length)
+                    channel.trySend(NetworkMessage(
+                        address = InetSocketAddress(packet.address, packet.port),
+                        data = dataCopy
                     ))
                 } catch (_: SocketTimeoutException) {
                     // Loop back to re-check isActive so cancellation is responsive.
@@ -73,18 +73,13 @@ class UdpSocket(
         }
     }
 
-    fun stop() {
+    suspend fun close() = withContext(Dispatchers.IO) {
+        socket.close()
+        channel.close()
         job?.cancel()
         job = null
         if (multicastLock?.isHeld == true) multicastLock.release()
     }
-
-    fun close() {
-        stop()
-        channel.close()
-        socket.close()
-    }
-
     private companion object {
         const val MAX_PACKET_SIZE = 64 * 1024
         const val RECEIVE_TIMEOUT_MS = 500
