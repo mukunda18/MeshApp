@@ -2,6 +2,10 @@ package com.minor.network
 
 import android.content.Context
 import android.net.wifi.WifiManager
+import com.minor.packetprocessor.HeaderParser
+import com.minor.model.HeaderProtocol
+import com.minor.model.Packet
+import com.minor.model.ParseResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -14,7 +18,6 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetSocketAddress
 import java.net.SocketTimeoutException
-import com.minor.model.NetworkMessage
 import kotlinx.coroutines.channels.ReceiveChannel
 
 class UdpSocket(
@@ -38,11 +41,11 @@ class UdpSocket(
         bind(InetSocketAddress(port))
     }
 
-    private val channel = Channel<NetworkMessage>(
+    private val channel = Channel<Packet>(
         capacity = BUFFER_CAPACITY,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
-    val incoming: ReceiveChannel<NetworkMessage> get() = channel
+    val incoming: ReceiveChannel<Packet> get() = channel
 
     private var job: Job? = null
 
@@ -62,10 +65,13 @@ class UdpSocket(
                 try {
                     socket.receive(packet)
                     val dataCopy = packet.data.copyOfRange(packet.offset, packet.offset + packet.length)
-                    channel.trySend(NetworkMessage(
-                        address = InetSocketAddress(packet.address, packet.port),
-                        data = dataCopy
-                    ))
+                    val result = HeaderParser.parse(dataCopy)
+                    if (result is ParseResult.Success) {
+                        channel.trySend(Packet(
+                            header = result.value,
+                            payload = dataCopy.copyOfRange(HeaderProtocol.HEADER_SIZE, dataCopy.size)
+                        ))
+                    }
                 } catch (_: SocketTimeoutException) {
                     // Loop back to re-check isActive so cancellation is responsive.
                 }

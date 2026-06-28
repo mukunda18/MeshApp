@@ -1,7 +1,9 @@
 package com.minor.network
 
-import com.minor.model.NetworkMessage
-import com.minor.model.Protocol
+import com.minor.packetprocessor.HeaderParser
+import com.minor.model.Packet
+import com.minor.model.HeaderProtocol
+import com.minor.model.ParseResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -11,7 +13,6 @@ import kotlinx.coroutines.launch
 import java.io.InputStream
 import java.net.Socket
 import java.net.SocketTimeoutException
-import com.minor.packetprocessor.getPayloadLength
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.withContext
 import java.net.InetSocketAddress
@@ -23,7 +24,7 @@ import java.net.ServerSocket
 class Client(
     private val socket: Socket,
     private val scope: CoroutineScope,
-    private val onMessage: (NetworkMessage) -> Unit,
+    private val onMessage: (Packet) -> Unit,
     private val removeChannel: SendChannel<Client>
 ) {
     private var job: Job? = null
@@ -36,19 +37,22 @@ class Client(
             var offset = 0
             val input = socket.getInputStream()
             while (isActive) {
-                if (offset < Protocol.HEADER_SIZE) {
-                    val result = readFully(input, buffer, offset, Protocol.HEADER_SIZE - offset)
+                if (offset < HeaderProtocol.HEADER_SIZE) {
+                    val result = readFully(input, buffer, offset, HeaderProtocol.HEADER_SIZE - offset)
                     offset += result.second
                     if (!result.first) break
                 } else {
-                    val payloadLength = getPayloadLength(buffer)
-                    if (payloadLength + Protocol.HEADER_SIZE > MAX_PACKET_SIZE) break
-                    val result = readFully(input, buffer, offset, payloadLength + Protocol.HEADER_SIZE - offset)
+                    val r = HeaderParser.parse(buffer)
+                    if (r is ParseResult.Failure) break
+                    val header = (r as ParseResult.Success).value
+                    val payloadLength = header.payloadLength
+                    if (payloadLength + HeaderProtocol.HEADER_SIZE > MAX_PACKET_SIZE) break
+                    val result = readFully(input, buffer, offset, payloadLength + HeaderProtocol.HEADER_SIZE - offset)
                     offset += result.second
                     if (!result.first) break
-                    onMessage(NetworkMessage(
-                        address = InetSocketAddress(socket.inetAddress, socket.port),
-                        data = buffer.copyOf(offset)
+                    onMessage(Packet(
+                        header = header,
+                        payload = buffer.copyOfRange(HeaderProtocol.HEADER_SIZE, offset)
                     ))
                     offset = 0
                 }
@@ -88,7 +92,7 @@ class TCPSocket(
     private val port: Int,
     private val scope: CoroutineScope
 ) {
-    val channel = Channel<NetworkMessage>(
+    val channel = Channel<Packet>(
         capacity = BUFFER_CAPACITY,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
