@@ -2,6 +2,10 @@ package com.minor.network
 
 import android.content.Context
 import android.net.wifi.WifiManager
+import com.minor.packetprocessor.HeaderParser
+import com.minor.model.HeaderProtocol
+import com.minor.model.Packet
+import com.minor.model.ParseResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -14,7 +18,7 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetSocketAddress
 import java.net.SocketTimeoutException
-import com.minor.model.Datagram
+import kotlinx.coroutines.channels.ReceiveChannel
 
 class UdpSocket(
     context: Context,
@@ -37,18 +41,22 @@ class UdpSocket(
         bind(InetSocketAddress(port))
     }
 
-    private val channel = Channel<Datagram>(
+    private val channel = Channel<Packet>(
         capacity = BUFFER_CAPACITY,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
-
-    val incoming: Channel<Datagram> get() = channel
+    val incoming: ReceiveChannel<Packet> get() = channel
 
     private var job: Job? = null
 
-    suspend fun send(payload: ByteArray, address: String) = withContext(Dispatchers.IO) {
+    suspend fun send(
+        payload: ByteArray,
+        address: String,
+        offset: Int = 0,
+        length: Int = payload.size
+    ) = withContext(Dispatchers.IO) {
         socket.send(
-            DatagramPacket(payload, payload.size, InetSocketAddress(address, port)),
+            DatagramPacket(payload, offset, length, InetSocketAddress(address, port)),
         )
     }
 
@@ -56,16 +64,19 @@ class UdpSocket(
         if (job != null) return
         multicastLock?.acquire()
         job = scope.launch(Dispatchers.IO) {
+            val buffer = ByteArray(MAX_PACKET_SIZE)
             while (isActive) {
-                val buffer = ByteArray(MAX_PACKET_SIZE)
                 val packet = DatagramPacket(buffer, buffer.size)
                 try {
                     socket.receive(packet)
-                    channel.trySend(Datagram(
-                        address = packet.address.hostAddress!!,
-                        port = packet.port,
-                        data = packet.data
-                    ))
+                    val dataCopy = packet.data.copyOfRange(packet.offset, packet.offset + packet.length)
+                    val result = HeaderParser.parse(dataCopy)
+                    if (result is ParseResult.Success) {
+                        channel.trySend(Packet(
+                            header = result.value,
+                            payload = dataCopy.copyOfRange(HeaderProtocol.HEADER_SIZE, dataCopy.size)
+                        ))
+                    }
                 } catch (_: SocketTimeoutException) {
                     // Loop back to re-check isActive so cancellation is responsive.
                 }
@@ -73,18 +84,13 @@ class UdpSocket(
         }
     }
 
-    fun stop() {
+    suspend fun close() = withContext(Dispatchers.IO) {
+        socket.close()
+        channel.close()
         job?.cancel()
         job = null
         if (multicastLock?.isHeld == true) multicastLock.release()
     }
-
-    fun close() {
-        stop()
-        channel.close()
-        socket.close()
-    }
-
     private companion object {
         const val MAX_PACKET_SIZE = 64 * 1024
         const val RECEIVE_TIMEOUT_MS = 500
