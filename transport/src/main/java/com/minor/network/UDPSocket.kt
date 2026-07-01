@@ -49,9 +49,14 @@ class UdpSocket(
 
     private var job: Job? = null
 
-    suspend fun send(payload: ByteArray, address: String) = withContext(Dispatchers.IO) {
+    suspend fun send(
+        payload: ByteArray,
+        address: String,
+        offset: Int = 0,
+        length: Int = payload.size
+    ) = withContext(Dispatchers.IO) {
         socket.send(
-            DatagramPacket(payload, payload.size, InetSocketAddress(address, port)),
+            DatagramPacket(payload, offset, length, InetSocketAddress(address, port)),
         )
     }
 

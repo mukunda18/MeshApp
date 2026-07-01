@@ -108,8 +108,13 @@ class TCPSocket(
     private val mutex = Mutex()
     private val removeChannel = Channel<Client>(Channel.UNLIMITED)
 
-    suspend fun send(payload: ByteArray, address: String) = withContext(Dispatchers.IO) {
-        Socket(address, port).use { it.getOutputStream().write(payload) }
+    suspend fun send(
+        payload: ByteArray,
+        address: String,
+        offset: Int = 0,
+        length: Int = payload.size
+    ) = withContext(Dispatchers.IO) {
+        Socket(address, port).use { it.getOutputStream().write(payload, offset, length) }
     }
 
     fun start() {

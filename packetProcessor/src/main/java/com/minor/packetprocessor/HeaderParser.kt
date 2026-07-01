@@ -46,37 +46,3 @@ object HeaderParser {
         return ParseResult.Success(header)
     }
 }
-
-object HeaderSerializer {
-    fun serialize(header: Header): ByteArray {
-        require(header.payloadLength in 0..65535) {
-            "PayloadLength ${header.payloadLength} overflows UInt16"
-        }
-
-        val buf = ByteArray(HeaderProtocol.HEADER_SIZE)
-
-        HeaderProtocol.Magic.write(buf, header.magic)
-        HeaderProtocol.Version.write(buf, header.version)
-        HeaderProtocol.Type.write(buf, header.type)
-        HeaderProtocol.Flags.write(buf, header.flags)
-        HeaderProtocol.Hopcount.write(buf, header.hopcount)
-        HeaderProtocol.TTL.write(buf, header.ttl)
-        HeaderProtocol.Reserved.write(buf, header.reserved)
-        HeaderProtocol.SourceNodeId.write(buf, header.sourceNodeId)
-        HeaderProtocol.DestNodeId.write(buf, header.destNodeId)
-        HeaderProtocol.id.write(buf, header.id)
-        HeaderProtocol.OriginTimestamp.write(buf, header.originTimestamp)
-        HeaderProtocol.PayloadLength.write(buf, header.payloadLength)
-
-        return buf
-    }
-
-    /** Serialize header + payload into a single contiguous buffer. */
-    fun serializeWithPayload(header: Header, payload: ByteArray): ByteArray {
-        require(payload.size == header.payloadLength) {
-            "payload size ${payload.size} != header.PayloadLength ${header.payloadLength}"
-        }
-        val headerBytes = serialize(header)
-        return headerBytes + payload
-    }
-}
