@@ -1,8 +1,5 @@
 package com.minor.model
 
-interface parser<T>{
-    fun parse(data: ByteArray): ParseResult<T>
-}
 sealed interface ParseError {
     data class TooShort(val actual: Int, val expected: Int) : ParseError {
         override fun toString() =
@@ -11,7 +8,7 @@ sealed interface ParseError {
 
     data class InvalidMagic(val actual: Int) : ParseError {
         override fun toString() =
-            "Invalid magic: expected 0x${"%04X".format(HeaderProtocol.magic.EXPECTED)}, " +
+            "Invalid magic: expected 0x${"%04X".format(HeaderProtocol.Magic.EXPECTED)}, " +
                     "got 0x${"%04X".format(actual)}"
     }
 
@@ -21,6 +18,14 @@ sealed interface ParseError {
 
     data class InvalidPayloadLength(val actual: Int) : ParseError {
         override fun toString() = "Invalid payload length: $actual"
+    }
+
+    data class UnsupportedType(val actual: Int) : ParseError {
+        override fun toString() = "Unsupported payload type: $actual"
+    }
+
+    data class MalformedPayload(val reason: String) : ParseError {
+        override fun toString() = "Malformed payload: $reason"
     }
 }
 
