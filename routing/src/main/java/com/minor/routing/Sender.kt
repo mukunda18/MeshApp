@@ -33,7 +33,7 @@ class Sender(
     private val rreqRetryTimeoutMs: Long = 8_000,
     private val maxHopCount: Int = 8
 ) {
-    private val queue = ArrayDeque<QueuedMessage>()
+    internal val queue = ArrayDeque<QueuedMessage>()
     private val pendingAck = ConcurrentHashMap<Long, QueuedMessage>()
     private var nextRreqId = 1L
 
@@ -192,7 +192,7 @@ class Sender(
         return out
     }
 
-    private suspend fun processMessage(msg: QueuedMessage) {
+    internal suspend fun processMessage(msg: QueuedMessage) {
         val now = System.currentTimeMillis()
 
         val directIp = if (peers.isDirectPeer(msg.destinationNodeId))
