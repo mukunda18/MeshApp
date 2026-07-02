@@ -1,13 +1,14 @@
 package com.minor.routing
 
+import com.minor.model.NodeId
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Maintains the routing table mapping a destination node to its next hop
- * Also runs a periodic expiry loop to drop stale entries
+ * Thread safe routing table keyed on NodeId hex strings
+ * Accepts a new entry only when it is strictly better than the existing hop count
  */
 class Router(
     private val routeExpiryMs: Long = 60_000,
@@ -16,54 +17,53 @@ class Router(
 
     private val table = ConcurrentHashMap<String, RouteInfo>()
 
-    /** Returns the next hop for a destination or null if unknown */
-    fun lookup(destinationNodeID: String): String? {
-        val entry = table[destinationNodeID] ?: return null
-        if (!entry.valid) return null
-        return entry.nextHopNodeID
+    /** Returns the next hop NodeId for a destination or null when no valid route exists */
+    fun lookup(destinationNodeId: NodeId): NodeId? {
+        val entry = table[destinationNodeId.toString()] ?: return null
+        return if (entry.valid) entry.nextHopNodeId else null
     }
 
-    /** Installs a route only if new or strictly better than the existing one */
-    fun update(destinationNodeID: String, nextHopNodeID: String, hopCount: Int) {
+    /** Installs a route only when it is new or strictly fewer hops than the stored one */
+    fun update(destinationNodeId: NodeId, nextHopNodeId: NodeId, hopCount: Int) {
+        val key = destinationNodeId.toString()
         val now = System.currentTimeMillis()
-        val existing = table[destinationNodeID]
+        val existing = table[key]
         if (existing == null || !existing.valid || hopCount < existing.hopCount) {
-            table[destinationNodeID] = RouteInfo(destinationNodeID, nextHopNodeID, hopCount, now, true)
+            table[key] = RouteInfo(destinationNodeId, nextHopNodeId, hopCount, now)
         }
     }
 
-    /** Marks a single route as invalid without deleting it */
-    fun invalidate(destinationNodeID: String) {
-        val existing = table[destinationNodeID] ?: return
-        table[destinationNodeID] = existing.copy(valid = false)
+    /** Marks one route as invalid without removing it so a fresh RREQ may replace it */
+    fun invalidate(destinationNodeId: NodeId) {
+        val key = destinationNodeId.toString()
+        table[key]?.let { table[key] = it.copy(valid = false) }
     }
 
-    /** Marks all routes whose next hop matches the given node as invalid */
-    fun invalidateVia(nextHopNodeID: String): List<String> {
-        val affected = mutableListOf<String>()
-        for ((dest, info) in table) {
-            if (info.valid && info.nextHopNodeID == nextHopNodeID) {
-                table[dest] = info.copy(valid = false)
-                affected.add(dest)
+    /** Marks every route whose next hop matches the given node as invalid */
+    fun invalidateVia(nextHopNodeId: NodeId): List<NodeId> {
+        val targetKey = nextHopNodeId.toString()
+        val affected = mutableListOf<NodeId>()
+        for ((_, info) in table) {
+            if (info.valid && info.nextHopNodeId.toString() == targetKey) {
+                table[info.destinationNodeId.toString()] = info.copy(valid = false)
+                affected.add(info.destinationNodeId)
             }
         }
         return affected
     }
 
-    /** Returns a snapshot of all currently valid routes */
-    fun getRoutes(): List<RouteInfo> = table.values.filter { it.valid }
+    /** Returns a snapshot of all entries currently marked as valid */
+    fun getRoutes(): List<RouteInfo> = table.values.filter { it.valid }.toList()
 
-    /** Starts the background loop that expires stale routes */
+    /** Starts the background coroutine that removes entries older than routeExpiryMs */
     fun startExpiryLoop(scope: CoroutineScope) {
         scope.launch {
             while (true) {
                 delay(expiryCheckIntervalMs)
                 val now = System.currentTimeMillis()
-                for ((dest, info) in table) {
-                    if (now - info.lastUpdated > routeExpiryMs) {
-                        table.remove(dest)
-                    }
-                }
+                table.values
+                    .filter { now - it.lastUpdated > routeExpiryMs }
+                    .forEach { table.remove(it.destinationNodeId.toString()) }
             }
         }
     }
