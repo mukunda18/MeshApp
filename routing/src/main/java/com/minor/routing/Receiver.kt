@@ -1,181 +1,157 @@
 package com.minor.routing
 
-import java.security.MessageDigest
+import com.minor.model.HeaderProtocol
+import com.minor.model.NodeId
+import com.minor.model.Packet
+import com.minor.model.ParseResult
+import com.minor.model.Payload
+import com.minor.packetprocessor.HeaderSerializer
+import com.minor.packetprocessor.PayloadParser
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.channels.Channel
 
-/** Key used to deduplicate handled packets by type and id */
-data class HandledKey(val type: Byte, val id: Long)
-
 /**
- * Reads packets converted from raw bytes and dispatches them per type
- * Updates the peer table and routing table and forwards packets that are not for this node
+ * Dispatches each inbound Packet to the correct handler based on header type
+ * Requires the caller to supply the senderIp alongside every packet because the
+ * current TCPReceiver and UdpSocket channels do not expose the source address
+ * MeshControl is responsible for extracting and pairing the IP before calling onPacketReceived
  */
 class Receiver(
-    private val selfNodeID: String,
+    private val selfNodeId: NodeId,
     private val router: Router,
     private val peers: PeersManagement,
     private val sender: Sender,
-    private val transport: TransportLink,
-    private val builder: PacketBuilder,
     private val freshnessWindowMs: Long = 30_000
 ) {
+    private val handledMsg = ConcurrentHashMap<Long, Boolean>()
+    private val handledRreq = ConcurrentHashMap<Long, Boolean>()
 
-    private val handled = ConcurrentHashMap<HandledKey, Boolean>()
-    private val rreqSessionTable = ConcurrentHashMap<Long, String>()
+    /**
+     * Maps rreqId to the immediate upstream NodeId so RREP can be routed back
+     * Upstream is the node this device received the RREQ from not the originator
+     */
+    private val rreqSessionTable = ConcurrentHashMap<Long, NodeId>()
 
+    /** Delivers MSG packets addressed to this node to the MessagingService layer */
     val incomingMessageChannel = Channel<Packet>(capacity = Channel.UNLIMITED)
 
-    /** Entry point invoked by the transport layer for every raw inbound packet */
-    fun onPacketReceived(packet: Packet, senderIp: String) {
-        val header = packet.header
+    /**
+     * Entry point called by RoutingModule for every packet received from transport
+     * senderIp must be the IP of the node that sent this specific datagram or TCP segment
+     */
+    suspend fun onPacketReceived(packet: Packet, senderIp: String) {
         val now = System.currentTimeMillis()
-        if (now - header.originTimestamp > freshnessWindowMs) {
-            return
-        }
-
-        when (header.type) {
-            PacketType.HELLO -> handleHello(packet, senderIp)
-            PacketType.MSG -> handleMsg(packet)
-            PacketType.RREQ -> handleRreq(packet)
-            PacketType.RREP -> handleRrep(packet, senderIp)
-            PacketType.ACK -> handleAck(packet)
-            PacketType.RERR -> handleRerr(packet)
+        if (now - packet.header.originTimestamp.millis > freshnessWindowMs) return
+        when (packet.header.type) {
+            HeaderProtocol.Type.HELLO -> handleHello(packet, senderIp)
+            HeaderProtocol.Type.MESSAGE -> handleMessage(packet, senderIp)
+            HeaderProtocol.Type.RREQ -> handleRreq(packet, senderIp)
+            HeaderProtocol.Type.RREP -> handleRrep(packet, senderIp)
+            HeaderProtocol.Type.ACK -> handleAck(packet)
+            HeaderProtocol.Type.RERR -> handleRerr(packet)
         }
     }
-
-    private fun resolveNodeIdByIp(ip: String): String? =
-        peers.getPeers().firstOrNull { it.ip == ip }?.nodeID
 
     private fun handleHello(packet: Packet, senderIp: String) {
-        val payload = decodeHello(packet.payload)
-        val derivedID = sha256Hex(payload.publicKey)
-        if (derivedID != packet.header.sourceNodeID) {
-            return
-        }
-        peers.addOrUpdate(packet.header.sourceNodeID, senderIp, payload.name)
-        for (entry in payload.routes) {
-            router.update(entry.nodeID, packet.header.sourceNodeID, entry.hopCount + 1)
+        val result = PayloadParser.parse(packet) as? ParseResult.Success ?: return
+        val hello = result.value as? Payload.Hello ?: return
+        if (!peers.verifyNodeId(hello.publicKey, packet.header.sourceNodeId)) return
+        peers.addOrUpdate(packet.header.sourceNodeId, senderIp, hello.name, hello.publicKey)
+        for (entry in hello.routeEntries) {
+            router.update(entry.nodeId, packet.header.sourceNodeId, entry.hopcount + 1)
         }
     }
 
-    private fun handleMsg(packet: Packet) {
-        val key = HandledKey(PacketType.MSG, packet.header.id)
-        if (handled.containsKey(key)) return
-        handled[key] = true
-
-        if (packet.header.destinationNodeID == selfNodeID) {
+    private suspend fun handleMessage(packet: Packet, senderIp: String) {
+        val msgId = packet.header.id.value
+        if (handledMsg.putIfAbsent(msgId, true) != null) return
+        val h = packet.header
+        if (h.destNodeId.toString() == selfNodeId.toString()) {
             incomingMessageChannel.trySend(packet)
+            sender.sendAck(msgId, h.sourceNodeId, 0x00)
             return
         }
-
-        val header = packet.header
-        if (header.hopCount <= 0) return
-        header.hopCount -= 1
-        val nextHop = router.lookup(header.destinationNodeID) ?: return
-        sender.sendMessage(header.id, packet.payload, header.destinationNodeID)
-        // forwarding reuses the queue so the next hop is resolved by Sender from the routing table
+        if (h.hopcount >= h.ttl) return
+        val nextHop = router.lookup(h.destNodeId) ?: return
+        val nextIp = peers.resolveIp(nextHop) ?: return
+        sender.forwardTcp(rebuildWithHop(packet, h.hopcount + 1), nextIp)
     }
 
-    private fun handleRreq(packet: Packet) {
-        val header = packet.header
-        val key = HandledKey(PacketType.RREQ, header.id)
-        if (handled.containsKey(key)) return
-        handled[key] = true
+    private suspend fun handleRreq(packet: Packet, senderIp: String) {
+        val rreqId = packet.header.id.value
+        if (handledRreq.putIfAbsent(rreqId, true) != null) return
+        val result = PayloadParser.parse(packet) as? ParseResult.Success ?: return
+        val rreq = result.value as? Payload.RREQ ?: return
+        val h = packet.header
 
-        if (header.destinationNodeID == selfNodeID || router.lookup(header.destinationNodeID) != null) {
-            val replyHopCount = router.lookup(header.destinationNodeID)?.let { 0 } ?: 0
-            val rrep = builder.buildRREP(header.id, header.sourceNodeID, replyHopCount)
-            val upstreamIp = peers.resolveIp(header.sourceNodeID)
-            if (upstreamIp != null) {
-                transport.sendTcp(builder.serialize(rrep), upstreamIp)
-            }
+        // When hopcount is 0 the packet came directly from the originator so we can verify it
+        if (h.hopcount == 0 && peers.verifyNodeId(rreq.publicKey, h.sourceNodeId)) {
+            peers.addOrUpdate(h.sourceNodeId, senderIp, rreq.name, rreq.publicKey)
+        }
+
+        // Upstream is whoever sent this packet to us which we look up by senderIp
+        val upstreamNode = peers.getPeers()
+            .firstOrNull { it.ip == senderIp }?.nodeId ?: return
+        rreqSessionTable[rreqId] = upstreamNode
+
+        val weAreDestination = h.destNodeId.toString() == selfNodeId.toString()
+        val weHaveRoute = router.lookup(h.destNodeId) != null
+        if (weAreDestination || weHaveRoute) {
+            val upstreamIp = peers.resolveIp(upstreamNode) ?: return
+            // RREP destination is the RREQ originator and the immediate send target is upstream
+            sender.sendRrep(rreqId, h.sourceNodeId, upstreamIp)
         } else {
-            rreqSessionTable[header.id] = header.sourceNodeID
-            header.hopCount += 1
-            if (header.hopCount < header.ttl) {
-                transport.sendUdpBroadcast(builder.serialize(packet))
-            }
+            if (h.hopcount >= h.ttl) return
+            sender.forwardUdpBroadcast(rebuildWithHop(packet, h.hopcount + 1))
         }
     }
 
-    private fun handleRrep(packet: Packet, senderIp: String) {
-        val header = packet.header
-        val immediateSender = resolveNodeIdByIp(senderIp) ?: header.sourceNodeID
-        router.update(header.sourceNodeID, immediateSender, header.hopCount)
-        if (header.destinationNodeID != selfNodeID) {
-            val upstream = rreqSessionTable[header.id] ?: return
-            header.hopCount += 1
-            val upstreamIp = peers.resolveIp(upstream)
-            if (upstreamIp != null) {
-                transport.sendTcp(builder.serialize(packet), upstreamIp)
-            }
+    private suspend fun handleRrep(packet: Packet, senderIp: String) {
+        val result = PayloadParser.parse(packet) as? ParseResult.Success ?: return
+        val rrep = result.value as? Payload.RREP ?: return
+        val h = packet.header
+
+        // Learn the RREP sender as a peer if their key verifies
+        if (peers.verifyNodeId(rrep.publicKey, h.sourceNodeId)) {
+            peers.addOrUpdate(h.sourceNodeId, senderIp, rrep.name, rrep.publicKey)
         }
+
+        // Install route to the RREP originator via the immediate sender of this segment
+        val immediateSender = peers.getPeers()
+            .firstOrNull { it.ip == senderIp }?.nodeId ?: h.sourceNodeId
+        router.update(h.sourceNodeId, immediateSender, h.hopcount)
+
+        if (h.destNodeId.toString() == selfNodeId.toString()) return
+
+        // Forward upstream along the reverse path recorded when we saw the RREQ
+        val upstream = rreqSessionTable[h.id.value] ?: return
+        val upstreamIp = peers.resolveIp(upstream) ?: return
+        sender.forwardTcp(rebuildWithHop(packet, h.hopcount + 1), upstreamIp)
     }
 
     private fun handleAck(packet: Packet) {
-        val status = if (packet.payload.isNotEmpty()) packet.payload[0].toInt() else -1
-        if (status == 0x00) {
-            sender.onAckReceived(packet.header.id)
-        }
+        val result = PayloadParser.parse(packet) as? ParseResult.Success ?: return
+        val ack = result.value as? Payload.Ack ?: return
+        if (ack.status == 0x00) sender.onAckReceived(packet.header.id.value)
     }
 
-    private fun handleRerr(packet: Packet) {
-        val payload = decodeRerr(packet.payload)
-        val locallyAffected = mutableListOf<String>()
-        for (nodeID in payload.destinations) {
-            val nextHop = router.lookup(nodeID)
-            if (nextHop == packet.header.sourceNodeID) {
-                router.invalidate(nodeID)
-                locallyAffected.add(nodeID)
-            }
+    private suspend fun handleRerr(packet: Packet) {
+        val result = PayloadParser.parse(packet) as? ParseResult.Success ?: return
+        val rerr = result.value as? Payload.RERR ?: return
+        val senderKey = packet.header.sourceNodeId.toString()
+        val affected = rerr.destinations.filter {
+            router.lookup(it)?.toString() == senderKey
         }
-        if (locallyAffected.isNotEmpty()) {
-            sender.broadcastRerr(locallyAffected)
-        }
+        affected.forEach { router.invalidate(it) }
+        if (affected.isNotEmpty()) sender.broadcastRerr(affected)
     }
 
-    private fun sha256Hex(data: ByteArray): String {
-        val digest = MessageDigest.getInstance("SHA-256").digest(data)
-        return digest.joinToString("") { "%02x".format(it) }
-    }
-
-    private fun decodeHello(bytes: ByteArray): HelloPayload {
-        if (bytes.isEmpty()) return HelloPayload("", ByteArray(0), emptyList())
-        var offset = 0
-        val nameLen = bytes[offset].toInt() and 0xFF
-        offset += 1
-        val name = String(bytes, offset, nameLen, Charsets.UTF_8)
-        offset += nameLen
-        val publicKey = bytes.copyOfRange(offset, offset + 32)
-        offset += 32
-        val routeCount = ((bytes[offset].toInt() and 0xFF) shl 8) or (bytes[offset + 1].toInt() and 0xFF)
-        offset += 2
-        val routes = mutableListOf<RouteEntry>()
-        repeat(routeCount) {
-            val nodeIdBytes = bytes.copyOfRange(offset, offset + 32)
-            offset += 32
-            val hop = bytes[offset].toInt() and 0xFF
-            offset += 1
-            val entryNameLen = bytes[offset].toInt() and 0xFF
-            offset += 1
-            val entryName = String(bytes, offset, entryNameLen, Charsets.UTF_8)
-            offset += entryNameLen
-            routes.add(RouteEntry(nodeIdBytes.joinToString("") { "%02x".format(it) }, hop, entryName))
-        }
-        return HelloPayload(name, publicKey, routes)
-    }
-
-    private fun decodeRerr(bytes: ByteArray): RerrPayload {
-        if (bytes.isEmpty()) return RerrPayload(emptyList())
-        val count = bytes[0].toInt() and 0xFF
-        val destinations = mutableListOf<String>()
-        var offset = 1
-        repeat(count) {
-            val nodeIdBytes = bytes.copyOfRange(offset, offset + 32)
-            destinations.add(nodeIdBytes.joinToString("") { "%02x".format(it) })
-            offset += 32
-        }
-        return RerrPayload(destinations)
+    /** Rebuilds packet bytes with an updated hop count without touching the payload */
+    private fun rebuildWithHop(packet: Packet, newHopCount: Int): ByteArray {
+        val newHeader = packet.header.copy(hopcount = newHopCount)
+        val out = ByteArray(HeaderProtocol.HEADER_SIZE + packet.payload.size)
+        HeaderSerializer.serialize(newHeader, out, 0)
+        packet.payload.copyInto(out, HeaderProtocol.HEADER_SIZE)
+        return out
     }
 }

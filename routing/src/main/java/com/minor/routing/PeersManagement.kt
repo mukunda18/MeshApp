@@ -1,5 +1,8 @@
 package com.minor.routing
 
+import com.minor.model.NodeId
+import com.minor.model.PublicKey
+import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
@@ -7,79 +10,80 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Stores direct peers seen via HELLO packets and reaps timed out peers
- * Emits peer table changes on an internal peerEvents channel
+ * Stores one Peer record per direct neighbour and emits PeerEvents on changes
+ * Two background loops run via start methods: a reaper that times out stale peers
+ * and a broadcaster that periodically sends this nodes HELLO to all neighbours
  */
 class PeersManagement(
-    private val selfNodeID: String,
+    private val selfNodeId: NodeId,
     private val router: Router,
-    private val sender: Sender,
     private val peerTimeoutMs: Long = 15_000,
-    private val reaperIntervalMs: Long = 5_000,
-    private val helloIntervalMs: Long = 5_000,
-    private val maxHopCount: Int = 8
-) : PeersManagementLookup {
-
+    private val reaperCheckMs: Long = 5_000,
+    private val helloIntervalMs: Long = 5_000
+) {
     private val peers = ConcurrentHashMap<String, Peer>()
 
+    /** Collectable stream of peer table mutations for upper layer observation */
     val peerEvents = Channel<PeerEvent>(capacity = Channel.UNLIMITED)
 
-    /** Adds a new peer or refreshes lastSeen and address for an existing one */
-    fun addOrUpdate(nodeID: String, ip: String, name: String) {
+    /** Adds a new peer or refreshes the IP name and lastSeen of an existing one */
+    fun addOrUpdate(nodeId: NodeId, ip: String, name: String, publicKey: PublicKey) {
         val now = System.currentTimeMillis()
-        val existing = peers[nodeID]
-        val peer = Peer(nodeID, ip, name, now)
-        peers[nodeID] = peer
-        if (existing == null) {
-            peerEvents.trySend(PeerEvent.Added(peer))
-        } else {
-            peerEvents.trySend(PeerEvent.Updated(peer))
+        val peer = Peer(nodeId, ip, name, publicKey, now)
+        val existed = peers.put(nodeId.toString(), peer) != null
+        peerEvents.trySend(if (existed) PeerEvent.Updated(peer) else PeerEvent.Added(peer))
+    }
+
+    /** Removes a peer explicitly and emits a Removed event */
+    fun remove(nodeId: NodeId) {
+        if (peers.remove(nodeId.toString()) != null) {
+            peerEvents.trySend(PeerEvent.Removed(nodeId))
         }
     }
 
-    /** Removes a peer explicitly */
-    fun remove(nodeID: String) {
-        if (peers.remove(nodeID) != null) {
-            peerEvents.trySend(PeerEvent.Removed(nodeID))
-        }
-    }
+    /** Returns the current IP address for a known peer or null */
+    fun resolveIp(nodeId: NodeId): String? = peers[nodeId.toString()]?.ip
 
-    /** Resolves the IP address for a given peer */
-    override fun resolveIp(nodeID: String): String? = peers[nodeID]?.ip
+    /** Returns true when the node is currently in the direct peer table */
+    fun isDirectPeer(nodeId: NodeId): Boolean = peers.containsKey(nodeId.toString())
 
-    /** Returns whether a node is currently a direct neighbour */
-    override fun isDirectPeer(nodeID: String): Boolean = peers.containsKey(nodeID)
+    /** Returns the stored public key for a peer or null */
+    fun lookupPublicKey(nodeId: NodeId): PublicKey? = peers[nodeId.toString()]?.publicKey
 
-    /** Returns a snapshot of all currently known peers */
+    /** Returns a point in time snapshot of all known peers */
     fun getPeers(): List<Peer> = peers.values.toList()
 
-    /** Starts the loop that removes peers which have not sent a HELLO in time */
-    fun startReaperLoop(scope: CoroutineScope) {
+    /** Checks that SHA256 of the public key bytes equals the claimed NodeId bytes */
+    fun verifyNodeId(publicKey: PublicKey, claimedNodeId: NodeId): Boolean {
+        val digest = MessageDigest.getInstance("SHA-256").digest(publicKey.bytes)
+        return digest.contentEquals(claimedNodeId.bytes)
+    }
+
+    /**
+     * Removes peers whose lastSeen exceeds peerTimeoutMs
+     * Calls Router invalidateVia for each removed peer and broadcasts RERR for affected routes
+     */
+    fun startReaperLoop(scope: CoroutineScope, sender: Sender) {
         scope.launch {
             while (true) {
-                delay(reaperIntervalMs)
+                delay(reaperCheckMs)
                 val now = System.currentTimeMillis()
                 val timedOut = peers.values.filter { now - it.lastSeen > peerTimeoutMs }
                 for (peer in timedOut) {
-                    peers.remove(peer.nodeID)
-                    peerEvents.trySend(PeerEvent.Removed(peer.nodeID))
-                    val affected = router.invalidateVia(peer.nodeID)
-                    if (affected.isNotEmpty()) {
-                        sender.broadcastRerr(affected)
-                    }
+                    peers.remove(peer.nodeId.toString())
+                    peerEvents.trySend(PeerEvent.Removed(peer.nodeId))
+                    val affected = router.invalidateVia(peer.nodeId)
+                    if (affected.isNotEmpty()) sender.broadcastRerr(affected)
                 }
             }
         }
     }
 
-    /** Starts the loop that periodically broadcasts this node's HELLO */
-    fun startHelloBroadcastLoop(scope: CoroutineScope, displayName: String) {
+    /** Calls broadcastHello on the given Sender every helloIntervalMs milliseconds */
+    fun startHelloBroadcastLoop(scope: CoroutineScope, sender: Sender, displayName: String) {
         scope.launch {
             while (true) {
-                val routeEntries = router.getRoutes()
-                    .filter { it.hopCount <= maxHopCount - 1 }
-                    .map { RouteEntry(it.destinationNodeID, it.hopCount, "") }
-                sender.broadcastHello(selfNodeID, displayName, routeEntries)
+                sender.broadcastHello(displayName)
                 delay(helloIntervalMs)
             }
         }
