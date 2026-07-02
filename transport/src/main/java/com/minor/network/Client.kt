@@ -2,6 +2,7 @@ package com.minor.network
 
 import com.minor.model.HeaderProtocol
 import com.minor.model.Packet
+import com.minor.model.Envelope
 import com.minor.model.ParseResult
 import com.minor.packetprocessor.HeaderParser
 import kotlinx.coroutines.CoroutineScope
@@ -12,13 +13,14 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.InputStream
+import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.SocketTimeoutException
 
 class Client(
     private val socket: Socket,
     private val scope: CoroutineScope,
-    private val onMessage: (Packet) -> Unit,
+    private val onMessage: (Envelope) -> Unit,
     private val removeChannel: SendChannel<Client>
 ) {
     private var job: Job? = null
@@ -47,9 +49,12 @@ class Client(
                     offset += result.second
                     if (!result.first) break
                     
-                    onMessage(Packet(
-                        header = header,
-                        payload = buffer.copyOfRange(HeaderProtocol.HEADER_SIZE, offset)
+                    onMessage(Envelope(
+                        packet = Packet(
+                            header = header,
+                            payload = buffer.copyOfRange(HeaderProtocol.HEADER_SIZE, offset)
+                        ),
+                        remoteAddress = socket.remoteSocketAddress as InetSocketAddress
                     ))
                     offset = 0
                 }

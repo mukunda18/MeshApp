@@ -1,6 +1,6 @@
 package com.minor.network
 
-import com.minor.model.Packet
+import com.minor.model.Envelope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -19,7 +19,7 @@ class TCPReceiver(
     private val port: Int,
     private val scope: CoroutineScope
 ) {
-    val incoming = Channel<Packet>(
+    val incoming = Channel<Envelope>(
         capacity = BUFFER_CAPACITY,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
