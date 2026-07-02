@@ -5,6 +5,7 @@ import android.net.wifi.WifiManager
 import com.minor.packetprocessor.HeaderParser
 import com.minor.model.HeaderProtocol
 import com.minor.model.Packet
+import com.minor.model.Envelope
 import com.minor.model.ParseResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -41,11 +42,11 @@ class UdpSocket(
         bind(InetSocketAddress(port))
     }
 
-    private val channel = Channel<Packet>(
+    private val channel = Channel<Envelope>(
         capacity = BUFFER_CAPACITY,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
-    val incoming: ReceiveChannel<Packet> get() = channel
+    val incoming: ReceiveChannel<Envelope> get() = channel
 
     private var job: Job? = null
 
@@ -72,9 +73,12 @@ class UdpSocket(
                     val dataCopy = packet.data.copyOfRange(packet.offset, packet.offset + packet.length)
                     val result = HeaderParser.parse(dataCopy)
                     if (result is ParseResult.Success) {
-                        channel.trySend(Packet(
-                            header = result.value,
-                            payload = dataCopy.copyOfRange(HeaderProtocol.HEADER_SIZE, dataCopy.size)
+                        channel.trySend(Envelope(
+                            packet = Packet(
+                                header = result.value,
+                                payload = dataCopy.copyOfRange(HeaderProtocol.HEADER_SIZE, dataCopy.size)
+                            ),
+                            remoteAddress = packet.socketAddress as InetSocketAddress
                         ))
                     }
                 } catch (_: SocketTimeoutException) {

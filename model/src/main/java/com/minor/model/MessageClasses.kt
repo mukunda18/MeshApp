@@ -1,5 +1,7 @@
 package com.minor.model
 
+import java.net.InetSocketAddress
+
 @JvmInline
 value class NodeId(val bytes: ByteArray) {
     init {
@@ -103,4 +105,9 @@ sealed interface Payload {
 data class Packet(
     val header: Header,
     val payload: ByteArray
+)
+
+data class Envelope(
+    val packet: Packet,
+    val remoteAddress: InetSocketAddress
 )
