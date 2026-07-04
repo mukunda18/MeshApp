@@ -41,7 +41,7 @@ class UdpSocket(
         reuseAddress = true
         broadcast = true
         soTimeout = RECEIVE_TIMEOUT_MS
-        bind(InetSocketAddress(port))
+        bind(InetSocketAddress(this@UdpSocket.port))
     }
 
     private val incomingChannel = Channel<Envelope>(
