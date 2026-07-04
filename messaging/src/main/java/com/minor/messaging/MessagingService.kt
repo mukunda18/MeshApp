@@ -1,7 +1,7 @@
 package com.minor.messaging
 
 import com.minor.meshcontrol.DeliveryState
-import com.minor.meshcontrol.MeshService
+import com.minor.meshcontrol.MeshMessagingGateway
 import com.minor.model.MessageId
 import com.minor.model.NodeId
 import com.minor.model.Packet
@@ -27,7 +27,7 @@ import kotlinx.coroutines.launch
 
 class MessagingService(
     private val ownNodeId: NodeId,
-    private val meshService: MeshService,
+    private val meshGateway: MeshMessagingGateway,
     private val conversationStore: ConversationStore,
     private val securityCodec: MessageSecurityCodec,
     private val deliveryTimeoutMs: Long = DEFAULT_DELIVERY_TIMEOUT_MS,
@@ -84,7 +84,7 @@ class MessagingService(
             recipientNodeID = destinationNodeID,
             messageID = localMessageId
         )
-        val meshMessageId = MessageId(meshService.sendMessage(destinationNodeID, encodedPayload))
+        val meshMessageId = MessageId(meshGateway.sendMessage(destinationNodeID, encodedPayload))
         val outgoingMessage = Message(
             senderNodeId = ownNodeId,
             plaintextContent = plaintext,
@@ -110,7 +110,7 @@ class MessagingService(
         conversationStore.getConversation(nodeID)?.messages.orEmpty()
 
     private suspend fun collectIncomingMessages() {
-        meshService.incomingMessageStream.collect { packet ->
+        meshGateway.incomingMessageStream.collect { packet ->
             try {
                 val decodedMessage = securityCodec.decode(packet)
                 val message = Message(
@@ -130,7 +130,7 @@ class MessagingService(
     }
 
     private suspend fun collectDeliveryStatuses() {
-        meshService.deliveryStatusStream.collect { status ->
+        meshGateway.deliveryStatusStream.collect { status ->
             val messageStatus = status.state.toMessageDeliveryStatus()
             if (!shouldApplyDeliveryStatus(status.messageId, messageStatus)) return@collect
             val storedMessage = conversationStore.updateDeliveryStatus(

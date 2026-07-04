@@ -83,6 +83,13 @@ data class RouteState(
     val routes: List<RouteInfo>
 )
 
+interface MeshMessagingGateway {
+    val incomingMessageStream: SharedFlow<Packet>
+    val deliveryStatusStream: SharedFlow<DeliveryStatus>
+
+    fun sendMessage(destinationNodeID: NodeId, payload: Payload): Long
+}
+
 /**
  * Foreground-owned mesh lifecycle coordinator.
  *
@@ -93,7 +100,7 @@ class MeshService(
     private val config: MeshConfig,
     private val socketFactory: MeshSocketFactory,
     private val scopeDispatcher: CoroutineDispatcher = Dispatchers.Default
-) {
+) : MeshMessagingGateway {
     private val nextMessageId = AtomicLong(1L)
 
     private val _meshStateStream = MutableStateFlow(MeshState.STOPPED)
@@ -102,12 +109,12 @@ class MeshService(
     private val _incomingMessageStream = MutableSharedFlow<Packet>(
         extraBufferCapacity = STREAM_BUFFER_CAPACITY
     )
-    val incomingMessageStream: SharedFlow<Packet> = _incomingMessageStream.asSharedFlow()
+    override val incomingMessageStream: SharedFlow<Packet> = _incomingMessageStream.asSharedFlow()
 
     private val _deliveryStatusStream = MutableSharedFlow<DeliveryStatus>(
         extraBufferCapacity = STREAM_BUFFER_CAPACITY
     )
-    val deliveryStatusStream: SharedFlow<DeliveryStatus> = _deliveryStatusStream.asSharedFlow()
+    override val deliveryStatusStream: SharedFlow<DeliveryStatus> = _deliveryStatusStream.asSharedFlow()
 
     private val _peersStream = MutableStateFlow<List<PeerState>>(emptyList())
     val peersStream: StateFlow<List<PeerState>> = _peersStream.asStateFlow()
@@ -197,7 +204,7 @@ class MeshService(
         }
     }
 
-    fun sendMessage(destinationNodeID: NodeId, payload: Payload): Long {
+    override fun sendMessage(destinationNodeID: NodeId, payload: Payload): Long {
         val activeSender = sender ?: error("MeshService must be running before sending messages")
         val messageId = nextMessageId.getAndIncrement()
         activeSender.enqueue(messageId, payload, destinationNodeID)
