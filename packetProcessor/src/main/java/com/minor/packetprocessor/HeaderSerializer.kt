@@ -5,7 +5,7 @@ import com.minor.model.HeaderProtocol
 
 object HeaderSerializer {
     fun serialize(header: Header, buffer: ByteArray, offset: Int): Int {
-        require(header.payloadLength in 0..65535) {
+        require(header.payloadLength in (0..65535)) {
             "PayloadLength ${header.payloadLength} overflows UInt16"
         }
         require(buffer.size >= offset + HeaderProtocol.HEADER_SIZE) {
@@ -21,7 +21,7 @@ object HeaderSerializer {
         HeaderProtocol.Reserved.write(buffer, header.reserved, offset)
         HeaderProtocol.SourceNodeId.write(buffer, header.sourceNodeId, offset)
         HeaderProtocol.DestNodeId.write(buffer, header.destNodeId, offset)
-        HeaderProtocol.id.write(buffer, header.id, offset)
+        HeaderProtocol.Id.write(buffer, header.id, offset)
         HeaderProtocol.OriginTimestamp.write(buffer, header.originTimestamp, offset)
         HeaderProtocol.PayloadLength.write(buffer, header.payloadLength, offset)
 

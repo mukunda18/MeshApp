@@ -24,5 +24,13 @@ data class MeshConfig(
     val ownNodeId: NodeId,
     val ownPublicKey: PublicKey,
     val ownName: String,
-    val routeStateIntervalMs: Long = 5_000L
-)
+    val routeStateIntervalMs: Long = 5_000L,
+) {
+    init {
+        require(udpBroadcastPort in 1..65535) { "Invalid UDP port: $udpBroadcastPort" }
+        require(tcpPort in 1..65535) { "Invalid TCP port: $tcpPort" }
+        require(helloIntervalMs > 0) { "helloIntervalMs must be positive" }
+        require(peerTimeoutMs > helloIntervalMs) { "peerTimeoutMs must be greater than helloIntervalMs" }
+        require(maxHopCount > 0) { "maxHopCount must be positive" }
+    }
+}

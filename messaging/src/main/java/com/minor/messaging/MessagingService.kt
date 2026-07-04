@@ -7,6 +7,7 @@ import com.minor.model.NodeId
 import com.minor.model.Packet
 import com.minor.model.Payload
 import com.minor.model.Timestamp
+import android.util.Log
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
@@ -21,7 +22,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collect
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -31,7 +32,7 @@ class MessagingService(
     private val conversationStore: ConversationStore,
     private val securityCodec: MessageSecurityCodec,
     private val deliveryTimeoutMs: Long = DEFAULT_DELIVERY_TIMEOUT_MS,
-    private val dispatcher: CoroutineDispatcher = Dispatchers.Default
+    private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
     private val nextLocalMessageId = AtomicLong(System.currentTimeMillis())
     private val deliveryStates = ConcurrentHashMap<Long, MessageDeliveryStatus>()
@@ -125,6 +126,7 @@ class MessagingService(
                 refreshConversations()
             } catch (error: Throwable) {
                 if (error is CancellationException) throw error
+                Log.e("MessagingService", "Error processing incoming message", error)
             }
         }
     }
@@ -149,7 +151,7 @@ class MessagingService(
     }
 
     private suspend fun failMessageOnTimeout(messageID: MessageId) {
-        delay(deliveryTimeoutMs)
+        delay(deliveryTimeoutMs.milliseconds)
         if (!shouldApplyDeliveryStatus(messageID.value, MessageDeliveryStatus.FAILED)) return
         val storedMessage = conversationStore.updateDeliveryStatus(
             messageID = messageID,
@@ -170,7 +172,7 @@ class MessagingService(
         deliveryStatus: MessageDeliveryStatus
     ): Boolean {
         val current = deliveryStates[messageId]
-        if (current == MessageDeliveryStatus.DELIVERED || current == MessageDeliveryStatus.FAILED) {
+        if ((current == MessageDeliveryStatus.DELIVERED) || (current == MessageDeliveryStatus.FAILED)) {
             return false
         }
         deliveryStates[messageId] = deliveryStatus

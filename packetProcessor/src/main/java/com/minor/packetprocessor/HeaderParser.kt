@@ -9,7 +9,7 @@ object HeaderParser {
     fun parse(data: ByteArray): ParseResult<Header> {
         if (data.size < HeaderProtocol.HEADER_SIZE) {
             return ParseResult.Failure(
-                ParseError.TooShort(data.size, HeaderProtocol.HEADER_SIZE)
+                ParseError.TooShort(data.size, HeaderProtocol.HEADER_SIZE),
             )
         }
 
@@ -24,7 +24,7 @@ object HeaderParser {
         }
 
         val payloadLength = HeaderProtocol.PayloadLength.read(data).value
-        if (payloadLength !in 0..HeaderProtocol.MAX_PAYLOAD) {
+        if (payloadLength !in (0..HeaderProtocol.MAX_PAYLOAD)) {
             return ParseResult.Failure(ParseError.InvalidPayloadLength(payloadLength))
         }
 
@@ -38,7 +38,7 @@ object HeaderParser {
             reserved = HeaderProtocol.Reserved.read(data).value,
             sourceNodeId = HeaderProtocol.SourceNodeId.read(data).value,
             destNodeId = HeaderProtocol.DestNodeId.read(data).value,
-            id = HeaderProtocol.id.read(data).value,
+            id = HeaderProtocol.Id.read(data).value,
             originTimestamp = HeaderProtocol.OriginTimestamp.read(data).value,
             payloadLength = payloadLength
         )

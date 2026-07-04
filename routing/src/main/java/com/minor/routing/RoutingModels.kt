@@ -1,7 +1,7 @@
 package com.minor.routing
 
+import com.minor.model.MessageId
 import com.minor.model.NodeId
-import com.minor.model.Payload
 import com.minor.model.PublicKey
 
 /** A directly reachable neighbour discovered via HELLO */
@@ -16,9 +16,11 @@ data class Peer(
 /** One entry in the routing table mapping a destination to a next hop */
 data class RouteInfo(
     val destinationNodeId: NodeId,
+    val name: String,
     val nextHopNodeId: NodeId,
     val hopCount: Int,
     val lastUpdated: Long,
+    val routeTimestamp: Long,
     val valid: Boolean = true
 )
 
@@ -31,8 +33,8 @@ sealed class PeerEvent {
 
 /** An outbound message waiting in the Sender queue */
 data class QueuedMessage(
-    val messageId: Long,
-    val payload: Payload,
+    val messageId: MessageId,
+    val content: String,
     val destinationNodeId: NodeId,
     var rreqFlag: Boolean = false,
     val enqueueTime: Long = System.currentTimeMillis()

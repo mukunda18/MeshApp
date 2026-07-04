@@ -80,6 +80,6 @@ class TCPSender(
     }
 
     companion object {
-        const val IDLE_TIMEOUT_MS = 30_000L
+        const val IDLE_TIMEOUT_MS = 60_000L
     }
 }
