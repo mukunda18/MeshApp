@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -27,6 +28,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -138,6 +140,36 @@ fun NodeCard(node: NodeCardState, onClick: () -> Unit, modifier: Modifier = Modi
             Column(modifier = Modifier.weight(1f)) {
                 Text(node.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text(node.id, style = MaterialTheme.typography.bodySmall, color = MeshMuted)
+                if (!node.lastMessagePreview.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        node.lastMessagePreview,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MeshMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (!node.lastMessageTimestamp.isNullOrBlank()) {
+                        Text(
+                            node.lastMessageTimestamp,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MeshMuted
+                        )
+                    }
+                    if (node.unreadCount > 0) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Surface(shape = RoundedCornerShape(10.dp), color = MeshGreen.copy(alpha = 0.18f)) {
+                            Text(
+                                text = node.unreadCount.toString(),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MeshGreen,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
             }
             OnlineIndicator(isOnline = node.isOnline)
         }
@@ -159,7 +191,14 @@ fun ChatBubble(message: ConversationMessageUiState, modifier: Modifier = Modifie
             Column(horizontalAlignment = Alignment.Start) {
                 Text(message.text, color = textColor)
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(message.timestamp, style = MaterialTheme.typography.labelSmall, color = if (message.isOutgoing) Color(0xFFD9FBE6) else MeshMuted)
+                val metaColor = if (message.isOutgoing) Color(0xFFD9FBE6) else MeshMuted
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(message.timestamp, style = MaterialTheme.typography.labelSmall, color = metaColor)
+                    if (!message.deliveryStatusLabel.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(message.deliveryStatusLabel, style = MaterialTheme.typography.labelSmall, color = metaColor)
+                    }
+                }
             }
         }
     }

@@ -33,8 +33,6 @@ import com.minor.ui.components.ChatBubble
 import com.minor.ui.components.MeshTopBar
 import com.minor.ui.components.OnlineIndicator
 import com.minor.ui.components.ProfileAvatar
-import com.minor.ui.fake.FakeDataProvider
-import com.minor.ui.state.NodeCardState
 import com.minor.ui.viewmodel.ConversationViewModel
 
 @Composable
@@ -48,10 +46,7 @@ fun ConversationScreen(
     var draftMessage by remember { mutableStateOf("") }
 
     LaunchedEffect(nodeId) {
-        val node = FakeDataProvider.nodes.firstOrNull { it.id == nodeId }
-        if (node != null) {
-            viewModel.initialize(node)
-        }
+        viewModel.initialize(nodeId)
     }
 
     Scaffold(

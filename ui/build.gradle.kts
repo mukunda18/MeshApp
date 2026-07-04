@@ -38,6 +38,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
     implementation("androidx.navigation:navigation-compose:2.9.0")
     implementation(libs.material)
+    implementation(project(":meshControl"))
+    implementation(project(":messaging"))
     implementation(project(":transport"))
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)

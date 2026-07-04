@@ -24,7 +24,7 @@ import com.minor.ui.viewmodel.ChatsViewModel
 @Composable
 fun ChatsScreen(viewModel: ChatsViewModel = viewModel(), onNodeClick: (NodeCardState) -> Unit) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    Scaffold(topBar = { MeshTopBar(title = "Chats", subtitle = "Nearby mesh nodes") }) { paddingValues ->
+    Scaffold(topBar = { MeshTopBar(title = "Chats", subtitle = "Conversations") }) { paddingValues ->
         if (uiState.nodes.isEmpty()) {
             Column(
                 modifier = Modifier
@@ -32,7 +32,7 @@ fun ChatsScreen(viewModel: ChatsViewModel = viewModel(), onNodeClick: (NodeCardS
                     .padding(paddingValues),
                 verticalArrangement = Arrangement.Center
             ) {
-                EmptyState(title = "No nearby nodes", subtitle = "Try turning mesh on")
+                EmptyState(title = "No conversations yet", subtitle = "Messages will appear here")
             }
         } else {
             LazyColumn(

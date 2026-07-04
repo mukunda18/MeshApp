@@ -3,25 +3,38 @@ package com.minor.meshapp
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.ui.Modifier
-import com.minor.meshapp.ui.InterfacesScreen
-import com.minor.meshapp.ui.theme.MeshAppTheme
 import com.minor.ui.navigation.MeshAppNavHost
+import com.minor.ui.viewmodel.ChatsViewModelFactory
+import com.minor.ui.viewmodel.ConversationViewModelFactory
+import com.minor.ui.viewmodel.HomeViewModelFactory
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        setContent {
-//            MeshAppTheme {
-//                Scaffold(modifier = Modifier.fillMaxSize()) { padding -> InterfacesScreen(modifier = Modifier.padding(padding))
-//                }
-//            }
-            MeshAppNavHost()
+        val meshApp = application as MeshApplication
+        val homeViewModelFactory = HomeViewModelFactory(
+            application = meshApp,
+            meshService = meshApp.container.meshService,
+            appName = getString(R.string.app_name),
+            deviceName = meshApp.container.identity.displayName
+        )
+        val chatsViewModelFactory = ChatsViewModelFactory(
+            messagingService = meshApp.container.messagingService,
+            meshService = meshApp.container.meshService
+        )
+        val conversationViewModelFactory = ConversationViewModelFactory(
+            ownNodeId = meshApp.container.identity.nodeId,
+            messagingService = meshApp.container.messagingService,
+            meshService = meshApp.container.meshService
+        )
 
+        setContent {
+            MeshAppNavHost(
+                homeViewModelFactory = homeViewModelFactory,
+                chatsViewModelFactory = chatsViewModelFactory,
+                conversationViewModelFactory = conversationViewModelFactory
+            )
         }
     }
 }

@@ -5,6 +5,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -18,9 +19,16 @@ import com.minor.ui.screens.conversation.ConversationScreen
 import com.minor.ui.screens.home.HomeScreen
 import com.minor.ui.screens.networkinterfaces.NetworkInterfacesScreen
 import com.minor.ui.theme.MeshAppTheme
+import com.minor.ui.viewmodel.ChatsViewModel
+import com.minor.ui.viewmodel.ConversationViewModel
+import com.minor.ui.viewmodel.HomeViewModel
 
 @Composable
-fun MeshAppNavHost() {
+fun MeshAppNavHost(
+    homeViewModelFactory: ViewModelProvider.Factory? = null,
+    chatsViewModelFactory: ViewModelProvider.Factory? = null,
+    conversationViewModelFactory: ViewModelProvider.Factory? = null
+) {
     MeshAppTheme {
         val navController = rememberNavController()
         val backStackEntry by navController.currentBackStackEntryAsState()
@@ -56,15 +64,25 @@ fun MeshAppNavHost() {
                 modifier = Modifier.padding(paddingValues)
             ) {
                 composable(MeshRoutes.HOME) {
+                    val homeViewModel: HomeViewModel = if (homeViewModelFactory != null) {
+                        viewModel(factory = homeViewModelFactory)
+                    } else {
+                        viewModel()
+                    }
                     HomeScreen(
-                        viewModel = viewModel(),
+                        viewModel = homeViewModel,
                         onNavigateToChats = { navController.navigate(MeshRoutes.CHATS) },
                         onNavigateToNetworkInterfaces = { navController.navigate(MeshRoutes.NETWORK_INTERFACES) }
                     )
                 }
                 composable(MeshRoutes.CHATS) {
+                    val chatsViewModel: ChatsViewModel = if (chatsViewModelFactory != null) {
+                        viewModel(factory = chatsViewModelFactory)
+                    } else {
+                        viewModel()
+                    }
                     ChatsScreen(
-                        viewModel = viewModel(),
+                        viewModel = chatsViewModel,
                         onNodeClick = { node -> navController.navigate(MeshRoutes.conversation(node.id)) }
                     )
                 }
@@ -79,8 +97,13 @@ fun MeshAppNavHost() {
                     arguments = listOf(navArgument("nodeId") { type = NavType.StringType })
                 ) { backStackEntry ->
                     val nodeId = backStackEntry.arguments?.getString("nodeId") ?: ""
+                    val conversationViewModel: ConversationViewModel = if (conversationViewModelFactory != null) {
+                        viewModel(factory = conversationViewModelFactory)
+                    } else {
+                        viewModel()
+                    }
                     ConversationScreen(
-                        viewModel = viewModel(),
+                        viewModel = conversationViewModel,
                         nodeId = nodeId,
                         onBack = { navController.popBackStack() }
                     )
