@@ -19,7 +19,6 @@ data class RouteInfo(
     val name: String,
     val nextHopNodeId: NodeId,
     val hopCount: Int,
-    val lastUpdated: Long,
     val routeTimestamp: Long,
     val valid: Boolean = true
 )
