@@ -1,12 +1,13 @@
 package com.minor.messaging
 
 import com.minor.meshcontrol.DeliveryState
-import com.minor.meshcontrol.MeshService
+import com.minor.meshcontrol.MeshMessagingGateway
 import com.minor.model.MessageId
 import com.minor.model.NodeId
 import com.minor.model.Packet
 import com.minor.model.Payload
 import com.minor.model.Timestamp
+import android.util.Log
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
@@ -21,17 +22,17 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collect
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MessagingService(
     private val ownNodeId: NodeId,
-    private val meshService: MeshService,
+    private val meshGateway: MeshMessagingGateway,
     private val conversationStore: ConversationStore,
     private val securityCodec: MessageSecurityCodec,
     private val deliveryTimeoutMs: Long = DEFAULT_DELIVERY_TIMEOUT_MS,
-    private val dispatcher: CoroutineDispatcher = Dispatchers.Default
+    private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
     private val nextLocalMessageId = AtomicLong(System.currentTimeMillis())
     private val deliveryStates = ConcurrentHashMap<Long, MessageDeliveryStatus>()
@@ -84,7 +85,7 @@ class MessagingService(
             recipientNodeID = destinationNodeID,
             messageID = localMessageId
         )
-        val meshMessageId = MessageId(meshService.sendMessage(destinationNodeID, encodedPayload))
+        val meshMessageId = MessageId(meshGateway.sendMessage(destinationNodeID, encodedPayload))
         val outgoingMessage = Message(
             senderNodeId = ownNodeId,
             plaintextContent = plaintext,
@@ -110,7 +111,7 @@ class MessagingService(
         conversationStore.getConversation(nodeID)?.messages.orEmpty()
 
     private suspend fun collectIncomingMessages() {
-        meshService.incomingMessageStream.collect { packet ->
+        meshGateway.incomingMessageStream.collect { packet ->
             try {
                 val decodedMessage = securityCodec.decode(packet)
                 val message = Message(
@@ -125,12 +126,13 @@ class MessagingService(
                 refreshConversations()
             } catch (error: Throwable) {
                 if (error is CancellationException) throw error
+                Log.e("MessagingService", "Error processing incoming message", error)
             }
         }
     }
 
     private suspend fun collectDeliveryStatuses() {
-        meshService.deliveryStatusStream.collect { status ->
+        meshGateway.deliveryStatusStream.collect { status ->
             val messageStatus = status.state.toMessageDeliveryStatus()
             if (!shouldApplyDeliveryStatus(status.messageId, messageStatus)) return@collect
             val storedMessage = conversationStore.updateDeliveryStatus(
@@ -149,7 +151,7 @@ class MessagingService(
     }
 
     private suspend fun failMessageOnTimeout(messageID: MessageId) {
-        delay(deliveryTimeoutMs)
+        delay(deliveryTimeoutMs.milliseconds)
         if (!shouldApplyDeliveryStatus(messageID.value, MessageDeliveryStatus.FAILED)) return
         val storedMessage = conversationStore.updateDeliveryStatus(
             messageID = messageID,
@@ -170,7 +172,7 @@ class MessagingService(
         deliveryStatus: MessageDeliveryStatus
     ): Boolean {
         val current = deliveryStates[messageId]
-        if (current == MessageDeliveryStatus.DELIVERED || current == MessageDeliveryStatus.FAILED) {
+        if ((current == MessageDeliveryStatus.DELIVERED) || (current == MessageDeliveryStatus.FAILED)) {
             return false
         }
         deliveryStates[messageId] = deliveryStatus

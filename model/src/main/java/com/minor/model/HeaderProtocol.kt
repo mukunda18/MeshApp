@@ -148,7 +148,7 @@ object HeaderProtocol {
         }
     }
 
-    object id : Field<MessageId> {
+    object Id : Field<MessageId> {
         override fun read(data: ByteArray, baseOffset: Int): ReadWithLength<MessageId> =
             ReadWithLength(MessageId(readI64(data, baseOffset + ID_OFFSET)), ID_LENGTH)
 

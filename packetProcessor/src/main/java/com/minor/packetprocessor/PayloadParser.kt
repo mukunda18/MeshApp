@@ -55,14 +55,17 @@ object PayloadParser {
 
     private fun parseMessage(data: ByteArray): ParseResult<Payload> {
         try {
-            val messageIdRead = MessageProtocol.messageId.read(data, baseOffset = 0)
-            val timestampRead = MessageProtocol.timestamp.read(data, baseOffset = 0)
-            val contentRead = MessageProtocol.content.read(data, baseOffset = 0)
+            var cursor = 0
+            val messageIdRead = MessageProtocol.messageId.read(data, baseOffset = cursor)
+            cursor += messageIdRead.bytesRead
             
-            val expectedSize =
-                messageIdRead.bytesRead + timestampRead.bytesRead + contentRead.bytesRead
+            val timestampRead = MessageProtocol.timestamp.read(data, baseOffset = cursor)
+            cursor += timestampRead.bytesRead
             
-            if (data.size != expectedSize) {
+            val contentRead = MessageProtocol.content.read(data, baseOffset = cursor)
+            cursor += contentRead.bytesRead
+            
+            if (data.size != cursor) {
                 return ParseResult.Failure(ParseError.MalformedPayload("MESSAGE has trailing bytes"))
             }
             
@@ -80,11 +83,14 @@ object PayloadParser {
 
     private fun parseAck(data: ByteArray): ParseResult<Payload> {
         try {
-            val statusRead = AckProtocol.status.read(data, baseOffset = 0)
-            val signatureRead = AckProtocol.signature.read(data, baseOffset = 0)
+            var cursor = 0
+            val statusRead = AckProtocol.status.read(data, baseOffset = cursor)
+            cursor += statusRead.bytesRead
             
-            val expectedSize = statusRead.bytesRead + signatureRead.bytesRead
-            if (data.size != expectedSize) {
+            val signatureRead = AckProtocol.signature.read(data, baseOffset = cursor)
+            cursor += signatureRead.bytesRead
+            
+            if (data.size != cursor) {
                 return ParseResult.Failure(ParseError.MalformedPayload("ACK has trailing bytes"))
             }
             
@@ -120,10 +126,10 @@ object PayloadParser {
     private fun parseRrep(data: ByteArray): ParseResult<Payload> {
         try {
             var cursor = 0
-            val nameRead = RREPProtocol.name.read(data, baseOffset = cursor)
+            val nameRead = RREPProtocol.Name.read(data, baseOffset = cursor)
             cursor += nameRead.bytesRead
             
-            val publicKeyRead = RREPProtocol.publicKey.read(data, baseOffset = cursor)
+            val publicKeyRead = RREPProtocol.PublicKey.read(data, baseOffset = cursor)
             cursor += publicKeyRead.bytesRead
             
             if (data.size != cursor) {

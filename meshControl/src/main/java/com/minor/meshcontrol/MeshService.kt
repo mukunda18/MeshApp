@@ -4,20 +4,21 @@ import com.minor.model.NodeId
 import com.minor.model.Packet
 import com.minor.model.Payload
 import com.minor.model.PublicKey
+import com.minor.model.MessageId
+import com.minor.network.MeshTransport
 import com.minor.network.TCPReceiver
 import com.minor.network.TCPSender
 import com.minor.network.UdpSocket
-import com.minor.routing.MeshTransport
 import com.minor.routing.Peer
 import com.minor.routing.PeerEvent
 import com.minor.routing.PeersManagement
-import com.minor.routing.RealMeshTransport
 import com.minor.routing.Receiver
 import com.minor.routing.RouteInfo
 import com.minor.routing.Router
 import com.minor.routing.SendStatus
 import com.minor.routing.Sender
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -25,7 +26,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -39,7 +39,7 @@ import kotlinx.coroutines.withContext
 data class MeshSockets(
     val tcpReceiver: TCPReceiver,
     val tcpSender: TCPSender,
-    val udpSocket: UdpSocket
+    val udpSocket: UdpSocket,
 )
 
 fun interface MeshSocketFactory {
@@ -83,6 +83,13 @@ data class RouteState(
     val routes: List<RouteInfo>
 )
 
+interface MeshMessagingGateway {
+    val incomingMessageStream: SharedFlow<Packet>
+    val deliveryStatusStream: SharedFlow<DeliveryStatus>
+
+    fun sendMessage(destinationNodeID: NodeId, payload: Payload): Long
+}
+
 /**
  * Foreground-owned mesh lifecycle coordinator.
  *
@@ -93,7 +100,7 @@ class MeshService(
     private val config: MeshConfig,
     private val socketFactory: MeshSocketFactory,
     private val scopeDispatcher: CoroutineDispatcher = Dispatchers.Default
-) {
+) : MeshMessagingGateway {
     private val nextMessageId = AtomicLong(1L)
 
     private val _meshStateStream = MutableStateFlow(MeshState.STOPPED)
@@ -102,12 +109,12 @@ class MeshService(
     private val _incomingMessageStream = MutableSharedFlow<Packet>(
         extraBufferCapacity = STREAM_BUFFER_CAPACITY
     )
-    val incomingMessageStream: SharedFlow<Packet> = _incomingMessageStream.asSharedFlow()
+    override val incomingMessageStream: SharedFlow<Packet> = _incomingMessageStream.asSharedFlow()
 
     private val _deliveryStatusStream = MutableSharedFlow<DeliveryStatus>(
         extraBufferCapacity = STREAM_BUFFER_CAPACITY
     )
-    val deliveryStatusStream: SharedFlow<DeliveryStatus> = _deliveryStatusStream.asSharedFlow()
+    override val deliveryStatusStream: SharedFlow<DeliveryStatus> = _deliveryStatusStream.asSharedFlow()
 
     private val _peersStream = MutableStateFlow<List<PeerState>>(emptyList())
     val peersStream: StateFlow<List<PeerState>> = _peersStream.asStateFlow()
@@ -133,9 +140,7 @@ class MeshService(
 
         try {
             val createdSockets = socketFactory.create(scope, config)
-            val observableTransport = ObservableMeshTransport(
-                delegate = RealMeshTransport(createdSockets.tcpSender, createdSockets.udpSocket)
-            )
+            val transport = MeshTransport(createdSockets.tcpSender, createdSockets.udpSocket)
             val createdRouter = Router(
                 routeExpiryMs = config.routeExpiryMs,
                 expiryCheckIntervalMs = config.routeExpiryCheckIntervalMs
@@ -151,7 +156,7 @@ class MeshService(
                 selfNodeId = config.ownNodeId,
                 selfPublicKey = config.ownPublicKey,
                 selfName = config.ownName,
-                transport = observableTransport,
+                transport = transport,
                 router = createdRouter,
                 peers = createdPeers,
                 rreqRetryTimeoutMs = config.rreqRetryTimeoutMs,
@@ -184,8 +189,7 @@ class MeshService(
                 peers = createdPeers,
                 router = createdRouter,
                 sender = createdSender,
-                receiver = createdReceiver,
-                tcpErrors = observableTransport.tcpErrors
+                receiver = createdReceiver
             )
 
             _meshStateStream.value = MeshState.RUNNING
@@ -197,10 +201,12 @@ class MeshService(
         }
     }
 
-    fun sendMessage(destinationNodeID: NodeId, payload: Payload): Long {
+    override fun sendMessage(destinationNodeID: NodeId, payload: Payload): Long {
         val activeSender = sender ?: error("MeshService must be running before sending messages")
         val messageId = nextMessageId.getAndIncrement()
-        activeSender.enqueue(messageId, payload, destinationNodeID)
+        val content = (payload as? Payload.Message)?.content
+            ?: throw IllegalArgumentException("MeshService currently supports Payload.Message only")
+        activeSender.enqueue(MessageId(messageId), content, destinationNodeID)
         return messageId
     }
 
@@ -217,7 +223,7 @@ class MeshService(
             for (envelope in sockets.tcpReceiver.incoming) {
                 receiver.onPacketReceived(
                     packet = envelope.packet,
-                    senderIp = envelope.remoteAddress.address.hostAddress
+                    senderIp = envelope.remoteAddress.address.hostAddress ?: ""
                 )
             }
         }
@@ -225,7 +231,7 @@ class MeshService(
             for (envelope in sockets.udpSocket.incoming) {
                 receiver.onPacketReceived(
                     packet = envelope.packet,
-                    senderIp = envelope.remoteAddress.address.hostAddress
+                    senderIp = envelope.remoteAddress.address.hostAddress ?: ""
                 )
             }
         }
@@ -236,8 +242,7 @@ class MeshService(
         peers: PeersManagement,
         router: Router,
         sender: Sender,
-        receiver: Receiver,
-        tcpErrors: Channel<String>
+        receiver: Receiver
     ) {
         scope.launch {
             for (packet in receiver.incomingMessageChannel) {
@@ -255,20 +260,15 @@ class MeshService(
             }
         }
         scope.launch {
-            for (failedIp in tcpErrors) {
-                sender.onTcpError(failedIp)
-            }
-        }
-        scope.launch {
             while (true) {
                 _routeStateStream.value = RouteState(router.getRoutes())
-                kotlinx.coroutines.delay(config.routeStateIntervalMs)
+                kotlinx.coroutines.delay(config.routeStateIntervalMs.milliseconds)
             }
         }
     }
 
     private suspend fun stopInternal() {
-        if (lifecycleJob == null && _meshStateStream.value == MeshState.STOPPED) return
+        if (lifecycleJob == null && (_meshStateStream.value == MeshState.STOPPED)) return
 
         _meshStateStream.value = MeshState.STOPPING
         lifecycleJob?.cancel()
@@ -282,7 +282,6 @@ class MeshService(
                 activeSockets?.tcpSender?.close()
             }
         } catch (_: CancellationException) {
-            throw
         } catch (_: Throwable) {
             _meshStateStream.value = MeshState.ERROR
         } finally {
@@ -334,26 +333,6 @@ class MeshService(
         status = PeerStatus.ACTIVE,
         lastSeen = lastSeen
     )
-
-    private class ObservableMeshTransport(
-        private val delegate: MeshTransport
-    ) : MeshTransport {
-        val tcpErrors = Channel<String>(capacity = Channel.UNLIMITED)
-
-        override suspend fun sendTcp(bytes: ByteArray, ip: String) {
-            try {
-                delegate.sendTcp(bytes, ip)
-            } catch (error: Throwable) {
-                if (error is CancellationException) throw error
-                tcpErrors.trySend(ip)
-                throw error
-            }
-        }
-
-        override suspend fun broadcastUdp(bytes: ByteArray) {
-            delegate.broadcastUdp(bytes)
-        }
-    }
 
     private companion object {
         const val STREAM_BUFFER_CAPACITY = 64

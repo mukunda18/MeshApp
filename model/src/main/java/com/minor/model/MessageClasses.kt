@@ -15,6 +15,7 @@ value class NodeId(val bytes: ByteArray) {
 value class MessageId(val value: Long) {
     override fun toString(): String = "%016x".format(value)
 }
+fun randomMessageId(): MessageId = MessageId(java.util.UUID.randomUUID().mostSignificantBits)
 
 @JvmInline
 value class PublicKey(val bytes: ByteArray) {
@@ -51,6 +52,7 @@ data class RouteEntry(
     val nodeId: NodeId,
     val hopcount: Int,
     val publicKey: PublicKey,
+    val timestamp: Timestamp = Timestamp(0),
     val name: String
 )
 

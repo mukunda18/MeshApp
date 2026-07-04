@@ -23,7 +23,10 @@ android {
 dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.core.ktx)
+    api(libs.kotlinx.coroutines.android)
     implementation(libs.material)
+    api(project(":meshControl"))
+    api(project(":model"))
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)

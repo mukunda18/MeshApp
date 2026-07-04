@@ -52,8 +52,8 @@ object PayloadSerializer {
 
     private fun serializeRrep(payload: Payload.RREP, buffer: ByteArray, offset: Int): Int {
         var cursor = offset
-        cursor += RREPProtocol.name.write(buffer, payload.name, cursor)
-        cursor += RREPProtocol.publicKey.write(buffer, payload.publicKey, cursor)
+        cursor += RREPProtocol.Name.write(buffer, payload.name, cursor)
+        cursor += RREPProtocol.PublicKey.write(buffer, payload.publicKey, cursor)
         return cursor - offset
     }
 
