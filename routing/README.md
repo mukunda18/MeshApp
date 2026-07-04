@@ -40,7 +40,6 @@ Responsibilities:
 - Store routes as destination -> next hop mappings
 - Update routes when better paths are discovered
 - Invalidate routes when links fail or peers disappear
-- Expire stale routes over time
 
 Key functions:
 - lookup(destinationNodeId): returns the next hop for a destination if a valid route exists
@@ -48,7 +47,9 @@ Key functions:
 - invalidate(destinationNodeId): marks a route invalid without removing it immediately
 - invalidateVia(nextHopNodeId): invalidates all routes that depend on a failed next hop
 - getRoutes(): returns the currently valid routes
-- startExpiryLoop(scope): launches a loop that removes expired routes
+
+Routes are keyed by `routeTimestamp`, which is refreshed from HELLO message route
+timestamps and via `updateRouteFromHeader`. There is no time-based expiry loop.
 
 ### PeersManagement
 Tracks direct neighbours and their IP addresses.

@@ -2,19 +2,12 @@ package com.minor.routing
 
 import com.minor.model.NodeId
 import java.util.concurrent.ConcurrentHashMap
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Thread safe routing table keyed on NodeId hex strings
  * Accepts a new entry only when it is strictly better than the existing hop count
  */
-class Router(
-    private val routeExpiryMs: Long = 60_000,
-    private val expiryCheckIntervalMs: Long = 10_000,
-) {
+class Router {
 
     private val table = ConcurrentHashMap<String, RouteInfo>()
 
@@ -33,7 +26,6 @@ class Router(
         routeTimestamp: Long = System.currentTimeMillis()
     ) {
         val key = destinationNodeId.toString()
-        val now = System.currentTimeMillis()
         val existing = table[key]
         
         val isBetter = existing == null || !existing.valid || 
@@ -41,7 +33,7 @@ class Router(
             (routeTimestamp == existing.routeTimestamp && hopCount < existing.hopCount)
 
         if (isBetter) {
-            table[key] = RouteInfo(destinationNodeId, name, nextHopNodeId, hopCount, now, routeTimestamp)
+            table[key] = RouteInfo(destinationNodeId, name, nextHopNodeId, hopCount, routeTimestamp)
         }
     }
 
@@ -66,17 +58,4 @@ class Router(
 
     /** Returns a snapshot of all entries currently marked as valid */
     fun getRoutes(): List<RouteInfo> = table.values.filter { it.valid }.toList()
-
-    /** Starts the background coroutine that removes entries older than routeExpiryMs */
-    fun startExpiryLoop(scope: CoroutineScope) {
-        scope.launch {
-            while (true) {
-                delay(expiryCheckIntervalMs.milliseconds)
-                val now = System.currentTimeMillis()
-                table.values
-                    .filter { now - it.lastUpdated > routeExpiryMs }
-                    .forEach { table.remove(it.destinationNodeId.toString()) }
-            }
-        }
-    }
 }
