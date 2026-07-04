@@ -8,7 +8,7 @@ import com.minor.network.TCPReceiver
 import com.minor.network.TCPSender
 import com.minor.network.UdpSocket
 import kotlinx.coroutines.CoroutineScope
-
+import android.util.Log
 /**
  * Android-context-bound implementation of MeshSocketFactory.
  *
@@ -25,6 +25,10 @@ class AndroidMeshSocketFactory(context: Context) : MeshSocketFactory {
     private val appContext: Context = context.applicationContext
 
     override fun create(scope: CoroutineScope, config: MeshConfig): MeshSockets {
+        Log.d(
+            "MeshDebug",
+            "UDP=${config.udpBroadcastPort}, TCP=${config.tcpPort}"
+        )
         return MeshSockets(
             tcpReceiver = TCPReceiver(
                 port = config.tcpPort,
