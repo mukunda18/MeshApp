@@ -5,8 +5,9 @@ import com.minor.network.TCPSender
 import com.minor.network.UdpSocket
 
 /**
- * Narrow transport contract the routing module depends on
- * Keeps Sender and Receiver free of direct TCPSender and UdpSocket construction
+ * Send only transport contract used by Sender to dispatch packets
+ * The receive side is handled by TCPReceiver and UdpSocket which now emit Envelope
+ * so RoutingModule can extract the sender IP directly from remoteAddress
  */
 interface MeshTransport {
     suspend fun sendTcp(bytes: ByteArray, ip: String)
@@ -32,7 +33,7 @@ class RealMeshTransport(
             try {
                 udpSocket.send(bytes, addr)
             } catch (_: Exception) {
-                // One interface failing must not stop the others
+              
             }
         }
     }
