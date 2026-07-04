@@ -2,6 +2,7 @@ package com.minor.network
 
 import android.content.Context
 import android.net.wifi.WifiManager
+import android.util.Log
 import com.minor.packetprocessor.HeaderParser
 import com.minor.model.HeaderProtocol
 import com.minor.model.Packet
@@ -20,6 +21,7 @@ import java.net.DatagramSocket
 import java.net.InetSocketAddress
 import java.net.SocketTimeoutException
 import kotlinx.coroutines.channels.ReceiveChannel
+import kotlin.time.Duration.Companion.milliseconds
 
 class UdpSocket(
     context: Context,
@@ -42,11 +44,11 @@ class UdpSocket(
         bind(InetSocketAddress(port))
     }
 
-    private val channel = Channel<Envelope>(
+    private val incomingChannel = Channel<Envelope>(
         capacity = BUFFER_CAPACITY,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
-    val incoming: ReceiveChannel<Envelope> get() = channel
+    val incoming: ReceiveChannel<Envelope> get() = incomingChannel
 
     private var job: Job? = null
 
@@ -73,16 +75,23 @@ class UdpSocket(
                     val dataCopy = packet.data.copyOfRange(packet.offset, packet.offset + packet.length)
                     val result = HeaderParser.parse(dataCopy)
                     if (result is ParseResult.Success) {
-                        channel.trySend(Envelope(
+                        incomingChannel.trySend(Envelope(
                             packet = Packet(
                                 header = result.value,
                                 payload = dataCopy.copyOfRange(HeaderProtocol.HEADER_SIZE, dataCopy.size)
                             ),
                             remoteAddress = packet.socketAddress as InetSocketAddress
                         ))
+                    } else if (result is ParseResult.Failure) {
+                        Log.w("UdpSocket", "Failed to parse header: ${result.error}")
                     }
                 } catch (_: SocketTimeoutException) {
                     // Loop back to re-check isActive so cancellation is responsive.
+                } catch (e: Exception) {
+                    if (isActive) {
+                        Log.e("UdpSocket", "Error in receive loop", e)
+                        kotlinx.coroutines.delay(100.milliseconds) // Prevent tight loop on persistent error
+                    }
                 }
             }
         }
@@ -90,7 +99,7 @@ class UdpSocket(
 
     suspend fun close() = withContext(Dispatchers.IO) {
         socket.close()
-        channel.close()
+        incomingChannel.close()
         job?.cancel()
         job = null
         if (multicastLock?.isHeld == true) multicastLock.release()

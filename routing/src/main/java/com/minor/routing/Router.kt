@@ -5,6 +5,7 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Thread safe routing table keyed on NodeId hex strings
@@ -12,7 +13,7 @@ import kotlinx.coroutines.launch
  */
 class Router(
     private val routeExpiryMs: Long = 60_000,
-    private val expiryCheckIntervalMs: Long = 10_000
+    private val expiryCheckIntervalMs: Long = 10_000,
 ) {
 
     private val table = ConcurrentHashMap<String, RouteInfo>()
@@ -23,13 +24,24 @@ class Router(
         return if (entry.valid) entry.nextHopNodeId else null
     }
 
-    /** Installs a route only when it is new or strictly fewer hops than the stored one */
-    fun update(destinationNodeId: NodeId, nextHopNodeId: NodeId, hopCount: Int) {
+    /** Installs a route only when it is new or has a newer timestamp (or better hop count if same timestamp) */
+    fun update(
+        destinationNodeId: NodeId,
+        name: String,
+        nextHopNodeId: NodeId,
+        hopCount: Int,
+        routeTimestamp: Long = System.currentTimeMillis()
+    ) {
         val key = destinationNodeId.toString()
         val now = System.currentTimeMillis()
         val existing = table[key]
-        if (existing == null || !existing.valid || hopCount < existing.hopCount) {
-            table[key] = RouteInfo(destinationNodeId, nextHopNodeId, hopCount, now)
+        
+        val isBetter = existing == null || !existing.valid || 
+            (routeTimestamp > existing.routeTimestamp) ||
+            (routeTimestamp == existing.routeTimestamp && hopCount < existing.hopCount)
+
+        if (isBetter) {
+            table[key] = RouteInfo(destinationNodeId, name, nextHopNodeId, hopCount, now, routeTimestamp)
         }
     }
 
@@ -43,9 +55,9 @@ class Router(
     fun invalidateVia(nextHopNodeId: NodeId): List<NodeId> {
         val targetKey = nextHopNodeId.toString()
         val affected = mutableListOf<NodeId>()
-        for ((_, info) in table) {
-            if (info.valid && info.nextHopNodeId.toString() == targetKey) {
-                table[info.destinationNodeId.toString()] = info.copy(valid = false)
+        for ((route, info) in table) {
+            if (info.valid && route == targetKey) {
+                table[route] = info.copy(valid = false)
                 affected.add(info.destinationNodeId)
             }
         }
@@ -59,7 +71,7 @@ class Router(
     fun startExpiryLoop(scope: CoroutineScope) {
         scope.launch {
             while (true) {
-                delay(expiryCheckIntervalMs)
+                delay(expiryCheckIntervalMs.milliseconds)
                 val now = System.currentTimeMillis()
                 table.values
                     .filter { now - it.lastUpdated > routeExpiryMs }

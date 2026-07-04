@@ -6,6 +6,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -19,10 +20,12 @@ class TCPReceiver(
     private val port: Int,
     private val scope: CoroutineScope
 ) {
-    val incoming = Channel<Envelope>(
+    private val incomingChannel = Channel<Envelope>(
         capacity = BUFFER_CAPACITY,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
+
+    val incoming: ReceiveChannel<Envelope> get() = incomingChannel
 
     private val serverSocket = ServerSocket().apply {
         reuseAddress = true
@@ -42,7 +45,7 @@ class TCPReceiver(
             while (isActive) {
                 try {
                     val clientSocket = serverSocket.accept()
-                    val client = Client(clientSocket, scope, { incoming.trySend(it) }, removeChannel)
+                    val client = Client(clientSocket, scope, { incomingChannel.trySend(it) }, removeChannel)
                     clientsMutex.withLock { activeClients.add(client) }
                     client.start()
                 } catch (_: SocketTimeoutException) {
@@ -61,7 +64,7 @@ class TCPReceiver(
 
     suspend fun close() = withContext(Dispatchers.IO) {
         serverSocket.close()
-        incoming.close()
+        incomingChannel.close()
         serverJob?.cancel()
         serverJob = null
         

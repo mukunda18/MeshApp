@@ -3,6 +3,7 @@ package com.minor.routing
 import com.minor.model.Envelope
 import com.minor.model.NodeId
 import com.minor.model.PublicKey
+import com.minor.network.MeshTransport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.launch
@@ -22,15 +23,9 @@ class RoutingModule(
     private val udpIncoming: ReceiveChannel<Envelope>
 ) {
     val router = Router()
-    val peers: PeersManagement
-    val sender: Sender
-    val receiver: Receiver
-
-    init {
-        peers = PeersManagement(selfNodeId, router)
-        sender = Sender(selfNodeId, selfPublicKey, selfName, transport, router, peers)
-        receiver = Receiver(selfNodeId, router, peers, sender)
-    }
+    val peers: PeersManagement = PeersManagement(selfNodeId, router)
+    val sender: Sender = Sender(selfNodeId, selfPublicKey, selfName, transport, router, peers)
+    val receiver: Receiver = Receiver(selfNodeId, router, peers, sender)
 
     /** Starts all background loops and begins collecting from both inbound channels */
     fun start(scope: CoroutineScope, displayName: String) {

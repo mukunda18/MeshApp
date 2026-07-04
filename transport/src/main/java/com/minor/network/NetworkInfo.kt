@@ -1,11 +1,9 @@
 package com.minor.network
 
 import android.content.Context
-import android.content.pm.PackageManager
 import android.net.wifi.WifiManager
-import android.os.Build
 
-class NetworkInfo(private val context: Context) {
+class NetworkInfo(context: Context) {
     private val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
 
     /**
@@ -14,11 +12,7 @@ class NetworkInfo(private val context: Context) {
      * acting as a hotspot.
      */
     fun isStaApSupported(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            wifiManager.isStaApConcurrencySupported
-        } else {
-            false
-        }
+        return wifiManager.isStaApConcurrencySupported
     }
 
     /**
@@ -26,10 +20,6 @@ class NetworkInfo(private val context: Context) {
      * based on hardware features like WiFi Direct.
      */
     fun isLikelySupported(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            isStaApSupported()
-        } else {
-            context.packageManager.hasSystemFeature(PackageManager.FEATURE_WIFI_DIRECT)
-        }
+        return isStaApSupported()
     }
 }

@@ -4,18 +4,19 @@ import com.minor.model.Header
 import com.minor.model.HeaderProtocol
 import com.minor.model.MessageId
 import com.minor.model.NodeId
-import com.minor.model.Packet
 import com.minor.model.Payload
 import com.minor.model.PublicKey
 import com.minor.model.RouteEntry
 import com.minor.model.Signature
 import com.minor.model.Timestamp
+import com.minor.model.randomMessageId
+import com.minor.network.MeshTransport
 import com.minor.packetprocessor.HeaderSerializer
 import com.minor.packetprocessor.PayloadSerializer
+import android.util.Log
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -33,31 +34,28 @@ class Sender(
     private val rreqRetryTimeoutMs: Long = 8_000,
     private val maxHopCount: Int = 8
 ) {
-    internal val queue = ArrayDeque<QueuedMessage>()
+    internal val channel = Channel<QueuedMessage>(capacity = Channel.UNLIMITED)
     private val pendingAck = ConcurrentHashMap<Long, QueuedMessage>()
-    private var nextRreqId = 1L
 
     /** Status events emitted as each message progresses through its lifecycle */
     val statusChannel = Channel<Pair<Long, SendStatus>>(capacity = Channel.UNLIMITED)
 
     /** Adds a message to the back of the outbound queue */
-    fun enqueue(messageId: Long, payload: Payload, destinationNodeId: NodeId) {
-        synchronized(queue) {
-            queue.addLast(QueuedMessage(messageId, payload, destinationNodeId))
-        }
+    fun enqueue(messageId: MessageId, content: String, destinationNodeId: NodeId) {
+        channel.trySend(QueuedMessage(messageId, content, destinationNodeId))
     }
 
     /** Builds and broadcasts a HELLO carrying the current valid route snapshot */
     suspend fun broadcastHello(displayName: String) {
         val routes = router.getRoutes()
             .filter { it.hopCount <= maxHopCount - 1 }
-            .map { RouteEntry(it.destinationNodeId, it.hopCount, selfPublicKey, "") }
+            .map { RouteEntry(it.destinationNodeId, it.hopCount, selfPublicKey, Timestamp(it.routeTimestamp), it.name) }
         transport.broadcastUdp(
             buildPacket(
                 type = HeaderProtocol.Type.HELLO,
                 flags = HeaderProtocol.Flags.BROADCAST,
                 dest = NodeId(ByteArray(32)),
-                id = 0L,
+                id = randomMessageId(),
                 hopCount = 0,
                 payload = Payload.Hello(displayName, selfPublicKey, routes)
             )
@@ -72,7 +70,7 @@ class Sender(
                 type = HeaderProtocol.Type.RERR,
                 flags = HeaderProtocol.Flags.BROADCAST,
                 dest = NodeId(ByteArray(32)),
-                id = 0L,
+                id = randomMessageId(),
                 hopCount = 0,
                 payload = Payload.RERR(unreachable)
             )
@@ -90,13 +88,15 @@ class Sender(
                     type = HeaderProtocol.Type.RREP,
                     flags = 0,
                     dest = rreqOriginatorNodeId,
-                    id = rreqId,
+                    id = MessageId(rreqId),
                     hopCount = 0,
                     payload = Payload.RREP(selfName, selfPublicKey)
                 ),
                 upstreamIp
             )
-        } catch (_: Exception) { }
+        } catch (e: Exception) {
+            Log.w("Sender", "Failed to send RREP to $upstreamIp", e)
+        }
     }
 
     /** Sends a signed ACK for the given messageId back toward the original sender */
@@ -108,23 +108,33 @@ class Sender(
                     type = HeaderProtocol.Type.ACK,
                     flags = 0,
                     dest = destNodeId,
-                    id = messageId,
+                    id = MessageId(messageId),
                     hopCount = 0,
                     payload = Payload.Ack(status, Signature(ByteArray(64)))
                 ),
                 ip
             )
-        } catch (_: Exception) { }
+        } catch (e: Exception) {
+            Log.w("Sender", "Failed to send ACK to $ip", e)
+        }
     }
 
     /** Passes raw pre-built bytes directly to the TCP transport */
     suspend fun forwardTcp(bytes: ByteArray, ip: String) {
-        try { transport.sendTcp(bytes, ip) } catch (_: Exception) { }
+        try {
+            transport.sendTcp(bytes, ip)
+        } catch (e: Exception) {
+            Log.w("Sender", "Failed to forward TCP to $ip", e)
+        }
     }
 
     /** Passes raw pre-built bytes to the UDP broadcast transport */
     suspend fun forwardUdpBroadcast(bytes: ByteArray) {
-        try { transport.broadcastUdp(bytes) } catch (_: Exception) { }
+        try {
+            transport.broadcastUdp(bytes)
+        } catch (e: Exception) {
+            Log.w("Sender", "Failed to forward UDP broadcast", e)
+        }
     }
 
     /** Called by Receiver when a verified ACK arrives for a pending message */
@@ -134,24 +144,11 @@ class Sender(
         }
     }
 
-    /** Fails all pending messages whose resolved next hop IP matches the failed address */
-    fun onTcpError(failedIp: String) {
-        pendingAck.values
-            .filter { peers.resolveIp(it.destinationNodeId) == failedIp }
-            .forEach { msg ->
-                pendingAck.remove(msg.messageId)
-                statusChannel.trySend(msg.messageId to SendStatus.FAILED)
-            }
-    }
-
     /** Starts the coroutine that continuously drains and processes the outbound queue */
     fun startQueueLoop(scope: CoroutineScope) {
         scope.launch {
             while (true) {
-                val msg = synchronized(queue) {
-                    if (queue.isEmpty()) null else queue.removeFirst()
-                }
-                if (msg == null) { delay(200); continue }
+                val msg = channel.receive()
                 processMessage(msg)
             }
         }
@@ -166,12 +163,14 @@ class Sender(
         type: Int,
         flags: Int,
         dest: NodeId,
-        id: Long,
+        id: MessageId,
         hopCount: Int,
         payload: Payload
     ): ByteArray {
-        val payloadBuf = ByteArray(65_536)
-        val payloadLen = PayloadSerializer.serialize(payload, payloadBuf, 0)
+        val buf = ByteArray(65_536)
+        val payloadLen = PayloadSerializer.serialize(payload,
+            buf,
+            HeaderProtocol.HEADER_SIZE)
         val header = Header(
             magic = HeaderProtocol.Magic.EXPECTED,
             version = HeaderProtocol.Version.SUPPORTED_VERSION,
@@ -182,14 +181,12 @@ class Sender(
             reserved = 0,
             sourceNodeId = selfNodeId,
             destNodeId = dest,
-            id = MessageId(id),
+            id = id,
             originTimestamp = Timestamp(System.currentTimeMillis()),
             payloadLength = payloadLen
         )
-        val out = ByteArray(HeaderProtocol.HEADER_SIZE + payloadLen)
-        HeaderSerializer.serialize(header, out, 0)
-        payloadBuf.copyInto(out, HeaderProtocol.HEADER_SIZE, 0, payloadLen)
-        return out
+        HeaderSerializer.serialize(header, buf, 0)
+        return buf.copyOfRange(0, HeaderProtocol.HEADER_SIZE + payloadLen)
     }
 
     internal suspend fun processMessage(msg: QueuedMessage) {
@@ -207,15 +204,15 @@ class Sender(
         }
 
         if (now - msg.enqueueTime > rreqRetryTimeoutMs) {
-            statusChannel.trySend(msg.messageId to SendStatus.FAILED)
+            statusChannel.trySend(msg.messageId.value to SendStatus.FAILED)
             return
         }
 
         if (!msg.rreqFlag) {
             issueRreq(msg.destinationNodeId)
             msg.rreqFlag = true
+            channel.send(msg)
         }
-        synchronized(queue) { queue.addLast(msg) }
     }
 
     private suspend fun deliverTo(msg: QueuedMessage, ip: String) {
@@ -225,25 +222,24 @@ class Sender(
             dest = msg.destinationNodeId,
             id = msg.messageId,
             hopCount = 0,
-            payload = msg.payload
+            payload = Payload.Message(msg.messageId, Timestamp(System.currentTimeMillis()), msg.content,)
         )
         try {
             transport.sendTcp(bytes, ip)
-            pendingAck[msg.messageId] = msg
-            statusChannel.trySend(msg.messageId to SendStatus.SENT)
+            pendingAck[msg.messageId.value] = msg
+            statusChannel.trySend(msg.messageId.value to SendStatus.SENT)
         } catch (_: Exception) {
-            statusChannel.trySend(msg.messageId to SendStatus.FAILED)
+            statusChannel.trySend(msg.messageId.value to SendStatus.FAILED)
         }
     }
 
     private suspend fun issueRreq(destinationNodeId: NodeId) {
-        val rreqId = synchronized(this) { nextRreqId++ }
         transport.broadcastUdp(
             buildPacket(
                 type = HeaderProtocol.Type.RREQ,
                 flags = HeaderProtocol.Flags.BROADCAST,
                 dest = destinationNodeId,
-                id = rreqId,
+                id = randomMessageId(),
                 hopCount = 0,
                 payload = Payload.RREQ(selfName, selfPublicKey)
             )
