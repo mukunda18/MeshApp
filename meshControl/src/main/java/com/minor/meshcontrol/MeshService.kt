@@ -141,10 +141,7 @@ class MeshService(
         try {
             val createdSockets = socketFactory.create(scope, config)
             val transport = MeshTransport(createdSockets.tcpSender, createdSockets.udpSocket)
-            val createdRouter = Router(
-                routeExpiryMs = config.routeExpiryMs,
-                expiryCheckIntervalMs = config.routeExpiryCheckIntervalMs
-            )
+            val createdRouter = Router()
             val createdPeers = PeersManagement(
                 selfNodeId = config.ownNodeId,
                 router = createdRouter,
@@ -181,7 +178,6 @@ class MeshService(
             createdSender.startQueueLoop(scope)
             createdPeers.startHelloBroadcastLoop(scope, createdSender, config.ownName)
             createdPeers.startReaperLoop(scope, createdSender)
-            createdRouter.startExpiryLoop(scope)
 
             startTransportCollectors(scope, createdSockets, createdReceiver)
             startInternalAggregators(

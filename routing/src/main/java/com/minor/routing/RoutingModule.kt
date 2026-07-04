@@ -29,7 +29,6 @@ class RoutingModule(
 
     /** Starts all background loops and begins collecting from both inbound channels */
     fun start(scope: CoroutineScope, displayName: String) {
-        router.startExpiryLoop(scope)
         sender.startQueueLoop(scope)
         peers.startReaperLoop(scope, sender)
         peers.startHelloBroadcastLoop(scope, sender, displayName)
