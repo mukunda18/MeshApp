@@ -1,16 +1,15 @@
 package com.minor.messaging
 
 import com.minor.meshcontrol.DeliveryState
-import com.minor.meshcontrol.MeshMessagingGateway
+import com.minor.meshcontrol.MeshService
 import com.minor.model.MessageId
+import com.minor.model.MessageProtocol
 import com.minor.model.NodeId
-import com.minor.model.Packet
 import com.minor.model.Payload
+import com.minor.model.SecureEnvelope
 import com.minor.model.Timestamp
-import android.util.Log
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicLong
-import kotlinx.coroutines.CancellationException
+import com.minor.model.randomMessageId
+import com.minor.security.Security
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,21 +21,15 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlin.time.Duration.Companion.milliseconds
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MessagingService(
     private val ownNodeId: NodeId,
-    private val meshGateway: MeshMessagingGateway,
+    private val meshService: MeshService,
+    private val security: Security,
     private val conversationStore: ConversationStore,
-    private val securityCodec: MessageSecurityCodec,
-    private val deliveryTimeoutMs: Long = DEFAULT_DELIVERY_TIMEOUT_MS,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
-    private val nextLocalMessageId = AtomicLong(System.currentTimeMillis())
-    private val deliveryStates = ConcurrentHashMap<Long, MessageDeliveryStatus>()
-
     private val _messagesStream = MutableSharedFlow<MessageUpdate>(
         extraBufferCapacity = STREAM_BUFFER_CAPACITY
     )
@@ -57,15 +50,24 @@ class MessagingService(
     fun start() {
         if (serviceJob?.isActive == true) return
 
-        _conversationsStream.value = buildConversationSummaries(conversationStore.listConversations())
+        refreshConversations()
 
         val job = SupervisorJob()
         val scope = CoroutineScope(job + dispatcher)
         serviceJob = job
         serviceScope = scope
 
-        scope.launch { collectIncomingMessages() }
-        scope.launch { collectDeliveryStatuses() }
+        scope.launch {
+            meshService.incomingMessageStream.collect { (sourceNodeId, payload) ->
+                handleIncomingMessage(sourceNodeId, payload)
+            }
+        }
+
+        scope.launch {
+            meshService.deliveryStatusStream.collect { status ->
+                handleDeliveryUpdate(status.messageId, status.state)
+            }
+        }
     }
 
     @Synchronized
@@ -73,35 +75,55 @@ class MessagingService(
         serviceJob?.cancel()
         serviceJob = null
         serviceScope = null
-        deliveryStates.clear()
     }
 
     fun send(destinationNodeID: NodeId, plaintext: String): Message {
-        val activeScope = serviceScope ?: error("MessagingService must be started before sending messages")
         val composeTimestamp = Timestamp(System.currentTimeMillis())
-        val localMessageId = MessageId(nextLocalMessageId.getAndIncrement())
-        val encodedPayload = securityCodec.encode(
-            plaintext = plaintext,
-            recipientNodeID = destinationNodeID,
-            messageID = localMessageId
-        )
-        val meshMessageId = MessageId(meshGateway.sendMessage(destinationNodeID, encodedPayload))
+        val messageId = randomMessageId()
+        
         val outgoingMessage = Message(
             senderNodeId = ownNodeId,
             plaintextContent = plaintext,
             composeTimestamp = composeTimestamp,
-            messageId = meshMessageId,
+            messageId = messageId,
             deliveryStatus = MessageDeliveryStatus.QUEUED
         )
 
         conversationStore.appendMessage(destinationNodeID, outgoingMessage)
-        deliveryStates[meshMessageId.value] = MessageDeliveryStatus.QUEUED
+        
+        val envelopeBytes = security.encode(plaintext, destinationNodeID, messageId)
+        val envelope = parseEnvelope(envelopeBytes)
+
+        meshService.sendMessage(destinationNodeID, Payload.Message(envelope), messageId)
+
         emitMessageUpdate(destinationNodeID, outgoingMessage, MessageDirection.OUTGOING)
-        emitStatusUpdate(destinationNodeID, meshMessageId, MessageDeliveryStatus.QUEUED)
+        emitStatusUpdate(destinationNodeID, messageId, MessageDeliveryStatus.QUEUED)
         refreshConversations()
-        activeScope.launch { failMessageOnTimeout(meshMessageId) }
 
         return outgoingMessage
+    }
+
+    private fun parseEnvelope(data: ByteArray): SecureEnvelope {
+        var cursor = 0
+        val version = MessageProtocol.envVersion.read(data, cursor).also { cursor += it.bytesRead }.value
+        val sender = MessageProtocol.senderNodeId.read(data, cursor).also { cursor += it.bytesRead }.value
+        val encKey = MessageProtocol.encSymKey.read(data, cursor).also { cursor += it.bytesRead }.value
+        val nonce = MessageProtocol.nonce.read(data, cursor).also { cursor += it.bytesRead }.value
+        val cipher = MessageProtocol.ciphertext.read(data, cursor).also { cursor += it.bytesRead }.value
+        val sig = MessageProtocol.signature.read(data, cursor).also { cursor += it.bytesRead }.value
+        return SecureEnvelope(version, sender, encKey, nonce, cipher, sig)
+    }
+
+    private fun serializeEnvelope(env: SecureEnvelope): ByteArray {
+        val buf = ByteArray(2048)
+        var cursor = 0
+        cursor += MessageProtocol.envVersion.write(buf, env.envVersion, cursor)
+        cursor += MessageProtocol.senderNodeId.write(buf, env.senderNodeId, cursor)
+        cursor += MessageProtocol.encSymKey.write(buf, env.encSymKey, cursor)
+        cursor += MessageProtocol.nonce.write(buf, env.nonce, cursor)
+        cursor += MessageProtocol.ciphertext.write(buf, env.ciphertext, cursor)
+        cursor += MessageProtocol.signature.write(buf, env.signature, cursor)
+        return buf.copyOfRange(0, cursor)
     }
 
     fun listConversations(): List<Conversation> =
@@ -110,73 +132,37 @@ class MessagingService(
     fun getHistory(nodeID: NodeId): List<Message> =
         conversationStore.getConversation(nodeID)?.messages.orEmpty()
 
-    private suspend fun collectIncomingMessages() {
-        meshGateway.incomingMessageStream.collect { packet ->
-            try {
-                val decodedMessage = securityCodec.decode(packet)
-                val message = Message(
-                    senderNodeId = decodedMessage.senderNodeId,
-                    plaintextContent = decodedMessage.plaintext,
-                    composeTimestamp = decodedMessage.composeTimestamp,
-                    messageId = decodedMessage.messageID,
-                    deliveryStatus = MessageDeliveryStatus.DELIVERED
-                )
-                conversationStore.appendMessage(decodedMessage.senderNodeId, message)
-                emitMessageUpdate(decodedMessage.senderNodeId, message, MessageDirection.INCOMING)
-                refreshConversations()
-            } catch (error: Throwable) {
-                if (error is CancellationException) throw error
-                Log.e("MessagingService", "Error processing incoming message", error)
-            }
+    private fun handleIncomingMessage(sourceNodeId: NodeId, payload: Payload.Message) {
+        try {
+            val decoded = security.decode(serializeEnvelope(payload.envelope))
+            val message = Message(
+                senderNodeId = decoded.senderNodeId,
+                plaintextContent = decoded.content,
+                composeTimestamp = decoded.timestamp,
+                messageId = decoded.messageId,
+                deliveryStatus = MessageDeliveryStatus.DELIVERED
+            )
+            conversationStore.appendMessage(sourceNodeId, message)
+            emitMessageUpdate(sourceNodeId, message, MessageDirection.INCOMING)
+            refreshConversations()
+        } catch (e: Exception) {
+            // Log decryption failure
         }
     }
 
-    private suspend fun collectDeliveryStatuses() {
-        meshGateway.deliveryStatusStream.collect { status ->
-            val messageStatus = status.state.toMessageDeliveryStatus()
-            if (!shouldApplyDeliveryStatus(status.messageId, messageStatus)) return@collect
-            val storedMessage = conversationStore.updateDeliveryStatus(
-                messageID = MessageId(status.messageId),
-                deliveryStatus = messageStatus
-            ) ?: return@collect
-
+    private fun handleDeliveryUpdate(messageId: Long, state: DeliveryState) {
+        val status = state.toMessageDeliveryStatus()
+        val stored = conversationStore.updateDeliveryStatus(MessageId(messageId), status)
+        if (stored != null) {
             emitMessageUpdate(
-                nodeID = storedMessage.remoteNodeId,
-                message = storedMessage.message,
-                direction = storedMessage.message.directionFor(ownNodeId)
+                nodeID = stored.remoteNodeId,
+                message = stored.message,
+                direction = if (stored.message.senderNodeId.toString() == ownNodeId.toString()) 
+                    MessageDirection.OUTGOING else MessageDirection.INCOMING
             )
-            emitStatusUpdate(storedMessage.remoteNodeId, storedMessage.message.messageId, messageStatus)
+            emitStatusUpdate(stored.remoteNodeId, stored.message.messageId, status)
             refreshConversations()
         }
-    }
-
-    private suspend fun failMessageOnTimeout(messageID: MessageId) {
-        delay(deliveryTimeoutMs.milliseconds)
-        if (!shouldApplyDeliveryStatus(messageID.value, MessageDeliveryStatus.FAILED)) return
-        val storedMessage = conversationStore.updateDeliveryStatus(
-            messageID = messageID,
-            deliveryStatus = MessageDeliveryStatus.FAILED
-        ) ?: return
-
-        emitMessageUpdate(
-            nodeID = storedMessage.remoteNodeId,
-            message = storedMessage.message,
-            direction = storedMessage.message.directionFor(ownNodeId)
-        )
-        emitStatusUpdate(storedMessage.remoteNodeId, messageID, MessageDeliveryStatus.FAILED)
-        refreshConversations()
-    }
-
-    private fun shouldApplyDeliveryStatus(
-        messageId: Long,
-        deliveryStatus: MessageDeliveryStatus
-    ): Boolean {
-        val current = deliveryStates[messageId]
-        if ((current == MessageDeliveryStatus.DELIVERED) || (current == MessageDeliveryStatus.FAILED)) {
-            return false
-        }
-        deliveryStates[messageId] = deliveryStatus
-        return true
     }
 
     private fun emitMessageUpdate(nodeID: NodeId, message: Message, direction: MessageDirection) {
@@ -219,13 +205,6 @@ class MessagingService(
             )
         }
 
-    private fun Message.directionFor(ownNodeId: NodeId): MessageDirection =
-        if (senderNodeId.toString() == ownNodeId.toString()) {
-            MessageDirection.OUTGOING
-        } else {
-            MessageDirection.INCOMING
-        }
-
     private fun DeliveryState.toMessageDeliveryStatus(): MessageDeliveryStatus = when (this) {
         DeliveryState.SENT -> MessageDeliveryStatus.SENT
         DeliveryState.DELIVERED -> MessageDeliveryStatus.DELIVERED
@@ -234,46 +213,5 @@ class MessagingService(
 
     private companion object {
         const val STREAM_BUFFER_CAPACITY = 64
-        const val DEFAULT_DELIVERY_TIMEOUT_MS = 8_000L
     }
-}
-
-interface MessageSecurityCodec {
-    fun encode(
-        plaintext: String,
-        recipientNodeID: NodeId,
-        messageID: MessageId
-    ): Payload
-
-    fun decode(packet: Packet): DecodedMessage
-}
-
-data class DecodedMessage(
-    val senderNodeId: NodeId,
-    val plaintext: String,
-    val composeTimestamp: Timestamp,
-    val messageID: MessageId
-)
-
-data class MessageUpdate(
-    val nodeID: NodeId,
-    val message: Message,
-    val direction: MessageDirection
-)
-
-data class MessageStatusUpdate(
-    val nodeID: NodeId,
-    val messageID: MessageId,
-    val deliveryStatus: MessageDeliveryStatus
-)
-
-data class ConversationSummary(
-    val nodeID: NodeId,
-    val lastMessage: Message?,
-    val unreadCount: Int
-)
-
-enum class MessageDirection {
-    INCOMING,
-    OUTGOING
 }

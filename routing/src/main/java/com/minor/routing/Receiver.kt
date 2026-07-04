@@ -2,6 +2,7 @@ package com.minor.routing
 
 import com.minor.model.HeaderProtocol
 import com.minor.model.NodeId
+import com.minor.model.NodesStore
 import com.minor.model.Packet
 import com.minor.model.ParseResult
 import com.minor.model.Payload
@@ -21,6 +22,7 @@ class Receiver(
     private val router: Router,
     private val peers: PeersManagement,
     private val sender: Sender,
+    private val nodesStore: NodesStore,
     private val freshnessWindowMs: Long = 30_000
 ) {
     private val handledMsg = ConcurrentHashMap<Long, Boolean>()
@@ -32,8 +34,8 @@ class Receiver(
      */
     private val rreqSessionTable = ConcurrentHashMap<Long, NodeId>()
 
-    /** Delivers MSG packets addressed to this node to the MessagingService layer */
-    val incomingMessageChannel = Channel<Packet>(capacity = Channel.UNLIMITED)
+    /** Delivers MSG payloads addressed to this node to the MessagingService layer */
+    val incomingPayloadChannel = Channel<Pair<NodeId, Payload.Message>>(capacity = Channel.UNLIMITED)
 
     /**
      * Entry point called by RoutingModule for every packet received from transport
@@ -53,12 +55,16 @@ class Receiver(
     }
 
     private fun handleHello(packet: Packet, senderIp: String) {
-        val result = PayloadParser.parse(packet) as? ParseResult.Success ?: return
+        val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
         val hello = result.value as? Payload.Hello ?: return
-        peers.addOrUpdate(packet.header.sourceNodeId, senderIp, hello.name, hello.publicKey)
-        updateRouteFromHeader(packet, senderIp, hello.name)
+        
+        nodesStore.addOrUpdateNode(packet.header.sourceNodeId, hello.name, hello.publicKey)
+        
+        peers.addOrUpdate(packet.header.sourceNodeId, senderIp)
+        updateRouteFromHeader(packet, senderIp)
         for (entry in hello.routeEntries) {
-            router.update(entry.nodeId, entry.name,
+            nodesStore.addOrUpdateNode(entry.nodeId, entry.name, entry.publicKey)
+            router.update(entry.nodeId,
                 packet.header.sourceNodeId,
                 entry.hopcount + 1,
                 entry.timestamp.millis)
@@ -71,7 +77,9 @@ class Receiver(
         if (handledMsg.putIfAbsent(msgId, true) != null) return
         val h = packet.header
         if (h.destNodeId.toString() == selfNodeId.toString()) {
-            incomingMessageChannel.trySend(packet)
+            val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
+            val message = result.value as? Payload.Message ?: return
+            incomingPayloadChannel.trySend(packet.header.sourceNodeId to message)
             sender.sendAck(msgId, h.sourceNodeId, 0x00)
             return
         }
@@ -84,15 +92,17 @@ class Receiver(
     private suspend fun handleRreq(packet: Packet, senderIp: String) {
         val rreqId = packet.header.id.value
         if (handledRreq.putIfAbsent(rreqId, true) != null) return
-        val result = PayloadParser.parse(packet) as? ParseResult.Success ?: return
+        val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
         val rreq = result.value as? Payload.RREQ ?: return
         val h = packet.header
 
-        // When hopcount is 0 the packet came directly from the originator so we can verify it
+        nodesStore.addOrUpdateNode(h.sourceNodeId, rreq.name, rreq.publicKey)
+
+        // When hopcount is 0 the packet came directly from the originator so we can update peer table
         if (h.hopcount == 0) {
-            peers.addOrUpdate(h.sourceNodeId, senderIp, rreq.name, rreq.publicKey)
+            peers.addOrUpdate(h.sourceNodeId, senderIp)
         }
-        updateRouteFromHeader(packet, senderIp, rreq.name)
+        updateRouteFromHeader(packet, senderIp)
 
         // Upstream is whoever sent this packet to us which we look up by senderIp
         val upstreamNode = peers.getPeers()
@@ -112,13 +122,17 @@ class Receiver(
     }
 
     private suspend fun handleRrep(packet: Packet, senderIp: String) {
-        val result = PayloadParser.parse(packet) as? ParseResult.Success ?: return
+        val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
         val rrep = result.value as? Payload.RREP ?: return
         val h = packet.header
 
-        peers.addOrUpdate(h.sourceNodeId, senderIp, rrep.name, rrep.publicKey)
+        nodesStore.addOrUpdateNode(h.sourceNodeId, rrep.name, rrep.publicKey)
 
-        updateRouteFromHeader(packet, senderIp, rrep.name)
+        if (h.hopcount == 0) {
+            peers.addOrUpdate(h.sourceNodeId, senderIp)
+        }
+
+        updateRouteFromHeader(packet, senderIp)
 
         if (h.destNodeId.toString() == selfNodeId.toString()) return
 
@@ -130,14 +144,14 @@ class Receiver(
 
     private fun handleAck(packet: Packet, senderIp: String) {
         updateRouteFromHeader(packet, senderIp)
-        val result = PayloadParser.parse(packet) as? ParseResult.Success ?: return
+        val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
         val ack = result.value as? Payload.Ack ?: return
         if (ack.status == 0x00) sender.onAckReceived(packet.header.id.value)
     }
 
     private suspend fun handleRerr(packet: Packet, senderIp: String) {
         updateRouteFromHeader(packet, senderIp)
-        val result = PayloadParser.parse(packet) as? ParseResult.Success ?: return
+        val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
         val rerr = result.value as? Payload.RERR ?: return
         val senderKey = packet.header.sourceNodeId.toString()
         val affected = rerr.destinations.filter {
@@ -156,16 +170,11 @@ class Receiver(
         return out
     }
 
-    private fun updateRouteFromHeader(packet: Packet, senderIp: String, name: String? = null) {
+    private fun updateRouteFromHeader(packet: Packet, senderIp: String) {
         val h = packet.header
         val immediateSender = peers.getPeers().find { it.ip == senderIp }?.nodeId
             ?: if (h.hopcount == 0) h.sourceNodeId else return
 
-        val effectiveName = name
-            ?: peers.getPeers().find { it.nodeId == h.sourceNodeId }?.name
-            ?: router.getRoutes().find { it.destinationNodeId == h.sourceNodeId }?.name
-            ?: ""
-
-        router.update(h.sourceNodeId, effectiveName, immediateSender, h.hopcount, h.originTimestamp.millis)
+        router.update(h.sourceNodeId, immediateSender, h.hopcount, h.originTimestamp.millis)
     }
 }

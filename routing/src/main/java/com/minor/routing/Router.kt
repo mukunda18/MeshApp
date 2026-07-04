@@ -20,7 +20,6 @@ class Router {
     /** Installs a route only when it is new or has a newer timestamp (or better hop count if same timestamp) */
     fun update(
         destinationNodeId: NodeId,
-        name: String,
         nextHopNodeId: NodeId,
         hopCount: Int,
         routeTimestamp: Long = System.currentTimeMillis()
@@ -33,7 +32,7 @@ class Router {
             (routeTimestamp == existing.routeTimestamp && hopCount < existing.hopCount)
 
         if (isBetter) {
-            table[key] = RouteInfo(destinationNodeId, name, nextHopNodeId, hopCount, routeTimestamp)
+            table[key] = RouteInfo(destinationNodeId, nextHopNodeId, hopCount, routeTimestamp)
         }
     }
 

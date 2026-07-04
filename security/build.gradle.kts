@@ -4,9 +4,7 @@ plugins {
 
 android {
     namespace = "com.minor.security"
-    compileSdk {
-        version = release(37)
-    }
+    compileSdk = 37
 
     defaultConfig {
         minSdk = 30
@@ -24,6 +22,16 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.core.ktx)
     implementation(libs.material)
+    
+    // For EncryptedSharedPreferences
+    implementation(libs.androidx.security.crypto)
+
+    // For Ed25519, X25519, AEAD
+    implementation(libs.lazysodium.android)
+    implementation(libs.jna)
+
+    api(project(":model"))
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)

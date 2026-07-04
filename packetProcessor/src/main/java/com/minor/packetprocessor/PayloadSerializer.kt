@@ -30,9 +30,13 @@ object PayloadSerializer {
 
     private fun serializeMessage(payload: Payload.Message, buffer: ByteArray, offset: Int): Int {
         var cursor = offset
-        cursor += MessageProtocol.messageId.write(buffer, payload.messageId, cursor)
-        cursor += MessageProtocol.timestamp.write(buffer, payload.timestamp, cursor)
-        cursor += MessageProtocol.content.write(buffer, payload.content, cursor)
+        val env = payload.envelope
+        cursor += MessageProtocol.envVersion.write(buffer, env.envVersion, cursor)
+        cursor += MessageProtocol.senderNodeId.write(buffer, env.senderNodeId, cursor)
+        cursor += MessageProtocol.encSymKey.write(buffer, env.encSymKey, cursor)
+        cursor += MessageProtocol.nonce.write(buffer, env.nonce, cursor)
+        cursor += MessageProtocol.ciphertext.write(buffer, env.ciphertext, cursor)
+        cursor += MessageProtocol.signature.write(buffer, env.signature, cursor)
         return cursor - offset
     }
 

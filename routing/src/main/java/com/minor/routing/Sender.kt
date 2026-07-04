@@ -4,6 +4,7 @@ import com.minor.model.Header
 import com.minor.model.HeaderProtocol
 import com.minor.model.MessageId
 import com.minor.model.NodeId
+import com.minor.model.NodesStore
 import com.minor.model.Payload
 import com.minor.model.PublicKey
 import com.minor.model.RouteEntry
@@ -31,6 +32,7 @@ class Sender(
     private val transport: MeshTransport,
     private val router: Router,
     private val peers: PeersManagement,
+    private val nodesStore: NodesStore,
     private val rreqRetryTimeoutMs: Long = 8_000,
     private val maxHopCount: Int = 8
 ) {
@@ -41,15 +43,19 @@ class Sender(
     val statusChannel = Channel<Pair<Long, SendStatus>>(capacity = Channel.UNLIMITED)
 
     /** Adds a message to the back of the outbound queue */
-    fun enqueue(messageId: MessageId, content: String, destinationNodeId: NodeId) {
-        channel.trySend(QueuedMessage(messageId, content, destinationNodeId))
+    fun enqueue(messageId: MessageId, payload: Payload.Message, destinationNodeId: NodeId) {
+        channel.trySend(QueuedMessage(messageId, payload, destinationNodeId))
     }
 
     /** Builds and broadcasts a HELLO carrying the current valid route snapshot */
     suspend fun broadcastHello(displayName: String) {
         val routes = router.getRoutes()
             .filter { it.hopCount <= maxHopCount - 1 }
-            .map { RouteEntry(it.destinationNodeId, it.hopCount, selfPublicKey, Timestamp(it.routeTimestamp), it.name) }
+            .map { route ->
+                val pubKey = nodesStore.getPublicKey(route.destinationNodeId) ?: PublicKey(ByteArray(32))
+                val name = nodesStore.getName(route.destinationNodeId) ?: ""
+                RouteEntry(route.destinationNodeId, route.hopCount, pubKey, Timestamp(route.routeTimestamp), name)
+            }
         transport.broadcastUdp(
             buildPacket(
                 type = HeaderProtocol.Type.HELLO,
@@ -222,7 +228,7 @@ class Sender(
             dest = msg.destinationNodeId,
             id = msg.messageId,
             hopCount = 0,
-            payload = Payload.Message(msg.messageId, Timestamp(System.currentTimeMillis()), msg.content,)
+            payload = msg.payload
         )
         try {
             transport.sendTcp(bytes, ip)

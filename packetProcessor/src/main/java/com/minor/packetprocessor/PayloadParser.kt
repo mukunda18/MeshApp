@@ -56,24 +56,38 @@ object PayloadParser {
     private fun parseMessage(data: ByteArray): ParseResult<Payload> {
         try {
             var cursor = 0
-            val messageIdRead = MessageProtocol.messageId.read(data, baseOffset = cursor)
-            cursor += messageIdRead.bytesRead
-            
-            val timestampRead = MessageProtocol.timestamp.read(data, baseOffset = cursor)
-            cursor += timestampRead.bytesRead
-            
-            val contentRead = MessageProtocol.content.read(data, baseOffset = cursor)
-            cursor += contentRead.bytesRead
-            
+            val versionRead = MessageProtocol.envVersion.read(data, cursor)
+            cursor += versionRead.bytesRead
+
+            val senderNodeIdRead = MessageProtocol.senderNodeId.read(data, cursor)
+            cursor += senderNodeIdRead.bytesRead
+
+            val encSymKeyRead = MessageProtocol.encSymKey.read(data, cursor)
+            cursor += encSymKeyRead.bytesRead
+
+            val nonceRead = MessageProtocol.nonce.read(data, cursor)
+            cursor += nonceRead.bytesRead
+
+            val ciphertextRead = MessageProtocol.ciphertext.read(data, cursor)
+            cursor += ciphertextRead.bytesRead
+
+            val signatureRead = MessageProtocol.signature.read(data, cursor)
+            cursor += signatureRead.bytesRead
+
             if (data.size != cursor) {
                 return ParseResult.Failure(ParseError.MalformedPayload("MESSAGE has trailing bytes"))
             }
-            
+
             return ParseResult.Success(
                 Payload.Message(
-                    messageId = messageIdRead.value,
-                    timestamp = timestampRead.value,
-                    content = contentRead.value
+                    envelope = com.minor.model.SecureEnvelope(
+                        envVersion = versionRead.value,
+                        senderNodeId = senderNodeIdRead.value,
+                        encSymKey = encSymKeyRead.value,
+                        nonce = nonceRead.value,
+                        ciphertext = ciphertextRead.value,
+                        signature = signatureRead.value
+                    )
                 )
             )
         } catch (e: IndexOutOfBoundsException) {
