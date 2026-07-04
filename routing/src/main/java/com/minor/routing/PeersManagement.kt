@@ -1,7 +1,6 @@
 package com.minor.routing
 
 import com.minor.model.NodeId
-import com.minor.model.PublicKey
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel

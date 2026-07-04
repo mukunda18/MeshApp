@@ -5,23 +5,26 @@ import com.goterl.lazysodium.SodiumAndroid
 import com.goterl.lazysodium.interfaces.AEAD
 import com.goterl.lazysodium.interfaces.Box
 import com.goterl.lazysodium.interfaces.Sign
+import com.minor.model.AckProtocol
 import com.minor.model.MessageId
 import com.minor.model.MessageProtocol
 import com.minor.model.NodeId
+import com.minor.model.NodesStore
+import com.minor.model.PacketSigner
+import com.minor.model.PacketVerifier
 import com.minor.model.Signature
 import com.minor.model.Timestamp
-import java.nio.ByteBuffer
 
 class Security(
     private val identity: Identity,
     private val nodesStore: NodesStore,
     private val freshnessWindowMs: Long = 30_000L
-) {
+) : PacketSigner, PacketVerifier {
     private val sodium = LazySodiumAndroid(SodiumAndroid())
 
     /**
      * Constructs the Secure Envelope.
-     * Layout: [ SenderNodeId(32) | EphemeralPubKey(32) | Nonce(12) | Ciphertext(var) | Signature(64) ]
+     * Layout: [ Version(1) | SenderNodeId(32) | EphemeralPubKey(32) | Nonce(12) | CiphertextLen(4) | Ciphertext(var) | Signature(64) ]
      */
     fun encode(plaintext: String, recipientNodeID: NodeId, messageID: MessageId): ByteArray {
         val recipientEdPubKey = nodesStore.getPublicKey(recipientNodeID)
@@ -41,7 +44,9 @@ class Security(
         // 4. AEAD Encrypt Inner Plaintext Block
         val timestamp = System.currentTimeMillis()
         val contentBytes = plaintext.encodeToByteArray()
-        val innerBlockSize = MessageProtocol.MESSAGE_ID_LENGTH + MessageProtocol.TIMESTAMP_LENGTH + MessageProtocol.CONTENT_LEN_LENGTH + contentBytes.size
+        val innerBlockSize = MessageProtocol.MESSAGE_ID_LENGTH + 
+                          MessageProtocol.TIMESTAMP_LENGTH + 
+                          MessageProtocol.CONTENT_LEN_LENGTH + contentBytes.size
         val innerBlock = ByteArray(innerBlockSize)
         
         var innerOffset = 0
@@ -66,50 +71,75 @@ class Security(
         if (!encrypted) throw SecurityException("Encryption failed")
 
         // 5. Assemble and Sign
-        val envelopeWithoutSigSize = 32 + 32 + 12 + ciphertext.size
-        val envelopeWithoutSig = ByteBuffer.allocate(envelopeWithoutSigSize)
-            .put(identity.nodeId.bytes)
-            .put(ephemeralKeyPair.publicKey.asBytes)
-            .put(nonce) 
-            .put(ciphertext)
-            .array()
+        val envelopeSize = MessageProtocol.ENV_VERSION_LENGTH +
+                MessageProtocol.SENDER_NODE_ID_LENGTH +
+                MessageProtocol.ENC_SYM_KEY_LENGTH +
+                MessageProtocol.NONCE_LENGTH +
+                MessageProtocol.CIPHER_LEN_LENGTH + ciphertext.size +
+                MessageProtocol.SIGNATURE_LENGTH
+        
+        val envelope = ByteArray(envelopeSize)
+        var cursor = 0
+        cursor += MessageProtocol.envVersion.write(envelope, 1, cursor)
+        cursor += MessageProtocol.senderNodeId.write(envelope, identity.nodeId, cursor)
+        cursor += MessageProtocol.encSymKey.write(envelope, ephemeralKeyPair.publicKey.asBytes, cursor)
+        cursor += MessageProtocol.nonce.write(envelope, nonce, cursor)
+        cursor += MessageProtocol.ciphertext.write(envelope, ciphertext, cursor)
 
         val signature = ByteArray(Sign.ED25519_BYTES)
-        sodium.cryptoSignDetached(signature, envelopeWithoutSig, envelopeWithoutSig.size.toLong(), identity.privateKey)
+        sodium.cryptoSignDetached(signature, envelope, cursor.toLong(), identity.privateKey)
 
-        return ByteBuffer.allocate(envelopeWithoutSig.size + 64)
-            .put(envelopeWithoutSig)
-            .put(signature)
-            .array()
+        MessageProtocol.signature.write(envelope, Signature(signature), cursor)
+
+        return envelope
     }
 
     /**
-     * Decodes the fixed-layout envelope.
+     * Decodes the fixed-layout envelope using MessageProtocol definitions.
      */
     fun decode(envelopeBytes: ByteArray): DecodedContent {
-        if (envelopeBytes.size < 32 + 32 + 12 + AEAD.CHACHA20POLY1305_IETF_ABYTES + 64) {
+        val minSize = MessageProtocol.ENV_VERSION_LENGTH +
+                MessageProtocol.SENDER_NODE_ID_LENGTH +
+                MessageProtocol.ENC_SYM_KEY_LENGTH +
+                MessageProtocol.NONCE_LENGTH +
+                MessageProtocol.CIPHER_LEN_LENGTH +
+                AEAD.CHACHA20POLY1305_IETF_ABYTES +
+                MessageProtocol.SIGNATURE_LENGTH
+        
+        if (envelopeBytes.size < minSize) {
             throw SecurityException("Envelope too short")
         }
 
-        // 1. Extract components
-        val senderNodeID = NodeId(envelopeBytes.copyOfRange(0, 32))
-        val ephemeralPubKey = envelopeBytes.copyOfRange(32, 64)
-        val nonce = envelopeBytes.copyOfRange(64, 76)
+        var cursor = 0
 
-        val senderEdPubKey = nodesStore.getPublicKey(senderNodeID)
-            ?: throw IllegalStateException("Public key not found for $senderNodeID")
+        // 1. Extract components
+        val versionRead = MessageProtocol.envVersion.read(envelopeBytes, cursor)
+        cursor += versionRead.bytesRead
+        
+        val senderNodeIdRead = MessageProtocol.senderNodeId.read(envelopeBytes, cursor)
+        cursor += senderNodeIdRead.bytesRead
+        
+        val ephemeralPubKeyRead = MessageProtocol.encSymKey.read(envelopeBytes, cursor)
+        cursor += ephemeralPubKeyRead.bytesRead
+        
+        val nonceRead = MessageProtocol.nonce.read(envelopeBytes, cursor)
+        cursor += nonceRead.bytesRead
+        
+        val ciphertextRead = MessageProtocol.ciphertext.read(envelopeBytes, cursor)
+        val dataToVerifySize = cursor + ciphertextRead.bytesRead
+        cursor += ciphertextRead.bytesRead
+        
+        val signatureRead = MessageProtocol.signature.read(envelopeBytes, cursor)
+
+        val senderEdPubKey = nodesStore.getPublicKey(senderNodeIdRead.value)
+            ?: throw IllegalStateException("Public key not found for ${senderNodeIdRead.value}")
 
         // 2. Verify Signature
-        val dataToVerifySize = envelopeBytes.size - 64
         val dataToVerify = envelopeBytes.copyOfRange(0, dataToVerifySize)
-        val signature = envelopeBytes.copyOfRange(dataToVerifySize, envelopeBytes.size)
-        
-        val verified = sodium.cryptoSignVerifyDetached(signature, dataToVerify, dataToVerifySize, senderEdPubKey.bytes)
+        val verified = sodium.cryptoSignVerifyDetached(signatureRead.value.bytes, dataToVerify, dataToVerifySize, senderEdPubKey.bytes)
         if (!verified) {
             throw SecurityException("Invalid signature")
         }
-
-        val ciphertext = envelopeBytes.copyOfRange(76, dataToVerifySize)
 
         // 3. Convert own Ed25519 secret key to X25519
         val ownXSecretKey = ByteArray(32)
@@ -117,9 +147,10 @@ class Security(
 
         // 4. Derive shared secret
         val sharedSecret = ByteArray(Box.BEFORENMBYTES)
-        sodium.cryptoBoxBeforeNm(sharedSecret, ephemeralPubKey, ownXSecretKey)
+        sodium.cryptoBoxBeforeNm(sharedSecret, ephemeralPubKeyRead.value, ownXSecretKey)
 
         // 5. AEAD Decrypt
+        val ciphertext = ciphertextRead.value
         val decrypted = ByteArray(ciphertext.size - AEAD.CHACHA20POLY1305_IETF_ABYTES)
         val success = sodium.cryptoAeadChaCha20Poly1305IetfDecrypt(
             decrypted,
@@ -129,7 +160,7 @@ class Security(
             ciphertext.size.toLong(),
             null,
             0,
-            nonce,
+            nonceRead.value,
             sharedSecret 
         )
         if (!success) {
@@ -137,19 +168,19 @@ class Security(
         }
 
         // 6. Parse Inner Block
-        var cursor = 0
-        val msgIdRead = MessageProtocol.messageId.read(decrypted, cursor)
-        cursor += msgIdRead.bytesRead
-        val timestampRead = MessageProtocol.timestamp.read(decrypted, cursor)
-        cursor += timestampRead.bytesRead
-        val contentRead = MessageProtocol.content.read(decrypted, cursor)
+        var innerCursor = 0
+        val msgIdRead = MessageProtocol.messageId.read(decrypted, innerCursor)
+        innerCursor += msgIdRead.bytesRead
+        val timestampRead = MessageProtocol.timestamp.read(decrypted, innerCursor)
+        innerCursor += timestampRead.bytesRead
+        val contentRead = MessageProtocol.content.read(decrypted, innerCursor)
         
         if (System.currentTimeMillis() - timestampRead.value.millis > freshnessWindowMs) {
             throw SecurityException("Message expired (anti-replay)")
         }
 
         return DecodedContent(
-            senderNodeId = senderNodeID,
+            senderNodeId = senderNodeIdRead.value,
             messageId = msgIdRead.value,
             timestamp = timestampRead.value,
             content = contentRead.value
@@ -159,11 +190,11 @@ class Security(
     /**
      * Produces a 64-byte Ed25519 signature over messageID (8 B) || status (1 B).
      */
-    fun signAck(messageID: MessageId, status: Int): Signature {
-        val data = ByteBuffer.allocate(9)
-            .putLong(messageID.value)
-            .put(status.toByte())
-            .array()
+    override fun signAck(messageId: MessageId, status: Int): Signature {
+        val data = ByteArray(MessageProtocol.MESSAGE_ID_LENGTH + AckProtocol.STATUS_LENGTH)
+        var cursor = 0
+        cursor += MessageProtocol.messageId.write(data, messageId, cursor)
+        AckProtocol.status.write(data, status, cursor)
         
         val signature = ByteArray(Sign.ED25519_BYTES)
         sodium.cryptoSignDetached(signature, data, data.size.toLong(), identity.privateKey)
@@ -173,12 +204,12 @@ class Security(
     /**
      * Verifies the 64-byte signature against the ACK sender's known public key.
      */
-    fun verifyAck(messageID: MessageId, status: Int, signature: Signature, senderNodeID: NodeId): Boolean {
-        val pubKey = nodesStore.getPublicKey(senderNodeID) ?: return false
-        val data = ByteBuffer.allocate(9)
-            .putLong(messageID.value)
-            .put(status.toByte())
-            .array()
+    override fun verifyAck(messageId: MessageId, status: Int, signature: Signature, senderNodeId: NodeId): Boolean {
+        val pubKey = nodesStore.getPublicKey(senderNodeId) ?: return false
+        val data = ByteArray(MessageProtocol.MESSAGE_ID_LENGTH + AckProtocol.STATUS_LENGTH)
+        var cursor = 0
+        cursor += MessageProtocol.messageId.write(data, messageId, cursor)
+        AckProtocol.status.write(data, status, cursor)
         
         return sodium.cryptoSignVerifyDetached(signature.bytes, data, data.size, pubKey.bytes)
     }

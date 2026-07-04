@@ -3,6 +3,8 @@ package com.minor.routing
 import com.minor.model.Envelope
 import com.minor.model.NodeId
 import com.minor.model.NodesStore
+import com.minor.model.PacketSigner
+import com.minor.model.PacketVerifier
 import com.minor.model.PublicKey
 import com.minor.network.MeshTransport
 import kotlinx.coroutines.CoroutineScope
@@ -21,6 +23,8 @@ class RoutingModule(
     private val tcpIncoming: ReceiveChannel<Envelope>,
     private val udpIncoming: ReceiveChannel<Envelope>,
     private val nodesStore: NodesStore,
+    private val signer: PacketSigner? = null,
+    private val verifier: PacketVerifier? = null,
     rreqRetryTimeoutMs: Long,
     maxHopCount: Int,
     freshnessWindowMs: Long
@@ -36,6 +40,7 @@ class RoutingModule(
         router = router,
         peers = peers,
         nodesStore = nodesStore,
+        signer = signer,
         rreqRetryTimeoutMs = rreqRetryTimeoutMs,
         maxHopCount = maxHopCount
     )
@@ -46,6 +51,7 @@ class RoutingModule(
         peers = peers,
         sender = sender,
         nodesStore = nodesStore,
+        verifier = verifier,
         freshnessWindowMs = freshnessWindowMs
     )
 

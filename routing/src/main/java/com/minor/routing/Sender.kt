@@ -5,6 +5,7 @@ import com.minor.model.HeaderProtocol
 import com.minor.model.MessageId
 import com.minor.model.NodeId
 import com.minor.model.NodesStore
+import com.minor.model.PacketSigner
 import com.minor.model.Payload
 import com.minor.model.PublicKey
 import com.minor.model.RouteEntry
@@ -33,6 +34,7 @@ class Sender(
     private val router: Router,
     private val peers: PeersManagement,
     private val nodesStore: NodesStore,
+    private val signer: PacketSigner? = null,
     private val rreqRetryTimeoutMs: Long = 8_000,
     private val maxHopCount: Int = 8
 ) {
@@ -108,6 +110,7 @@ class Sender(
     /** Sends a signed ACK for the given messageId back toward the original sender */
     suspend fun sendAck(messageId: Long, destNodeId: NodeId, status: Int) {
         val ip = peers.resolveIp(destNodeId) ?: return
+        val signature = signer?.signAck(MessageId(messageId), status) ?: Signature(ByteArray(64))
         try {
             transport.sendTcp(
                 buildPacket(
@@ -116,7 +119,7 @@ class Sender(
                     dest = destNodeId,
                     id = MessageId(messageId),
                     hopCount = 0,
-                    payload = Payload.Ack(status, Signature(ByteArray(64)))
+                    payload = Payload.Ack(status, signature)
                 ),
                 ip
             )

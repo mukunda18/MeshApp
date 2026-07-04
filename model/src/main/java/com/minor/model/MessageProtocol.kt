@@ -118,22 +118,4 @@ object MessageProtocol {
             return CONTENT_LEN_LENGTH + bytes.size
         }
     }
-
-    fun readInnerBlock(data: ByteArray): InnerPlaintextBlock {
-        var cursor = 0
-        val idRead = messageId.read(data, cursor)
-        cursor += idRead.bytesRead
-        val tsRead = timestamp.read(data, cursor)
-        cursor += tsRead.bytesRead
-        val contentRead = content.read(data, cursor)
-        return InnerPlaintextBlock(idRead.value, tsRead.value, contentRead.value)
-    }
-
-    fun writeInnerBlock(buffer: ByteArray, block: InnerPlaintextBlock, offset: Int): Int {
-        var cursor = offset
-        cursor += messageId.write(buffer, block.messageId, cursor)
-        cursor += timestamp.write(buffer, block.timestamp, cursor)
-        cursor += content.write(buffer, block.content, cursor)
-        return cursor - offset
-    }
 }

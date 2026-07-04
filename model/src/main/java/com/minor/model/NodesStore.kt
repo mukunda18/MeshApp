@@ -11,6 +11,14 @@ interface NodesStore {
     fun listNodes(): List<KnownNode>
 }
 
+interface PacketSigner {
+    fun signAck(messageId: MessageId, status: Int): Signature
+}
+
+interface PacketVerifier {
+    fun verifyAck(messageId: MessageId, status: Int, signature: Signature, senderNodeId: NodeId): Boolean
+}
+
 data class KnownNode(
     val nodeId: NodeId,
     val name: String,

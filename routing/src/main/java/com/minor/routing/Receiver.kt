@@ -4,6 +4,7 @@ import com.minor.model.HeaderProtocol
 import com.minor.model.NodeId
 import com.minor.model.NodesStore
 import com.minor.model.Packet
+import com.minor.model.PacketVerifier
 import com.minor.model.ParseResult
 import com.minor.model.Payload
 import com.minor.packetprocessor.HeaderSerializer
@@ -23,6 +24,7 @@ class Receiver(
     private val peers: PeersManagement,
     private val sender: Sender,
     private val nodesStore: NodesStore,
+    private val verifier: PacketVerifier? = null,
     private val freshnessWindowMs: Long = 30_000
 ) {
     private val handledMsg = ConcurrentHashMap<Long, Boolean>()
@@ -146,7 +148,17 @@ class Receiver(
         updateRouteFromHeader(packet, senderIp)
         val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
         val ack = result.value as? Payload.Ack ?: return
-        if (ack.status == 0x00) sender.onAckReceived(packet.header.id.value)
+        
+        val valid = verifier?.verifyAck(
+            packet.header.id,
+            ack.status,
+            ack.signature,
+            packet.header.sourceNodeId
+        ) ?: true
+
+        if (valid && ack.status == 0x00) {
+            sender.onAckReceived(packet.header.id.value)
+        }
     }
 
     private suspend fun handleRerr(packet: Packet, senderIp: String) {

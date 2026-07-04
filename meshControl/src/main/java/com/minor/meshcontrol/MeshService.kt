@@ -3,6 +3,8 @@ package com.minor.meshcontrol
 import com.minor.model.MessageId
 import com.minor.model.NodeId
 import com.minor.model.NodesStore
+import com.minor.model.PacketSigner
+import com.minor.model.PacketVerifier
 import com.minor.model.Payload
 import com.minor.network.MeshTransport
 import com.minor.routing.PeerEvent
@@ -24,7 +26,9 @@ import kotlinx.coroutines.sync.withLock
 class MeshService(
     private val config: MeshConfig,
     private val socketFactory: MeshSocketFactory,
-    private val nodesStore: NodesStore
+    private val nodesStore: NodesStore,
+    private val signer: PacketSigner? = null,
+    private val verifier: PacketVerifier? = null
 ) {
     private val mutex = Mutex()
     private var routingModule: RoutingModule? = null
@@ -60,6 +64,8 @@ class MeshService(
             tcpIncoming = newSockets.tcpReceiver.incoming,
             udpIncoming = newSockets.udpSocket.incoming,
             nodesStore = nodesStore,
+            signer = signer,
+            verifier = verifier,
             rreqRetryTimeoutMs = config.rreqRetryTimeoutMs,
             maxHopCount = config.maxHopCount,
             freshnessWindowMs = config.originTimestampFreshnessWindowMs

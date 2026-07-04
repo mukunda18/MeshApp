@@ -23,9 +23,6 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.material)
     
-    // For EncryptedSharedPreferences
-    implementation(libs.androidx.security.crypto)
-
     // For Ed25519, X25519, AEAD
     implementation(libs.lazysodium.android)
     implementation(libs.jna)
