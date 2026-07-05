@@ -16,6 +16,7 @@ import com.minor.network.MeshTransport
 import com.minor.packetprocessor.HeaderSerializer
 import com.minor.packetprocessor.PayloadSerializer
 import android.util.Log
+import com.minor.logger.MeshLogger
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
@@ -48,6 +49,7 @@ class Sender(
 
     /** Adds a message to the back of the outbound queue */
     fun enqueue(messageId: MessageId, payload: Payload.Message, destinationNodeId: NodeId) {
+        MeshLogger.messageQueued("Sender", "Enqueuing message ${messageId} for ${destinationNodeId}")
         channel.trySend(QueuedMessage(messageId, payload, destinationNodeId))
     }
 
@@ -70,6 +72,7 @@ class Sender(
                 payload = Payload.Hello(displayName, selfPublicKey, routes)
             )
         )
+        MeshLogger.packetSent("Sender", "Broadcasted HELLO", "Display Name: $displayName, Routes: ${routes.size}")
     }
 
     /** Builds and broadcasts a RERR listing each newly unreachable destination */
@@ -85,6 +88,7 @@ class Sender(
                 payload = Payload.RERR(unreachable)
             )
         )
+        MeshLogger.packetSent("Sender", "Broadcasted RERR", "Unreachable nodes: ${unreachable.size}")
     }
 
     /**
@@ -125,8 +129,10 @@ class Sender(
                 ),
                 ip
             )
+            MeshLogger.packetSent("Sender", "Sent ACK for $messageId to $destNodeId", "IP: $ip, Status: $status")
         } catch (e: Exception) {
             Log.w("Sender", "Failed to send ACK to $ip", e)
+            MeshLogger.error("Sender", "Failed to send ACK to $ip", e.toString())
         }
     }
 
@@ -159,8 +165,18 @@ class Sender(
     fun startQueueLoop(scope: CoroutineScope) {
         scope.launch {
             while (true) {
-                val msg = channel.receive()
-                processMessage(msg, scope)
+                try {
+                    val msg = channel.receive()
+                    processMessage(msg, scope)
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    // Prevent the queue loop from dying due to unexpected logic errors.
+                    // Possible exceptions:
+                    // - IllegalStateException (from transport or router)
+                    // - NullPointerException (unexpected state)
+                    Log.e("Sender", "Error in sender queue loop", e)
+                    delay(100.milliseconds) // Cooling off period
+                }
             }
         }
     }
@@ -216,10 +232,12 @@ class Sender(
 
         if (now - msg.enqueueTime > rreqRetryTimeoutMs) {
             statusChannel.trySend(msg.messageId.value to SendStatus.FAILED)
+            MeshLogger.messageDropped("Sender", "Message ${msg.messageId} failed: Discovery timeout", "To: ${msg.destinationNodeId}")
             return
         }
 
         if (!msg.rreqFlag) {
+            MeshLogger.info("Sender", "Issuing RREQ for ${msg.destinationNodeId}")
             issueRreq(msg.destinationNodeId)
             msg.rreqFlag = true
         }
@@ -243,9 +261,17 @@ class Sender(
             transport.sendTcp(bytes, ip)
             pendingAck[msg.messageId.value] = msg
             statusChannel.trySend(msg.messageId.value to SendStatus.SENT)
+            MeshLogger.packetSent("Sender", "Sent MESSAGE ${msg.messageId} to ${msg.destinationNodeId}", "IP: $ip")
         } catch (_: Exception) {
             statusChannel.trySend(msg.messageId.value to SendStatus.FAILED)
+            MeshLogger.error("Sender", "Failed to send MESSAGE ${msg.messageId} to $ip")
         }
+    }
+
+    /** Issues a RREQ to discover a route (and identity) for the given node */
+    suspend fun discover(destinationNodeId: NodeId) {
+        MeshLogger.info("Sender", "Issuing RREQ for $destinationNodeId")
+        issueRreq(destinationNodeId)
     }
 
     private suspend fun issueRreq(destinationNodeId: NodeId) {

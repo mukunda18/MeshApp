@@ -26,6 +26,7 @@ import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.PowerSettingsNew
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.ListAlt
 import androidx.compose.material.icons.outlined.SettingsInputAntenna
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -69,7 +70,8 @@ fun HomeScreen(
     onNavigateToNearbyNodes: () -> Unit,
     onNavigateToNetworkInterfaces: () -> Unit,
     onNavigateToProfile: () -> Unit,
-    onNavigateToAbout: () -> Unit
+    onNavigateToAbout: () -> Unit,
+    onNavigateToLogs: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var menuExpanded by remember { mutableStateOf(false) }
@@ -154,6 +156,20 @@ fun HomeScreen(
                             onClick = {
                                 menuExpanded = false
                                 onNavigateToAbout()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("System Logs") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Outlined.ListAlt,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                onNavigateToLogs()
                             }
                         )
                     }
@@ -344,6 +360,7 @@ fun HomeScreenPreview() {
         onNavigateToNearbyNodes = {},
         onNavigateToNetworkInterfaces = {},
         onNavigateToProfile = {},
-        onNavigateToAbout = {}
+        onNavigateToAbout = {},
+        onNavigateToLogs = {}
     )
 }

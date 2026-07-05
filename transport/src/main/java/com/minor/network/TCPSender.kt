@@ -8,6 +8,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import com.minor.logger.MeshLogger
 import java.net.Socket
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -28,6 +29,7 @@ class TCPSender(
             socket.getOutputStream().write(payload, offset, length)
             socket.getOutputStream().flush()
         } catch (e: Exception) {
+            MeshLogger.error("TCPSender", "Failed to send data to $address", e.toString())
             pool.purge(address)
             throw e
         } finally {
@@ -48,9 +50,15 @@ class TCPSender(
             if (existing != null && existing.isConnected && !existing.isClosed) {
                 existing
             } else {
-                Socket(address, port).also {
-                    it.tcpNoDelay = true
-                    connections[address] = it
+                try {
+                    Socket(address, port).also {
+                        it.tcpNoDelay = true
+                        connections[address] = it
+                        MeshLogger.info("TCPSender", "Established new TCP connection to $address")
+                    }
+                } catch (e: Exception) {
+                    MeshLogger.error("TCPSender", "Failed to connect to $address", e.toString())
+                    throw e
                 }
             }
         }

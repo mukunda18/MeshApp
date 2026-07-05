@@ -6,6 +6,7 @@ import com.minor.model.NodesStore
 import com.minor.model.PacketSigner
 import com.minor.model.PacketVerifier
 import com.minor.model.Payload
+import com.minor.logger.MeshLogger
 import com.minor.network.MeshTransport
 import com.minor.routing.PeerEvent
 import com.minor.routing.RoutingModule
@@ -59,6 +60,7 @@ class MeshService(
         if (serviceScope != null) return@withLock // Already running
 
         _stateStream.value = MeshState.STARTING
+        MeshLogger.info("MeshService", "Starting Mesh Service...")
 
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         serviceScope = scope
@@ -111,12 +113,14 @@ class MeshService(
         }
 
         _stateStream.value = MeshState.RUNNING
+        MeshLogger.info("MeshService", "Mesh Service RUNNING")
     }
 
     suspend fun stop() = mutex.withLock {
         if (serviceScope == null) return@withLock // Already stopped
 
         _stateStream.value = MeshState.STOPPING
+        MeshLogger.info("MeshService", "Stopping Mesh Service...")
 
         serviceScope?.cancel()
         serviceScope = null
@@ -133,11 +137,21 @@ class MeshService(
         sockets = null
 
         _stateStream.value = MeshState.STOPPED
+        MeshLogger.info("MeshService", "Mesh Service STOPPED")
     }
 
     fun sendMessage(destinationNodeID: NodeId, payload: Payload.Message, messageId: MessageId) {
         val rm = routingModule ?: error("MeshService not running")
         rm.sender.enqueue(messageId, payload, destinationNodeID)
+    }
+
+    /** Triggers AODV discovery for a node (route + public key) */
+    fun discoverNode(nodeId: NodeId) {
+        val rm = routingModule ?: return
+        val scope = serviceScope ?: return
+        scope.launch {
+            rm.sender.discover(nodeId)
+        }
     }
 
     fun getRoutes() = routingModule?.router?.getRoutes() ?: emptyList()

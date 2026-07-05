@@ -2,6 +2,7 @@ package com.minor.network
 
 import android.util.Log
 import com.minor.model.Envelope
+import com.minor.logger.MeshLogger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -45,11 +46,13 @@ class TCPReceiver(
 
     fun start() {
         if (serverJob != null) return
+        MeshLogger.info("TCPReceiver", "Starting TCP receiver on port $port")
         serverJob = scope.launch(Dispatchers.IO) {
             launch { processRemovals() }
             while (isActive) {
                 try {
                     val clientSocket = serverSocket.accept()
+                    MeshLogger.info("TCPReceiver", "Accepted new TCP connection from ${clientSocket.remoteSocketAddress}")
                     val client = Client(clientSocket, scope, { incomingChannel.trySend(it) }, removeChannel)
                     clientsMutex.withLock { activeClients.add(client) }
                     client.start()
@@ -59,12 +62,14 @@ class TCPReceiver(
                     // Expected when serverSocket.close() is called during shutdown
                     if (isActive && !serverSocket.isClosed) {
                         Log.e("TCPReceiver", "Socket error in accept loop", e)
+                        MeshLogger.error("TCPReceiver", "Socket error in accept loop", e.toString())
                     }
                     break
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
                     if (isActive) {
                         Log.e("TCPReceiver", "Unexpected error in accept loop", e)
+                        MeshLogger.error("TCPReceiver", "Unexpected error in accept loop", e.toString())
                         delay(100.milliseconds)
                     }
                 }
@@ -80,6 +85,7 @@ class TCPReceiver(
     }
 
     suspend fun close() = withContext(Dispatchers.IO) {
+        MeshLogger.info("TCPReceiver", "Closing TCP receiver on port $port")
         serverSocket.close()
         incomingChannel.close()
         serverJob?.cancel()

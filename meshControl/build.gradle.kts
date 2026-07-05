@@ -26,6 +26,7 @@ dependencies {
     implementation(project(":model"))
     implementation(project(":routing"))
     implementation(project(":transport"))
+    implementation(project(":logger"))
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)

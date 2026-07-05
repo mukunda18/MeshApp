@@ -52,9 +52,18 @@ class MeshApplication : Application() {
         // The mesh itself is NOT started here — it starts OFF and is turned on
         // from the UI, which launches MeshForegroundService.
         applicationScope.launch(Dispatchers.Default) {
-            val built = AppContainer(this@MeshApplication)
-            container = built
-            containerDeferred.complete(built)
+            try {
+                val built = AppContainer(this@MeshApplication)
+                container = built
+                containerDeferred.complete(built)
+            } catch (e: Exception) {
+                // If AppContainer fails, the app cannot function.
+                // Possible exceptions:
+                // - SQLiteException (failed to open nodes/conversations DB)
+                // - KeyStoreException (failed to access Android Keystore for identity)
+                // - SecurityException (failed to generate EC keys)
+                containerDeferred.completeExceptionally(e)
+            }
         }
     }
 

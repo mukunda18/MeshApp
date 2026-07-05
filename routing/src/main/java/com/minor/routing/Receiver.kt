@@ -7,6 +7,7 @@ import com.minor.model.Packet
 import com.minor.model.PacketVerifier
 import com.minor.model.ParseResult
 import com.minor.model.Payload
+import com.minor.logger.MeshLogger
 import com.minor.packetprocessor.HeaderSerializer
 import com.minor.packetprocessor.PayloadParser
 import java.util.concurrent.ConcurrentHashMap
@@ -50,14 +51,30 @@ class Receiver(
      */
     suspend fun onPacketReceived(packet: Packet, senderIp: String) {
         val now = System.currentTimeMillis()
-        if (now - packet.header.originTimestamp.millis > freshnessWindowMs) return
-        when (packet.header.type) {
-            HeaderProtocol.Type.HELLO -> handleHello(packet, senderIp)
-            HeaderProtocol.Type.MESSAGE -> handleMessage(packet, senderIp)
-            HeaderProtocol.Type.RREQ -> handleRreq(packet, senderIp)
-            HeaderProtocol.Type.RREP -> handleRrep(packet, senderIp)
-            HeaderProtocol.Type.ACK -> handleAck(packet, senderIp)
-            HeaderProtocol.Type.RERR -> handleRerr(packet, senderIp)
+        if (now - packet.header.originTimestamp.millis > freshnessWindowMs) {
+            MeshLogger.packetReceived("Receiver", "Dropped stale packet ${packet.header.id}", "From: ${packet.header.sourceNodeId}, Age: ${now - packet.header.originTimestamp.millis}ms")
+            return
+        }
+        
+        MeshLogger.packetReceived("Receiver", "Received ${packet.header.type} packet ${packet.header.id}", "From IP: $senderIp, Source: ${packet.header.sourceNodeId}")
+        
+        try {
+            when (packet.header.type) {
+                HeaderProtocol.Type.HELLO -> handleHello(packet, senderIp)
+                HeaderProtocol.Type.MESSAGE -> handleMessage(packet, senderIp)
+                HeaderProtocol.Type.RREQ -> handleRreq(packet, senderIp)
+                HeaderProtocol.Type.RREP -> handleRrep(packet, senderIp)
+                HeaderProtocol.Type.ACK -> handleAck(packet, senderIp)
+                HeaderProtocol.Type.RERR -> handleRerr(packet, senderIp)
+            }
+        } catch (e: Exception) {
+            // Generic catch-all to prevent a malformed or malicious packet from crashing
+            // the entire mesh receiver loop. Possible exceptions:
+            // - SQLiteException (database issues in nodesStore)
+            // - IllegalArgumentException/IndexOutOfBoundsException (parsing bugs)
+            // - ClassCastException (unexpected payload variants)
+            android.util.Log.e("Receiver", "Failed to process packet of type ${packet.header.type} from $senderIp", e)
+            MeshLogger.error("Receiver", "Failed to process packet of type ${packet.header.type} from $senderIp", e.toString())
         }
     }
 
@@ -83,7 +100,10 @@ class Receiver(
     private suspend fun handleMessage(packet: Packet, senderIp: String) {
         updateRouteFromHeader(packet, senderIp)
         val msgId = packet.header.id.value
-        if (handledMsg.putIfAbsent(msgId, true) != null) return
+        if (handledMsg.putIfAbsent(msgId, true) != null) {
+            MeshLogger.info("Receiver", "Ignored duplicate MESSAGE $msgId", "From: ${packet.header.sourceNodeId}")
+            return
+        }
         val h = packet.header
         if (h.destNodeId.bytes.contentEquals(selfNodeId.bytes)) {
             val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
@@ -92,9 +112,18 @@ class Receiver(
             sender.sendAck(msgId, h.sourceNodeId, 0x00)
             return
         }
-        if (h.hopcount >= h.ttl) return
-        val nextHop = router.lookup(h.destNodeId) ?: return
-        val nextIp = peers.resolveIp(nextHop) ?: return
+        if (h.hopcount >= h.ttl) {
+            MeshLogger.info("Receiver", "Discarded MESSAGE $msgId: TTL expired", "Hopcount: ${h.hopcount}, TTL: ${h.ttl}")
+            return
+        }
+        val nextHop = router.lookup(h.destNodeId) ?: run {
+            MeshLogger.info("Receiver", "Discarded MESSAGE $msgId: No route to ${h.destNodeId}")
+            return
+        }
+        val nextIp = peers.resolveIp(nextHop) ?: run {
+            MeshLogger.info("Receiver", "Discarded MESSAGE $msgId: Peer $nextHop offline")
+            return
+        }
         sender.forwardTcp(rebuildWithHop(packet, h.hopcount + 1), nextIp)
     }
 
@@ -103,7 +132,10 @@ class Receiver(
         pruneExpiredRreqSessions(now)
 
         val rreqId = packet.header.id.value
-        if (handledRreq.putIfAbsent(rreqId, true) != null) return
+        if (handledRreq.putIfAbsent(rreqId, true) != null) {
+            MeshLogger.info("Receiver", "Ignored duplicate RREQ $rreqId", "From: ${packet.header.sourceNodeId}")
+            return
+        }
         val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
         val rreq = result.value as? Payload.RREQ ?: return
         val h = packet.header
@@ -131,7 +163,10 @@ class Receiver(
             // RREP destination is the RREQ originator and the immediate send target is upstream
             sender.sendRrep(rreqId, h.sourceNodeId, upstreamIp)
         } else {
-            if (h.hopcount >= h.ttl) return
+            if (h.hopcount >= h.ttl) {
+                MeshLogger.info("Receiver", "Discarded RREQ $rreqId: TTL expired")
+                return
+            }
             sender.forwardUdpBroadcast(rebuildWithHop(packet, h.hopcount + 1))
         }
     }
@@ -153,11 +188,21 @@ class Receiver(
         updateRouteFromHeader(packet, senderIp)
 
         if (h.destNodeId.bytes.contentEquals(selfNodeId.bytes)) return
-        if (h.hopcount >= h.ttl) return
+        if (h.hopcount >= h.ttl) {
+            MeshLogger.info("Receiver", "Discarded RREP ${h.id}: TTL expired")
+            return
+        }
 
         // Forward upstream along the reverse path recorded when we saw the RREQ
-        val upstream = rreqSessionTable.remove(h.id.value)?.upstreamNodeId ?: return
-        val upstreamIp = peers.resolveIp(upstream) ?: return
+        val upstream = rreqSessionTable.remove(h.id.value) ?: run {
+            MeshLogger.info("Receiver", "Discarded RREP ${h.id}: No RREQ session found")
+            return
+        }
+        val upstreamNode = upstream.upstreamNodeId
+        val upstreamIp = peers.resolveIp(upstreamNode) ?: run {
+            MeshLogger.info("Receiver", "Discarded RREP ${h.id}: Upstream $upstreamNode offline")
+            return
+        }
         sender.forwardTcp(rebuildWithHop(packet, h.hopcount + 1), upstreamIp)
     }
 

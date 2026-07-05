@@ -41,6 +41,7 @@ dependencies {
     implementation(project(":model"))
     implementation(project(":routing"))
     implementation(project(":transport"))
+    implementation(project(":logger"))
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     testImplementation(libs.junit)

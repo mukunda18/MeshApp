@@ -54,26 +54,34 @@ class MainActivity : ComponentActivity() {
         setContent {
             // The DI container is built off the main thread; await it without blocking.
             val factories by produceState<AppFactories?>(initialValue = null) {
-                val container = meshApp.awaitContainer()
-                value = AppFactories(
-                    home = HomeViewModelFactory(
-                        application = meshApp,
-                        meshService = container.meshService,
-                        meshController = meshController,
-                        appName = getString(R.string.app_name),
-                        deviceName = container.identity.name
-                    ),
-                    chats = ChatsViewModelFactory(
-                        messagingService = container.messagingService,
-                        meshService = container.meshService,
-                        nodesStore = container.nodesStore
-                    ),
-                    conversation = ConversationViewModelFactory(
-                        ownNodeId = container.identity.nodeId,
-                        messagingService = container.messagingService,
-                        meshService = container.meshService
+                try {
+                    val container = meshApp.awaitContainer()
+                    value = AppFactories(
+                        home = HomeViewModelFactory(
+                            application = meshApp,
+                            meshService = container.meshService,
+                            meshController = meshController,
+                            appName = getString(R.string.app_name),
+                            deviceName = container.identity.name
+                        ),
+                        chats = ChatsViewModelFactory(
+                            messagingService = container.messagingService,
+                            meshService = container.meshService,
+                            nodesStore = container.nodesStore
+                        ),
+                        conversation = ConversationViewModelFactory(
+                            ownNodeId = container.identity.nodeId,
+                            messagingService = container.messagingService,
+                            meshService = container.meshService
+                        )
                     )
-                )
+                } catch (e: Exception) {
+                    // Handle initialization failure. Possible causes:
+                    // - SQLiteException (database corruption or storage full)
+                    // - KeyStoreException (device-specific hardware key issues)
+                    android.util.Log.e("MainActivity", "Critical failure during app initialization", e)
+                    // In a real app, we would show an error screen here.
+                }
             }
 
             val ready = factories

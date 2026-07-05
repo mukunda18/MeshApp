@@ -8,6 +8,7 @@ import com.minor.model.HeaderProtocol
 import com.minor.model.Packet
 import com.minor.model.Envelope
 import com.minor.model.ParseResult
+import com.minor.logger.MeshLogger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -60,13 +61,19 @@ class UdpSocket(
         offset: Int = 0,
         length: Int = payload.size
     ) = withContext(Dispatchers.IO) {
-        socket.send(
-            DatagramPacket(payload, offset, length, InetSocketAddress(address, port)),
-        )
+        try {
+            socket.send(
+                DatagramPacket(payload, offset, length, InetSocketAddress(address, port)),
+            )
+        } catch (e: Exception) {
+            MeshLogger.error("UdpSocket", "Failed to send UDP to $address", e.toString())
+            throw e
+        }
     }
 
     fun start() {
         if (job != null) return
+        MeshLogger.info("UdpSocket", "Starting UDP socket on port $port")
         multicastLock?.acquire()
         job = scope.launch(Dispatchers.IO) {
             val buffer = ByteArray(MAX_PACKET_SIZE)
@@ -86,6 +93,7 @@ class UdpSocket(
                         ))
                     } else if (result is ParseResult.Failure) {
                         Log.w("UdpSocket", "Failed to parse header: ${result.error}")
+                        MeshLogger.error("UdpSocket", "Failed to parse header from ${packet.socketAddress}", result.error.toString())
                     }
                 } catch (_: SocketTimeoutException) {
                     // Loop back to re-check isActive so cancellation is responsive.
@@ -97,6 +105,7 @@ class UdpSocket(
                             break
                         }
                         Log.e("UdpSocket", "Error in receive loop", e)
+                        MeshLogger.error("UdpSocket", "Error in receive loop", e.toString())
                         kotlinx.coroutines.delay(100.milliseconds) // Prevent tight loop on persistent error
                     }
                 }
@@ -105,6 +114,7 @@ class UdpSocket(
     }
 
     suspend fun close() = withContext(Dispatchers.IO) {
+        MeshLogger.info("UdpSocket", "Closing UDP socket on port $port")
         socket.close()
         incomingChannel.close()
         job?.cancel()

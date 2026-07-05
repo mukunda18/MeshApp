@@ -38,6 +38,7 @@ class AppContainer(context: Context) {
     val nodesStore: NodesStore = try {
         SqlNodesStore(appContext)
     } catch (e: Exception) {
+        // Critical: Failed to open or create the SQLite database for node identity tracking.
         throw RuntimeException("Failed to initialize SqlNodesStore", e)
     }
 
@@ -51,12 +52,14 @@ class AppContainer(context: Context) {
                     .ifBlank { "MeshUser" }
             )
     } catch (e: Exception) {
+        // Critical: Failed to generate or retrieve this node's identity from Android Keystore.
         throw RuntimeException("Failed to get or generate identity", e)
     }
 
     val security: Security = try {
         Security(identity, nodesStore)
     } catch (e: Exception) {
+        // Critical: Failed to initialize the cryptographic helper (e.g., missing algorithms).
         throw RuntimeException("Failed to initialize Security", e)
     }
 
@@ -88,7 +91,8 @@ class AppContainer(context: Context) {
         ownNodeId = identity.nodeId,
         meshService = meshService,
         security = security,
-        conversationStore = conversationStore
+        conversationStore = conversationStore,
+        nodesStore = nodesStore
     )
 
     // ── Port constants ────────────────────────────────────────────────────────

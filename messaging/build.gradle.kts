@@ -26,6 +26,7 @@ dependencies {
     implementation(project(":meshControl"))
     implementation(project(":model"))
     implementation(project(":security"))
+    implementation(project(":logger"))
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)

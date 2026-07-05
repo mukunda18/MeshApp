@@ -9,6 +9,7 @@ import com.minor.model.PacketSigner
 import com.minor.model.PacketVerifier
 import com.minor.model.Signature
 import com.minor.model.Timestamp
+import com.minor.logger.MeshLogger
 import java.security.KeyFactory
 import java.security.Signature as JavaSignature
 import java.security.spec.X509EncodedKeySpec
@@ -31,9 +32,17 @@ class Security(
      * Constructs the Secure Envelope using ECDSA/P1363 signature and AES-GCM encryption.
      * Layout: [ Version(1) | SenderNodeId(32) | EphemeralPubKey(91) | Nonce(12) | CiphertextLen(4) | Ciphertext(var) | Signature(64) ]
      */
-    fun encode(plaintext: String, recipientNodeID: NodeId, messageID: MessageId): ByteArray {
+    fun encode(
+        plaintext: String,
+        recipientNodeID: NodeId,
+        messageID: MessageId,
+        timestamp: Timestamp = Timestamp(System.currentTimeMillis())
+    ): ByteArray {
         val recipientPubKeyBytes = nodesStore.getPublicKey(recipientNodeID)
-            ?: throw IllegalStateException("Public key not found for $recipientNodeID")
+            ?: run {
+                MeshLogger.error("Security", "Encryption failed: Public key not found for $recipientNodeID")
+                throw IllegalStateException("Public key not found for $recipientNodeID. Identity discovery (RREQ) may be required.")
+            }
 
         // 1. Reconstruct recipient public key from bytes
         val recipientPubKey = keyFactory.generatePublic(X509EncodedKeySpec(recipientPubKeyBytes.bytes))
@@ -54,7 +63,6 @@ class Security(
         val aesKey = SecretKeySpec(derivedKey, 0, 32, "AES")
 
         // 5. Create Inner Plaintext Block
-        val timestamp = System.currentTimeMillis()
         val contentBytes = plaintext.encodeToByteArray()
         val innerBlockSize = MessageProtocol.MESSAGE_ID_LENGTH + 
                           MessageProtocol.TIMESTAMP_LENGTH + 
@@ -63,7 +71,7 @@ class Security(
         
         var innerOffset = 0
         innerOffset += MessageProtocol.messageId.write(innerBlock, messageID, innerOffset)
-        innerOffset += MessageProtocol.timestamp.write(innerBlock, Timestamp(timestamp), innerOffset)
+        innerOffset += MessageProtocol.timestamp.write(innerBlock, timestamp, innerOffset)
         MessageProtocol.content.write(innerBlock, plaintext, innerOffset)
 
         // 6. Generate nonce (12 bytes for AES-GCM)
@@ -116,6 +124,8 @@ class Security(
                 MessageProtocol.SIGNATURE_LENGTH
         
         if (envelopeBytes.size < minSize) {
+            // Thrown if the packet was truncated or malformed during transit.
+            MeshLogger.error("Security", "Decryption failed: Envelope too short (${envelopeBytes.size} bytes)")
             throw SecurityException("Envelope too short")
         }
 
@@ -141,7 +151,10 @@ class Security(
         val signatureRead = MessageProtocol.signature.read(envelopeBytes, cursor)
 
         val senderPubKeyBytes = nodesStore.getPublicKey(senderNodeIdRead.value)
-            ?: throw IllegalStateException("Public key not found for ${senderNodeIdRead.value}")
+            ?: run {
+                MeshLogger.error("Security", "Decryption failed: Public key not found for ${senderNodeIdRead.value}")
+                throw IllegalStateException("Public key not found for ${senderNodeIdRead.value}. Cannot verify signature of unknown node.")
+            }
 
         // 2. Verify ECDSA signature (P1363 format)
         val senderPubKey = keyFactory.generatePublic(X509EncodedKeySpec(senderPubKeyBytes.bytes))
@@ -149,6 +162,8 @@ class Security(
         verifier.initVerify(senderPubKey)
         verifier.update(envelopeBytes, 0, dataToVerifySize)
         if (!verifier.verify(signatureRead.value.bytes)) {
+            // Thrown if any part of the envelope was tampered with after signing.
+            MeshLogger.error("Security", "Decryption failed: Invalid signature from ${senderNodeIdRead.value}")
             throw SecurityException("Invalid signature")
         }
 
@@ -180,6 +195,8 @@ class Security(
         val contentRead = MessageProtocol.content.read(decrypted, innerCursor)
         
         if (System.currentTimeMillis() - timestampRead.value.millis > freshnessWindowMs) {
+            // Thrown if the message is too old, likely indicating a replay attack.
+            MeshLogger.error("Security", "Decryption failed: Message expired from ${senderNodeIdRead.value}", "Age: ${System.currentTimeMillis() - timestampRead.value.millis}ms")
             throw SecurityException("Message expired (anti-replay)")
         }
 

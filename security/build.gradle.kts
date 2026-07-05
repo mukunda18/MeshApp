@@ -26,6 +26,7 @@ dependencies {
     // Existing project dependencies
     implementation(project(":model"))
     implementation(project(":packetProcessor"))
+    implementation(project(":logger"))
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.espresso.core)

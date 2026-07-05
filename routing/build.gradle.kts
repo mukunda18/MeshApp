@@ -33,6 +33,7 @@ dependencies {
     implementation(project(":model"))
     implementation(project(":packetProcessor"))
     implementation(project(":transport"))
+    implementation(project(":logger"))
 
     testImplementation(libs.junit)
     // Converted hyphens to dots:
