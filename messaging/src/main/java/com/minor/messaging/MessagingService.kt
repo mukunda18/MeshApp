@@ -1,5 +1,6 @@
 package com.minor.messaging
 
+import android.util.Log
 import com.minor.meshcontrol.DeliveryState
 import com.minor.meshcontrol.MeshService
 import com.minor.model.MessageId
@@ -115,7 +116,13 @@ class MessagingService(
     }
 
     private fun serializeEnvelope(env: SecureEnvelope): ByteArray {
-        val buf = ByteArray(2048)
+        val envelopeSize = MessageProtocol.ENV_VERSION_LENGTH +
+            MessageProtocol.SENDER_NODE_ID_LENGTH +
+            MessageProtocol.ENC_SYM_KEY_LENGTH +
+            MessageProtocol.NONCE_LENGTH +
+            MessageProtocol.CIPHER_LEN_LENGTH + env.ciphertext.size +
+            MessageProtocol.SIGNATURE_LENGTH
+        val buf = ByteArray(envelopeSize)
         var cursor = 0
         cursor += MessageProtocol.envVersion.write(buf, env.envVersion, cursor)
         cursor += MessageProtocol.senderNodeId.write(buf, env.senderNodeId, cursor)
@@ -146,7 +153,7 @@ class MessagingService(
             emitMessageUpdate(sourceNodeId, message, MessageDirection.INCOMING)
             refreshConversations()
         } catch (e: Exception) {
-            // Log decryption failure
+            Log.w("MessagingService", "Failed to decode incoming message from ${sourceNodeId}", e)
         }
     }
 
@@ -157,7 +164,7 @@ class MessagingService(
             emitMessageUpdate(
                 nodeID = stored.remoteNodeId,
                 message = stored.message,
-                direction = if (stored.message.senderNodeId.toString() == ownNodeId.toString()) 
+                direction = if (stored.message.senderNodeId.bytes.contentEquals(ownNodeId.bytes))
                     MessageDirection.OUTGOING else MessageDirection.INCOMING
             )
             emitStatusUpdate(stored.remoteNodeId, stored.message.messageId, status)
@@ -199,7 +206,7 @@ class MessagingService(
                 nodeID = conversation.remoteNodeId,
                 lastMessage = conversation.messages.lastOrNull(),
                 unreadCount = conversation.messages.count { message ->
-                    message.senderNodeId.toString() != ownNodeId.toString() &&
+                    !message.senderNodeId.bytes.contentEquals(ownNodeId.bytes) &&
                         message.deliveryStatus == MessageDeliveryStatus.DELIVERED
                 }
             )

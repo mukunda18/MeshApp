@@ -19,7 +19,9 @@ import android.util.Log
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Owns the outbound message queue and all packet construction
@@ -220,6 +222,10 @@ class Sender(
         if (!msg.rreqFlag) {
             issueRreq(msg.destinationNodeId)
             msg.rreqFlag = true
+        }
+
+        scope.launch {
+            delay(ROUTE_RETRY_BACKOFF_MS.milliseconds)
             channel.send(msg)
         }
     }
@@ -254,4 +260,9 @@ class Sender(
             )
         )
     }
+
+    companion object {
+        const val ROUTE_RETRY_BACKOFF_MS = 500L
+    }
+
 }

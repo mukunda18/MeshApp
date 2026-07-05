@@ -44,10 +44,9 @@ class Router {
 
     /** Marks every route whose next hop matches the given node as invalid */
     fun invalidateVia(nextHopNodeId: NodeId): List<NodeId> {
-        val targetKey = nextHopNodeId.toString()
         val affected = mutableListOf<NodeId>()
         for ((route, info) in table) {
-            if (info.valid && route == targetKey) {
+            if (info.valid && info.nextHopNodeId.bytes.contentEquals(nextHopNodeId.bytes)) {
                 table[route] = info.copy(valid = false)
                 affected.add(info.destinationNodeId)
             }

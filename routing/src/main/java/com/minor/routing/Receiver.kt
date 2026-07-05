@@ -78,7 +78,7 @@ class Receiver(
         val msgId = packet.header.id.value
         if (handledMsg.putIfAbsent(msgId, true) != null) return
         val h = packet.header
-        if (h.destNodeId.toString() == selfNodeId.toString()) {
+        if (h.destNodeId.bytes.contentEquals(selfNodeId.bytes)) {
             val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
             val message = result.value as? Payload.Message ?: return
             incomingPayloadChannel.trySend(packet.header.sourceNodeId to message)
@@ -111,7 +111,7 @@ class Receiver(
             .firstOrNull { it.ip == senderIp }?.nodeId ?: return
         rreqSessionTable[rreqId] = upstreamNode
 
-        val weAreDestination = h.destNodeId.toString() == selfNodeId.toString()
+        val weAreDestination = h.destNodeId.bytes.contentEquals(selfNodeId.bytes)
         val weHaveRoute = router.lookup(h.destNodeId) != null
         if (weAreDestination || weHaveRoute) {
             val upstreamIp = peers.resolveIp(upstreamNode) ?: return
@@ -136,7 +136,8 @@ class Receiver(
 
         updateRouteFromHeader(packet, senderIp)
 
-        if (h.destNodeId.toString() == selfNodeId.toString()) return
+        if (h.destNodeId.bytes.contentEquals(selfNodeId.bytes)) return
+        if (h.hopcount >= h.ttl) return
 
         // Forward upstream along the reverse path recorded when we saw the RREQ
         val upstream = rreqSessionTable[h.id.value] ?: return
@@ -165,9 +166,8 @@ class Receiver(
         updateRouteFromHeader(packet, senderIp)
         val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
         val rerr = result.value as? Payload.RERR ?: return
-        val senderKey = packet.header.sourceNodeId.toString()
         val affected = rerr.destinations.filter {
-            router.lookup(it)?.toString() == senderKey
+            router.lookup(it)?.bytes?.contentEquals(packet.header.sourceNodeId.bytes) == true
         }
         affected.forEach { router.invalidate(it) }
         if (affected.isNotEmpty()) sender.broadcastRerr(affected)
