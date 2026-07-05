@@ -3,11 +3,11 @@ package com.minor.meshapp
 import android.content.Context
 import com.minor.meshapp.identity.IdentityStore
 import com.minor.meshapp.network.AndroidMeshSocketFactory
-import com.minor.meshapp.security.PassthroughSecurityCodec
 import com.minor.meshcontrol.MeshConfig
 import com.minor.meshcontrol.MeshService
 import com.minor.messaging.ConversationStore
 import com.minor.messaging.MessagingService
+import com.minor.security.PassthroughSecurityCodec
 
 /**
  * Manual dependency injection container for the application.

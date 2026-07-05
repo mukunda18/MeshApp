@@ -1,22 +1,20 @@
-package com.minor.meshapp.security
+package com.minor.security
 
 import com.minor.messaging.DecodedMessage
 import com.minor.messaging.MessageSecurityCodec
 import com.minor.model.MessageId
 import com.minor.model.NodeId
 import com.minor.model.Packet
+import com.minor.model.ParseResult
 import com.minor.model.Payload
 import com.minor.model.Timestamp
 import com.minor.packetprocessor.PayloadParser
-import com.minor.model.ParseResult
 
 /**
- * Passthrough (no-op) implementation of MessageSecurityCodec.
+ * Default security codec used until a stronger cryptographic codec is supplied.
  *
- * Does not apply any encryption or signing.
- * Used as a placeholder until the :security module is implemented.
- *
- * Phase 3 or the security module implementation will replace this.
+ * This codec preserves the current message format/flow and keeps integration stable
+ * across modules. It performs payload pass-through without encryption/signing.
  */
 class PassthroughSecurityCodec : MessageSecurityCodec {
 
@@ -39,8 +37,9 @@ class PassthroughSecurityCodec : MessageSecurityCodec {
                 ?: throw IllegalArgumentException(
                     "PassthroughSecurityCodec: expected Payload.Message, got ${result.value::class.simpleName}"
                 )
+
             is ParseResult.Failure -> throw IllegalArgumentException(
-                "PassthroughSecurityCodec: failed to parse packet payload — ${result.error}"
+                "PassthroughSecurityCodec: failed to parse packet payload - ${result.error}"
             )
         }
         return DecodedMessage(
