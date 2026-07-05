@@ -27,6 +27,7 @@ dependencies {
     implementation(libs.material)
     api(project(":meshControl"))
     api(project(":model"))
+    api(project(":security"))
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
