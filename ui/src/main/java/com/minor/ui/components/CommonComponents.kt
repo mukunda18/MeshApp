@@ -28,6 +28,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -118,6 +119,61 @@ fun BottomNavigationBar(currentRoute: String, onNavigate: (String) -> Unit) {
             icon = { Icon(Icons.Filled.ChatBubble, contentDescription = null) },
             label = { Text("Chats") }
         )
+    }
+}
+
+@Composable
+fun MeshFooterNavigation(
+    currentRoute: String,
+    onHome: () -> Unit,
+    onChats: () -> Unit,
+    onProfile: (() -> Unit)? = null
+) {
+    NavigationBar(
+        containerColor = Color(0xFF1A1A1D),
+        tonalElevation = 0.dp
+    ) {
+        NavigationBarItem(
+            selected = currentRoute == "home",
+            onClick = onHome,
+            icon = { Icon(Icons.Filled.Home, contentDescription = null) },
+            label = { Text("Home") },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = MeshGreen,
+                selectedTextColor = MeshGreen,
+                indicatorColor = MeshGreen.copy(alpha = 0.14f),
+                unselectedIconColor = Color(0xFFB9C0B7),
+                unselectedTextColor = Color(0xFFB9C0B7)
+            )
+        )
+        NavigationBarItem(
+            selected = currentRoute == "chats",
+            onClick = onChats,
+            icon = { Icon(Icons.Filled.ChatBubble, contentDescription = null) },
+            label = { Text("Chats") },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = MeshGreen,
+                selectedTextColor = MeshGreen,
+                indicatorColor = MeshGreen.copy(alpha = 0.14f),
+                unselectedIconColor = Color(0xFFB9C0B7),
+                unselectedTextColor = Color(0xFFB9C0B7)
+            )
+        )
+        if (onProfile != null) {
+            NavigationBarItem(
+                selected = currentRoute == "profile",
+                onClick = onProfile,
+                icon = { Icon(Icons.Filled.Person, contentDescription = null) },
+                label = { Text("Profile") },
+                colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = MeshGreen,
+                    selectedTextColor = MeshGreen,
+                    indicatorColor = MeshGreen.copy(alpha = 0.14f),
+                    unselectedIconColor = Color(0xFFB9C0B7),
+                    unselectedTextColor = Color(0xFFB9C0B7)
+                )
+            )
+        }
     }
 }
 

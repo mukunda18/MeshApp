@@ -8,6 +8,7 @@ import com.minor.model.HeaderProtocol
 import com.minor.model.Packet
 import com.minor.model.Envelope
 import com.minor.model.ParseResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -19,6 +20,7 @@ import kotlinx.coroutines.withContext
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetSocketAddress
+import java.net.SocketException
 import java.net.SocketTimeoutException
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlin.time.Duration.Companion.milliseconds
@@ -88,7 +90,12 @@ class UdpSocket(
                 } catch (_: SocketTimeoutException) {
                     // Loop back to re-check isActive so cancellation is responsive.
                 } catch (e: Exception) {
+                    if (e is CancellationException) throw e
                     if (isActive) {
+                        // Avoid logging expected closure during shutdown
+                        if (e is SocketException && socket.isClosed) {
+                            break
+                        }
                         Log.e("UdpSocket", "Error in receive loop", e)
                         kotlinx.coroutines.delay(100.milliseconds) // Prevent tight loop on persistent error
                     }
