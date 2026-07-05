@@ -49,6 +49,10 @@ class Sender(
 
     /** Adds a message to the back of the outbound queue */
     fun enqueue(messageId: MessageId, payload: Payload.Message, destinationNodeId: NodeId) {
+        if (destinationNodeId.bytes.contentEquals(selfNodeId.bytes)) {
+            MeshLogger.error("Sender", "Ignoring attempt to enqueue message to self")
+            return
+        }
         MeshLogger.messageQueued("Sender", "Enqueuing message ${messageId} for ${destinationNodeId}")
         channel.trySend(QueuedMessage(messageId, payload, destinationNodeId))
     }
@@ -110,6 +114,7 @@ class Sender(
             )
         } catch (e: Exception) {
             Log.w("Sender", "Failed to send RREP to $upstreamIp", e)
+            MeshLogger.error("Sender", "Failed to send RREP to $upstreamIp", e.toString())
         }
     }
 
@@ -142,6 +147,7 @@ class Sender(
             transport.sendTcp(bytes, ip)
         } catch (e: Exception) {
             Log.w("Sender", "Failed to forward TCP to $ip", e)
+            MeshLogger.error("Sender", "Failed to forward TCP to $ip", e.toString())
         }
     }
 
@@ -151,6 +157,7 @@ class Sender(
             transport.broadcastUdp(bytes)
         } catch (e: Exception) {
             Log.w("Sender", "Failed to forward UDP broadcast", e)
+            MeshLogger.error("Sender", "Failed to forward UDP broadcast", e.toString())
         }
     }
 

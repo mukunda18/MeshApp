@@ -10,7 +10,8 @@ class HomeViewModelFactory(
     private val meshService: MeshService,
     private val meshController: MeshController,
     private val appName: String,
-    private val deviceName: String
+    private val deviceName: String,
+    private val nodeId: String
 ) : ViewModelProvider.Factory {
 
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -21,7 +22,8 @@ class HomeViewModelFactory(
                 meshService = meshService,
                 meshController = meshController,
                 appName = appName,
-                deviceName = deviceName
+                deviceName = deviceName,
+                nodeId = nodeId
             ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")

@@ -62,7 +62,8 @@ class MainActivity : ComponentActivity() {
                             meshService = container.meshService,
                             meshController = meshController,
                             appName = getString(R.string.app_name),
-                            deviceName = container.identity.name
+                            deviceName = container.identity.name,
+                            nodeId = container.identity.nodeId.toString()
                         ),
                         chats = ChatsViewModelFactory(
                             messagingService = container.messagingService,

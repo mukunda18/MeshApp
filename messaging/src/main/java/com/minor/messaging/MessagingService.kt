@@ -93,6 +93,11 @@ class MessagingService(
     }
 
     fun send(destinationNodeID: NodeId, plaintext: String): Message {
+        if (destinationNodeID.bytes.contentEquals(ownNodeId.bytes)) {
+            MeshLogger.error("MessagingService", "Cannot send message to self")
+            throw IllegalArgumentException("Cannot send message to self")
+        }
+
         val composeTimestamp = Timestamp(System.currentTimeMillis())
         val messageId = randomMessageId()
         

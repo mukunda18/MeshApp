@@ -65,7 +65,11 @@ class ConversationViewModel(
     fun sendMessage(text: String) {
         if (text.isBlank()) return
         val destination = activeNodeId ?: return
-        messagingService.send(destinationNodeID = destination, plaintext = text.trim())
+        try {
+            messagingService.send(destinationNodeID = destination, plaintext = text.trim())
+        } catch (e: Exception) {
+            android.util.Log.e("ConversationViewModel", "Failed to send message", e)
+        }
     }
 
     private fun collectPeerEvents() {

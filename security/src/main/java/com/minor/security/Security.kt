@@ -53,8 +53,8 @@ class Security(
         }
         val ephemeralKeyPair = ephemeralKeyPairGen.generateKeyPair()
 
-        // 3. Derive shared secret via ECDH
-        keyAgreement.init(identity.privateKeyObj)
+        // 3. Derive shared secret via ECDH using ephemeral private key
+        keyAgreement.init(ephemeralKeyPair.private)
         keyAgreement.doPhase(recipientPubKey, true)
         val sharedSecret = keyAgreement.generateSecret()
 
@@ -100,11 +100,12 @@ class Security(
         cursor += MessageProtocol.nonce.write(envelope, nonce, cursor)
         cursor += MessageProtocol.ciphertext.write(envelope, ciphertext, cursor)
 
-        // 9. Sign envelope using ECDSA (P1363 format = fixed 64 bytes for P-256)
-        val signer = JavaSignature.getInstance("SHA256withECDSAinP1363Format")
+        // 9. Sign envelope using ECDSA
+        val signer = JavaSignature.getInstance("SHA256withECDSA")
         signer.initSign(identity.privateKeyObj)
         signer.update(envelope, 0, cursor)
-        val signatureBytes = signer.sign()
+        val derSignature = signer.sign()
+        val signatureBytes = derToP1363(derSignature)
 
         MessageProtocol.signature.write(envelope, Signature(signatureBytes), cursor)
 
@@ -156,12 +157,13 @@ class Security(
                 throw IllegalStateException("Public key not found for ${senderNodeIdRead.value}. Cannot verify signature of unknown node.")
             }
 
-        // 2. Verify ECDSA signature (P1363 format)
+        // 2. Verify ECDSA signature
         val senderPubKey = keyFactory.generatePublic(X509EncodedKeySpec(senderPubKeyBytes.bytes))
-        val verifier = JavaSignature.getInstance("SHA256withECDSAinP1363Format")
+        val verifier = JavaSignature.getInstance("SHA256withECDSA")
         verifier.initVerify(senderPubKey)
         verifier.update(envelopeBytes, 0, dataToVerifySize)
-        if (!verifier.verify(signatureRead.value.bytes)) {
+        val derSignature = p1363ToDer(signatureRead.value.bytes)
+        if (!verifier.verify(derSignature)) {
             // Thrown if any part of the envelope was tampered with after signing.
             MeshLogger.error("Security", "Decryption failed: Invalid signature from ${senderNodeIdRead.value}")
             throw SecurityException("Invalid signature")
@@ -217,10 +219,11 @@ class Security(
         cursor += MessageProtocol.messageId.write(data, messageId, cursor)
         AckProtocol.status.write(data, status, cursor)
         
-        val signer = JavaSignature.getInstance("SHA256withECDSAinP1363Format")
+        val signer = JavaSignature.getInstance("SHA256withECDSA")
         signer.initSign(identity.privateKeyObj)
         signer.update(data)
-        return Signature(signer.sign())
+        val derSignature = signer.sign()
+        return Signature(derToP1363(derSignature))
     }
 
     /**
@@ -235,13 +238,54 @@ class Security(
         AckProtocol.status.write(data, status, cursor)
         
         return try {
-            val verifier = JavaSignature.getInstance("SHA256withECDSAinP1363Format")
+            val verifier = JavaSignature.getInstance("SHA256withECDSA")
             verifier.initVerify(pubKey)
             verifier.update(data)
-            verifier.verify(signature.bytes)
+            val derSignature = p1363ToDer(signature.bytes)
+            verifier.verify(derSignature)
         } catch (_: Exception) {
             false
         }
+    }
+
+    private fun derToP1363(der: ByteArray): ByteArray {
+        val result = ByteArray(64)
+        var offset = 0
+        if (der[offset++] != 0x30.toByte()) throw IllegalArgumentException("Invalid DER")
+        val totalLen = der[offset++].toInt() and 0xFF
+        
+        // R
+        if (der[offset++] != 0x02.toByte()) throw IllegalArgumentException("Invalid DER R")
+        val rLen = der[offset++].toInt() and 0xFF
+        val rStart = if (der[offset] == 0.toByte() && rLen > 32) offset + 1 else offset
+        val rCopyLen = if (rLen > 32) 32 else rLen
+        der.copyInto(result, 32 - rCopyLen, rStart, rStart + rCopyLen)
+        offset += rLen
+        
+        // S
+        if (der[offset++] != 0x02.toByte()) throw IllegalArgumentException("Invalid DER S")
+        val sLen = der[offset++].toInt() and 0xFF
+        val sStart = if (der[offset] == 0.toByte() && sLen > 32) offset + 1 else offset
+        val sCopyLen = if (sLen > 32) 32 else sLen
+        der.copyInto(result, 64 - sCopyLen, sStart, sStart + sCopyLen)
+        
+        return result
+    }
+
+    private fun p1363ToDer(p1363: ByteArray): ByteArray {
+        val r = p1363.sliceArray(0 until 32).dropWhile { it == 0.toByte() }.toByteArray()
+        val rFinal = if (r.isEmpty() || r[0].toInt() < 0) byteArrayOf(0) + r else r
+        val s = p1363.sliceArray(32 until 64).dropWhile { it == 0.toByte() }.toByteArray()
+        val sFinal = if (s.isEmpty() || s[0].toInt() < 0) byteArrayOf(0) + s else s
+        val len = 2 + rFinal.size + 2 + sFinal.size
+        val der = ByteArray(2 + len)
+        der[0] = 0x30; der[1] = len.toByte()
+        var pos = 2
+        der[pos++] = 0x02; der[pos++] = rFinal.size.toByte()
+        rFinal.copyInto(der, pos); pos += rFinal.size
+        der[pos++] = 0x02; der[pos++] = sFinal.size.toByte()
+        sFinal.copyInto(der, pos)
+        return der
     }
 }
 

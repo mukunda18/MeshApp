@@ -29,6 +29,8 @@ class PeersManagement(
 
     /** Adds a new peer or refreshes the IP and lastSeen of an existing one */
     fun addOrUpdate(nodeId: NodeId, ip: String) {
+        if (nodeId.bytes.contentEquals(selfNodeId.bytes)) return
+
         val now = System.currentTimeMillis()
         val peer = Peer(nodeId, ip, now)
         val existed = peers.put(nodeId.toString(), peer) != null
@@ -58,14 +60,19 @@ class PeersManagement(
     fun startReaperLoop(scope: CoroutineScope, sender: Sender) {
         scope.launch {
             while (true) {
-                delay(reaperCheckMs.milliseconds)
-                val now = System.currentTimeMillis()
-                val timedOut = peers.values.filter { now - it.lastSeen > peerTimeoutMs }
-                for (peer in timedOut) {
-                    peers.remove(peer.nodeId.toString())
-                    peerEventsChannel.trySend(PeerEvent.Removed(peer.nodeId))
-                    val affected = router.invalidateVia(peer.nodeId)
-                    if (affected.isNotEmpty()) sender.broadcastRerr(affected)
+                try {
+                    delay(reaperCheckMs.milliseconds)
+                    val now = System.currentTimeMillis()
+                    val timedOut = peers.values.filter { now - it.lastSeen > peerTimeoutMs }
+                    for (peer in timedOut) {
+                        peers.remove(peer.nodeId.toString())
+                        peerEventsChannel.trySend(PeerEvent.Removed(peer.nodeId))
+                        val affected = router.invalidateVia(peer.nodeId)
+                        if (affected.isNotEmpty()) sender.broadcastRerr(affected)
+                    }
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    android.util.Log.e("PeersManagement", "Error in reaper loop", e)
                 }
             }
         }
@@ -75,7 +82,12 @@ class PeersManagement(
     fun startHelloBroadcastLoop(scope: CoroutineScope, sender: Sender, displayName: String) {
         scope.launch {
             while (true) {
-                sender.broadcastHello(displayName)
+                try {
+                    sender.broadcastHello(displayName)
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    android.util.Log.e("PeersManagement", "Error in hello loop", e)
+                }
                 delay(helloIntervalMs.milliseconds)
             }
         }

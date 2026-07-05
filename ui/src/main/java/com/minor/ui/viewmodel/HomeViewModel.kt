@@ -26,7 +26,8 @@ class HomeViewModel(
     private val meshService: MeshService,
     private val meshController: MeshController,
     appName: String,
-    deviceName: String
+    deviceName: String,
+    nodeId: String
 ) : AndroidViewModel(application) {
     private val networkInfo = NetworkInfo(application)
 
@@ -37,6 +38,7 @@ class HomeViewModel(
             appName = appName,
             profile = ProfileUiState(
                 name = deviceName,
+                nodeId = nodeId,
                 avatarInitials = initialsFrom(deviceName)
             ),
             isStaApSupported = networkInfo.isStaApSupported(),
