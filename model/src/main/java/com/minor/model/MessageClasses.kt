@@ -20,7 +20,7 @@ fun randomMessageId(): MessageId = MessageId(java.util.UUID.randomUUID().mostSig
 @JvmInline
 value class PublicKey(val bytes: ByteArray) {
     init {
-        require(bytes.size == 32) { "PublicKey must be exactly 32 bytes, got ${bytes.size}" }
+        require(bytes.size == 91) { "PublicKey must be exactly 91 bytes (P-256 DER), got ${bytes.size}" }
     }
     override fun toString(): String = bytes.joinToString("") { "%02x".format(it) }
 }
@@ -149,3 +149,21 @@ data class Envelope(
     val packet: Packet,
     val remoteAddress: InetSocketAddress
 )
+
+// Interfaces for integration between security and messaging
+data class DecodedMessage(
+    val senderNodeId: NodeId,
+    val plaintext: String,
+    val composeTimestamp: Timestamp,
+    val messageID: MessageId
+)
+
+interface MessageSecurityCodec {
+    fun encode(
+        plaintext: String,
+        recipientNodeID: NodeId,
+        messageID: MessageId
+    ): Payload
+
+    fun decode(packet: Packet): DecodedMessage
+}

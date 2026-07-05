@@ -2,7 +2,10 @@ package com.minor.security
 
 import com.minor.model.NodeId
 import com.minor.model.PublicKey
+import java.security.KeyFactory
 import java.security.MessageDigest
+import java.security.PrivateKey
+import java.security.spec.PKCS8EncodedKeySpec
 
 /**
  * Owns this node's persistent identity.
@@ -14,6 +17,12 @@ data class Identity(
     val publicKey: PublicKey,
     val privateKey: ByteArray 
 ) {
+    // Cached private key object for signing/ECDH operations
+    val privateKeyObj: PrivateKey by lazy {
+        val keyFactory = KeyFactory.getInstance("EC")
+        keyFactory.generatePrivate(PKCS8EncodedKeySpec(privateKey))
+    }
+
     companion object {
         fun deriveNodeId(publicKey: PublicKey): NodeId {
             val digest = MessageDigest.getInstance("SHA-256")

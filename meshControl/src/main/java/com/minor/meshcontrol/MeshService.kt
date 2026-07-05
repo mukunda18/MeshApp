@@ -12,8 +12,11 @@ import com.minor.routing.RoutingModule
 import com.minor.routing.SendStatus
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -35,6 +38,14 @@ class MeshService(
     private var sockets: MeshSockets? = null
     private var serviceScope: CoroutineScope? = null
 
+    // Single source of truth for the mesh lifecycle state. Survives UI recreation
+    // because MeshService is an application-scoped singleton.
+    private val _stateStream = MutableStateFlow(MeshState.STOPPED)
+    val stateStream: StateFlow<MeshState> = _stateStream.asStateFlow()
+
+    val isRunning: Boolean
+        get() = _stateStream.value == MeshState.RUNNING
+
     private val _deliveryStatusStream = MutableSharedFlow<DeliveryStatus>(extraBufferCapacity = 64)
     val deliveryStatusStream: SharedFlow<DeliveryStatus> = _deliveryStatusStream.asSharedFlow()
 
@@ -46,6 +57,8 @@ class MeshService(
 
     suspend fun start() = mutex.withLock {
         if (serviceScope != null) return@withLock // Already running
+
+        _stateStream.value = MeshState.STARTING
 
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         serviceScope = scope
@@ -96,9 +109,15 @@ class MeshService(
                 _incomingMessageStream.emit(pair)
             }
         }
+
+        _stateStream.value = MeshState.RUNNING
     }
 
     suspend fun stop() = mutex.withLock {
+        if (serviceScope == null) return@withLock // Already stopped
+
+        _stateStream.value = MeshState.STOPPING
+
         serviceScope?.cancel()
         serviceScope = null
 
@@ -112,6 +131,8 @@ class MeshService(
             it.tcpSender.close()
         }
         sockets = null
+
+        _stateStream.value = MeshState.STOPPED
     }
 
     fun sendMessage(destinationNodeID: NodeId, payload: Payload.Message, messageId: MessageId) {

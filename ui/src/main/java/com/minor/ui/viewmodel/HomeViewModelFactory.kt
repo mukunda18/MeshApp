@@ -8,6 +8,7 @@ import com.minor.meshcontrol.MeshService
 class HomeViewModelFactory(
     private val application: Application,
     private val meshService: MeshService,
+    private val meshController: MeshController,
     private val appName: String,
     private val deviceName: String
 ) : ViewModelProvider.Factory {
@@ -18,6 +19,7 @@ class HomeViewModelFactory(
             return HomeViewModel(
                 application = application,
                 meshService = meshService,
+                meshController = meshController,
                 appName = appName,
                 deviceName = deviceName
             ) as T

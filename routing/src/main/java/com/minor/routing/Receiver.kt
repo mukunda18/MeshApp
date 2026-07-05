@@ -62,6 +62,8 @@ class Receiver(
     }
 
     private fun handleHello(packet: Packet, senderIp: String) {
+        // Ignore our own HELLO received via UDP loopback
+        if (packet.header.sourceNodeId.bytes.contentEquals(selfNodeId.bytes)) return
         val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
         val hello = result.value as? Payload.Hello ?: return
         

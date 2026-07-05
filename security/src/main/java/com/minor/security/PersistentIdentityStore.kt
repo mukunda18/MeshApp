@@ -61,12 +61,18 @@ class PersistentIdentityStore(context: Context) : IdentityStore {
         val publicKeyB64 = decrypt(sharedPrefs.getString(KEY_PUBLIC_KEY, null)) ?: return null
         val privateKeyB64 = decrypt(sharedPrefs.getString(KEY_PRIVATE_KEY, null)) ?: return null
 
-        return Identity(
-            nodeId = NodeId(hexToBytes(nodeIdHex)),
-            name = name,
-            publicKey = MeshPublicKey(Base64.decode(publicKeyB64, Base64.NO_WRAP)),
-            privateKey = Base64.decode(privateKeyB64, Base64.NO_WRAP)
-        )
+        return try {
+            Identity(
+                nodeId = NodeId(hexToBytes(nodeIdHex)),
+                name = name,
+                publicKey = MeshPublicKey(Base64.decode(publicKeyB64, Base64.NO_WRAP)),
+                privateKey = Base64.decode(privateKeyB64, Base64.NO_WRAP)
+            )
+        } catch (_: Exception) {
+            // Stored identity is invalid (e.g. key from a prior format). Clear and regenerate.
+            sharedPrefs.edit { clear() }
+            null
+        }
     }
 
     override fun saveIdentity(identity: Identity) {

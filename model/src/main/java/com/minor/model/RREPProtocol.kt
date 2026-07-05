@@ -1,7 +1,7 @@
 package com.minor.model
 
 object RREPProtocol {
-    const val PUBLIC_KEY_LENGTH = 32
+    const val PUBLIC_KEY_LENGTH = 91  // P-256 DER-encoded public key
     const val NAME_LEN_LENGTH = 1
 
     object Name : Field<String> {

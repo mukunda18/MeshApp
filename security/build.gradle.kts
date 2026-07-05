@@ -24,13 +24,8 @@ dependencies {
     implementation(libs.material)
 
     // Existing project dependencies
-    api(project(":messaging"))
     implementation(project(":model"))
     implementation(project(":packetProcessor"))
-
-    // Security (Ed25519, X25519, AEAD)
-    implementation(libs.lazysodium.android)
-    implementation(libs.jna)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.espresso.core)

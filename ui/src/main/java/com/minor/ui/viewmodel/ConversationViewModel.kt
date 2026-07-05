@@ -3,11 +3,13 @@ package com.minor.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.minor.meshcontrol.MeshService
+import com.minor.meshcontrol.PeerState
 import com.minor.meshcontrol.PeerStatus
 import com.minor.messaging.Message
 import com.minor.messaging.MessageDeliveryStatus
 import com.minor.messaging.MessagingService
 import com.minor.model.NodeId
+import com.minor.routing.PeerEvent
 import com.minor.ui.state.ConversationMessageUiState
 import com.minor.ui.state.ConversationUiState
 import com.minor.ui.state.NodeCardState
@@ -18,6 +20,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class ConversationViewModel(
@@ -26,12 +29,14 @@ class ConversationViewModel(
     private val meshService: MeshService
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(ConversationUiState(node = NodeCardState("", "", false, "")))
+    private val _peerMap = MutableStateFlow<Map<String, PeerState>>(emptyMap())
 
     val uiState: StateFlow<ConversationUiState> = _uiState.asStateFlow()
 
     private var activeNodeId: NodeId? = null
 
     init {
+        collectPeerEvents()
         observeConversationUpdates()
     }
 
@@ -42,7 +47,7 @@ class ConversationViewModel(
         activeNodeId = parsedNodeId
 
         val history = messagingService.getHistory(parsedNodeId)
-        val peer = meshService.peersStream.value.firstOrNull { it.nodeId.toString() == nodeId }
+        val peer = _peerMap.value[nodeId]
         val displayName = peer?.name?.takeIf { it.isNotBlank() } ?: shortId(nodeId)
         _uiState.value = ConversationUiState(
             node = NodeCardState(
@@ -63,18 +68,37 @@ class ConversationViewModel(
         messagingService.send(destinationNodeID = destination, plaintext = text.trim())
     }
 
+    private fun collectPeerEvents() {
+        viewModelScope.launch {
+            meshService.peerEventsStream.collect { event ->
+                _peerMap.update { current ->
+                    when (event) {
+                        is PeerEvent.Added -> current + (event.peer.nodeId.toString() to
+                            PeerState(event.peer.nodeId, event.peer.ip, null, null, PeerStatus.ACTIVE, event.peer.lastSeen))
+                        is PeerEvent.Updated -> {
+                            val existing = current[event.peer.nodeId.toString()]
+                            current + (event.peer.nodeId.toString() to
+                                PeerState(event.peer.nodeId, event.peer.ip, existing?.name, existing?.publicKey, PeerStatus.ACTIVE, event.peer.lastSeen))
+                        }
+                        is PeerEvent.Removed -> current - event.nodeId.toString()
+                    }
+                }
+            }
+        }
+    }
+
     private fun observeConversationUpdates() {
         viewModelScope.launch {
             combine(
                 messagingService.messagesStream,
-                meshService.peersStream
-            ) { messageUpdate, peers ->
-                messageUpdate to peers
-            }.collect { (messageUpdate, peers) ->
+                _peerMap
+            ) { messageUpdate, peerMap ->
+                messageUpdate to peerMap
+            }.collect { (messageUpdate, peerMap) ->
                 val destination = activeNodeId ?: return@collect
                 if (messageUpdate.nodeID.toString() != destination.toString()) return@collect
 
-                val peer = peers.firstOrNull { it.nodeId.toString() == destination.toString() }
+                val peer = peerMap[destination.toString()]
                 val currentNode = _uiState.value.node
                 val updatedNodeName = peer?.name?.takeIf { it.isNotBlank() } ?: currentNode.name
                 val messageList = messagingService.getHistory(destination)
