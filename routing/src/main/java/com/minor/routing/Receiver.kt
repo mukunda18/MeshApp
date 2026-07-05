@@ -27,6 +27,11 @@ class Receiver(
     private val verifier: PacketVerifier? = null,
     private val freshnessWindowMs: Long = 30_000
 ) {
+    private data class RreqSession(
+        val upstreamNodeId: NodeId,
+        val createdAtMs: Long
+    )
+
     private val handledMsg = ConcurrentHashMap<Long, Boolean>()
     private val handledRreq = ConcurrentHashMap<Long, Boolean>()
 
@@ -34,7 +39,7 @@ class Receiver(
      * Maps rreqId to the immediate upstream NodeId so RREP can be routed back
      * Upstream is the node this device received the RREQ from not the originator
      */
-    private val rreqSessionTable = ConcurrentHashMap<Long, NodeId>()
+    private val rreqSessionTable = ConcurrentHashMap<Long, RreqSession>()
 
     /** Delivers MSG payloads addressed to this node to the MessagingService layer */
     val incomingPayloadChannel = Channel<Pair<NodeId, Payload.Message>>(capacity = Channel.UNLIMITED)
@@ -92,6 +97,9 @@ class Receiver(
     }
 
     private suspend fun handleRreq(packet: Packet, senderIp: String) {
+        val now = System.currentTimeMillis()
+        pruneExpiredRreqSessions(now)
+
         val rreqId = packet.header.id.value
         if (handledRreq.putIfAbsent(rreqId, true) != null) return
         val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
@@ -109,7 +117,10 @@ class Receiver(
         // Upstream is whoever sent this packet to us which we look up by senderIp
         val upstreamNode = peers.getPeers()
             .firstOrNull { it.ip == senderIp }?.nodeId ?: return
-        rreqSessionTable[rreqId] = upstreamNode
+        rreqSessionTable[rreqId] = RreqSession(
+            upstreamNodeId = upstreamNode,
+            createdAtMs = now
+        )
 
         val weAreDestination = h.destNodeId.bytes.contentEquals(selfNodeId.bytes)
         val weHaveRoute = router.lookup(h.destNodeId) != null
@@ -124,6 +135,9 @@ class Receiver(
     }
 
     private suspend fun handleRrep(packet: Packet, senderIp: String) {
+        val now = System.currentTimeMillis()
+        pruneExpiredRreqSessions(now)
+
         val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
         val rrep = result.value as? Payload.RREP ?: return
         val h = packet.header
@@ -140,9 +154,15 @@ class Receiver(
         if (h.hopcount >= h.ttl) return
 
         // Forward upstream along the reverse path recorded when we saw the RREQ
-        val upstream = rreqSessionTable[h.id.value] ?: return
+        val upstream = rreqSessionTable.remove(h.id.value)?.upstreamNodeId ?: return
         val upstreamIp = peers.resolveIp(upstream) ?: return
         sender.forwardTcp(rebuildWithHop(packet, h.hopcount + 1), upstreamIp)
+    }
+
+    private fun pruneExpiredRreqSessions(nowMs: Long) {
+        rreqSessionTable.entries.removeIf { (_, session) ->
+            nowMs - session.createdAtMs > freshnessWindowMs
+        }
     }
 
     private fun handleAck(packet: Packet, senderIp: String) {

@@ -160,7 +160,7 @@ class Sender(
         scope.launch {
             while (true) {
                 val msg = channel.receive()
-                processMessage(msg)
+                processMessage(msg, scope)
             }
         }
     }
@@ -200,7 +200,7 @@ class Sender(
         return buf.copyOfRange(0, HeaderProtocol.HEADER_SIZE + payloadLen)
     }
 
-    internal suspend fun processMessage(msg: QueuedMessage) {
+    internal suspend fun processMessage(msg: QueuedMessage, scope: CoroutineScope) {
         val now = System.currentTimeMillis()
 
         val directIp = if (peers.isDirectPeer(msg.destinationNodeId))
