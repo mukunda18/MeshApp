@@ -1,7 +1,6 @@
 package com.minor.routing
 
 import com.minor.model.NodeId
-import com.minor.model.PublicKey
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
@@ -28,10 +27,10 @@ class PeersManagement(
     val peerEventsChannel = Channel<PeerEvent>(capacity = Channel.UNLIMITED)
     val peerEvents: ReceiveChannel<PeerEvent> get() = peerEventsChannel
 
-    /** Adds a new peer or refreshes the IP Name and lastSeen of an existing one */
-    fun addOrUpdate(nodeId: NodeId, ip: String, name: String, publicKey: PublicKey) {
+    /** Adds a new peer or refreshes the IP and lastSeen of an existing one */
+    fun addOrUpdate(nodeId: NodeId, ip: String) {
         val now = System.currentTimeMillis()
-        val peer = Peer(nodeId, ip, name, publicKey, now)
+        val peer = Peer(nodeId, ip, now)
         val existed = peers.put(nodeId.toString(), peer) != null
         peerEventsChannel.trySend(if (existed) PeerEvent.Updated(peer) else PeerEvent.Added(peer))
     }
@@ -48,9 +47,6 @@ class PeersManagement(
 
     /** Returns true when the node is currently in the direct peer table */
     fun isDirectPeer(nodeId: NodeId): Boolean = peers.containsKey(nodeId.toString())
-
-    /** Returns the stored public key for a peer or null */
-    fun lookupPublicKey(nodeId: NodeId): PublicKey? = peers[nodeId.toString()]?.publicKey
 
     /** Returns a point in time snapshot of all known peers */
     fun getPeers(): List<Peer> = peers.values.toList()

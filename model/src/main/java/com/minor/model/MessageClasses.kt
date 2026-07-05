@@ -71,6 +71,44 @@ data class Header(
     val payloadLength: Int
 )
 
+data class SecureEnvelope(
+    val envVersion: Int,
+    val senderNodeId: NodeId,
+    val encSymKey: ByteArray,
+    val nonce: ByteArray,
+    val ciphertext: ByteArray,
+    val signature: Signature
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+        other as SecureEnvelope
+        if (envVersion != other.envVersion) return false
+        if (senderNodeId != other.senderNodeId) return false
+        if (!encSymKey.contentEquals(other.encSymKey)) return false
+        if (!nonce.contentEquals(other.nonce)) return false
+        if (!ciphertext.contentEquals(other.ciphertext)) return false
+        if (signature != other.signature) return false
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = envVersion
+        result = 31 * result + senderNodeId.hashCode()
+        result = 31 * result + encSymKey.contentHashCode()
+        result = 31 * result + nonce.contentHashCode()
+        result = 31 * result + ciphertext.contentHashCode()
+        result = 31 * result + signature.hashCode()
+        return result
+    }
+}
+
+data class InnerPlaintextBlock(
+    val messageId: MessageId,
+    val timestamp: Timestamp,
+    val content: String
+)
+
 sealed interface Payload {
     data class Hello(
         val name: String,
@@ -79,9 +117,7 @@ sealed interface Payload {
     ) : Payload
 
     data class Message(
-        val messageId: MessageId,
-        val timestamp: Timestamp,
-        val content: String
+        val envelope: SecureEnvelope
     ) : Payload
 
     data class Ack(

@@ -4,6 +4,8 @@ import com.minor.model.Header
 import com.minor.model.HeaderProtocol
 import com.minor.model.MessageId
 import com.minor.model.NodeId
+import com.minor.model.NodesStore
+import com.minor.model.PacketSigner
 import com.minor.model.Payload
 import com.minor.model.PublicKey
 import com.minor.model.RouteEntry
@@ -17,7 +19,9 @@ import android.util.Log
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Owns the outbound message queue and all packet construction
@@ -31,6 +35,8 @@ class Sender(
     private val transport: MeshTransport,
     private val router: Router,
     private val peers: PeersManagement,
+    private val nodesStore: NodesStore,
+    private val signer: PacketSigner? = null,
     private val rreqRetryTimeoutMs: Long = 8_000,
     private val maxHopCount: Int = 8
 ) {
@@ -41,15 +47,19 @@ class Sender(
     val statusChannel = Channel<Pair<Long, SendStatus>>(capacity = Channel.UNLIMITED)
 
     /** Adds a message to the back of the outbound queue */
-    fun enqueue(messageId: MessageId, content: String, destinationNodeId: NodeId) {
-        channel.trySend(QueuedMessage(messageId, content, destinationNodeId))
+    fun enqueue(messageId: MessageId, payload: Payload.Message, destinationNodeId: NodeId) {
+        channel.trySend(QueuedMessage(messageId, payload, destinationNodeId))
     }
 
     /** Builds and broadcasts a HELLO carrying the current valid route snapshot */
     suspend fun broadcastHello(displayName: String) {
         val routes = router.getRoutes()
             .filter { it.hopCount <= maxHopCount - 1 }
-            .map { RouteEntry(it.destinationNodeId, it.hopCount, selfPublicKey, Timestamp(it.routeTimestamp), it.name) }
+            .map { route ->
+                val pubKey = nodesStore.getPublicKey(route.destinationNodeId) ?: PublicKey(ByteArray(32))
+                val name = nodesStore.getName(route.destinationNodeId) ?: ""
+                RouteEntry(route.destinationNodeId, route.hopCount, pubKey, Timestamp(route.routeTimestamp), name)
+            }
         transport.broadcastUdp(
             buildPacket(
                 type = HeaderProtocol.Type.HELLO,
@@ -102,6 +112,7 @@ class Sender(
     /** Sends a signed ACK for the given messageId back toward the original sender */
     suspend fun sendAck(messageId: Long, destNodeId: NodeId, status: Int) {
         val ip = peers.resolveIp(destNodeId) ?: return
+        val signature = signer?.signAck(MessageId(messageId), status) ?: Signature(ByteArray(64))
         try {
             transport.sendTcp(
                 buildPacket(
@@ -110,7 +121,7 @@ class Sender(
                     dest = destNodeId,
                     id = MessageId(messageId),
                     hopCount = 0,
-                    payload = Payload.Ack(status, Signature(ByteArray(64)))
+                    payload = Payload.Ack(status, signature)
                 ),
                 ip
             )
@@ -149,7 +160,7 @@ class Sender(
         scope.launch {
             while (true) {
                 val msg = channel.receive()
-                processMessage(msg)
+                processMessage(msg, scope)
             }
         }
     }
@@ -189,7 +200,7 @@ class Sender(
         return buf.copyOfRange(0, HeaderProtocol.HEADER_SIZE + payloadLen)
     }
 
-    internal suspend fun processMessage(msg: QueuedMessage) {
+    internal suspend fun processMessage(msg: QueuedMessage, scope: CoroutineScope) {
         val now = System.currentTimeMillis()
 
         val directIp = if (peers.isDirectPeer(msg.destinationNodeId))
@@ -211,6 +222,10 @@ class Sender(
         if (!msg.rreqFlag) {
             issueRreq(msg.destinationNodeId)
             msg.rreqFlag = true
+        }
+
+        scope.launch {
+            delay(ROUTE_RETRY_BACKOFF_MS.milliseconds)
             channel.send(msg)
         }
     }
@@ -222,7 +237,7 @@ class Sender(
             dest = msg.destinationNodeId,
             id = msg.messageId,
             hopCount = 0,
-            payload = Payload.Message(msg.messageId, Timestamp(System.currentTimeMillis()), msg.content,)
+            payload = msg.payload
         )
         try {
             transport.sendTcp(bytes, ip)
@@ -245,4 +260,9 @@ class Sender(
             )
         )
     }
+
+    companion object {
+        const val ROUTE_RETRY_BACKOFF_MS = 500L
+    }
+
 }
