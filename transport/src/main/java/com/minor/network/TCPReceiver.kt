@@ -1,12 +1,15 @@
 package com.minor.network
 
+import android.util.Log
 import com.minor.model.Envelope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -14,7 +17,9 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.net.InetSocketAddress
 import java.net.ServerSocket
+import java.net.SocketException
 import java.net.SocketTimeoutException
+import kotlin.time.Duration.Companion.milliseconds
 
 class TCPReceiver(
     private val port: Int,
@@ -50,6 +55,18 @@ class TCPReceiver(
                     client.start()
                 } catch (_: SocketTimeoutException) {
                     // Responsive to cancellation
+                } catch (e: SocketException) {
+                    // Expected when serverSocket.close() is called during shutdown
+                    if (isActive && !serverSocket.isClosed) {
+                        Log.e("TCPReceiver", "Socket error in accept loop", e)
+                    }
+                    break
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    if (isActive) {
+                        Log.e("TCPReceiver", "Unexpected error in accept loop", e)
+                        delay(100.milliseconds)
+                    }
                 }
             }
         }

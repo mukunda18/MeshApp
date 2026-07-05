@@ -14,10 +14,13 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.minor.ui.components.BottomNavigationBar
+import com.minor.ui.screens.about.AboutScreen
 import com.minor.ui.screens.chats.ChatsScreen
 import com.minor.ui.screens.conversation.ConversationScreen
 import com.minor.ui.screens.home.HomeScreen
+import com.minor.ui.screens.nearbynodes.NearbyNodesScreen
 import com.minor.ui.screens.networkinterfaces.NetworkInterfacesScreen
+import com.minor.ui.screens.profile.ProfileScreen
 import com.minor.ui.theme.MeshAppTheme
 import com.minor.ui.viewmodel.ChatsViewModel
 import com.minor.ui.viewmodel.ConversationViewModel
@@ -71,8 +74,72 @@ fun MeshAppNavHost(
                     }
                     HomeScreen(
                         viewModel = homeViewModel,
-                        onNavigateToChats = { navController.navigate(MeshRoutes.CHATS) },
-                        onNavigateToNetworkInterfaces = { navController.navigate(MeshRoutes.NETWORK_INTERFACES) }
+                        onNavigateToNearbyNodes = { navController.navigate(MeshRoutes.NEARBY_NODES) },
+                        onNavigateToNetworkInterfaces = { navController.navigate(MeshRoutes.NETWORK_INTERFACES) },
+                        onNavigateToProfile = { navController.navigate(MeshRoutes.PROFILE) },
+                        onNavigateToAbout = { navController.navigate(MeshRoutes.ABOUT) }
+                    )
+                }
+                composable(MeshRoutes.PROFILE) {
+                    val homeViewModel: HomeViewModel = if (homeViewModelFactory != null) {
+                        viewModel(factory = homeViewModelFactory)
+                    } else {
+                        viewModel()
+                    }
+                    ProfileScreen(
+                        viewModel = homeViewModel,
+                        onBack = { navController.popBackStack() },
+                        onNavigateHome = {
+                            navController.navigate(MeshRoutes.HOME) {
+                                popUpTo(navController.graph.startDestinationId) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        onNavigateChats = {
+                            navController.navigate(MeshRoutes.CHATS) {
+                                popUpTo(navController.graph.startDestinationId) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        onNavigateNearbyNodes = { navController.navigate(MeshRoutes.NEARBY_NODES) },
+                        onNavigateNetworkInterfaces = { navController.navigate(MeshRoutes.NETWORK_INTERFACES) },
+                        onNavigateAbout = { navController.navigate(MeshRoutes.ABOUT) }
+                    )
+                }
+                composable(MeshRoutes.NEARBY_NODES) {
+                    val homeViewModel: HomeViewModel = if (homeViewModelFactory != null) {
+                        viewModel(factory = homeViewModelFactory)
+                    } else {
+                        viewModel()
+                    }
+                    NearbyNodesScreen(
+                        viewModel = homeViewModel,
+                        onBack = { navController.popBackStack() },
+                        onNavigateHome = {
+                            navController.navigate(MeshRoutes.HOME) {
+                                popUpTo(navController.graph.startDestinationId) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        onNavigateChats = {
+                            navController.navigate(MeshRoutes.CHATS) {
+                                popUpTo(navController.graph.startDestinationId) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        onNodeClick = { nodeId -> navController.navigate(MeshRoutes.conversation(nodeId)) }
                     )
                 }
                 composable(MeshRoutes.CHATS) {
@@ -91,6 +158,9 @@ fun MeshAppNavHost(
                         viewModel = viewModel(),
                         onBack = { navController.popBackStack() }
                     )
+                }
+                composable(MeshRoutes.ABOUT) {
+                    AboutScreen(onBack = { navController.popBackStack() })
                 }
                 composable(
                     route = MeshRoutes.CONVERSATION,
