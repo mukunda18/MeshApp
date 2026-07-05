@@ -1,13 +1,18 @@
 package com.minor.meshapp
 
 import android.content.Context
-import com.minor.meshapp.identity.IdentityStore
+import android.os.Build
 import com.minor.meshapp.network.AndroidMeshSocketFactory
 import com.minor.meshcontrol.MeshConfig
 import com.minor.meshcontrol.MeshService
 import com.minor.messaging.ConversationStore
 import com.minor.messaging.MessagingService
-import com.minor.security.PassthroughSecurityCodec
+import com.minor.security.Identity
+import com.minor.security.IdentityManager
+import com.minor.security.PersistentIdentityStore
+import com.minor.security.Security
+import com.minor.security.SqlNodesStore
+import com.minor.model.NodesStore
 
 /**
  * Manual dependency injection container for the application.
@@ -28,9 +33,35 @@ class AppContainer(context: Context) {
 
     private val appContext: Context = context.applicationContext
 
-    // ── Identity ─────────────────────────────────────────────────────────────
+    // ── Identity & security ───────────────────────────────────────────────────
 
-    val identity: IdentityStore = IdentityStore(appContext)
+    val nodesStore: NodesStore = try {
+        SqlNodesStore(appContext)
+    } catch (e: Exception) {
+        // Critical: Failed to open or create the SQLite database for node identity tracking.
+        throw RuntimeException("Failed to initialize SqlNodesStore", e)
+    }
+
+    val identity: Identity = try {
+        IdentityManager(PersistentIdentityStore(appContext))
+            .getOrGenerate(
+                Build.MODEL
+                    .replace(Regex("[^a-zA-Z0-9 _-]"), "")
+                    .trim()
+                    .take(20)
+                    .ifBlank { "MeshUser" }
+            )
+    } catch (e: Exception) {
+        // Critical: Failed to generate or retrieve this node's identity from Android Keystore.
+        throw RuntimeException("Failed to get or generate identity", e)
+    }
+
+    val security: Security = try {
+        Security(identity, nodesStore)
+    } catch (e: Exception) {
+        // Critical: Failed to initialize the cryptographic helper (e.g., missing algorithms).
+        throw RuntimeException("Failed to initialize Security", e)
+    }
 
     // ── Mesh configuration ────────────────────────────────────────────────────
 
@@ -39,14 +70,17 @@ class AppContainer(context: Context) {
         tcpPort = TCP_PORT,
         ownNodeId = identity.nodeId,
         ownPublicKey = identity.publicKey,
-        ownName = identity.displayName
+        ownName = identity.name
     )
 
     // ── Core mesh service ─────────────────────────────────────────────────────
 
     val meshService: MeshService = MeshService(
         config = meshConfig,
-        socketFactory = AndroidMeshSocketFactory(appContext)
+        socketFactory = AndroidMeshSocketFactory(appContext),
+        nodesStore = nodesStore,
+        signer = security,
+        verifier = security
     )
 
     // ── Messaging layer ───────────────────────────────────────────────────────
@@ -55,9 +89,10 @@ class AppContainer(context: Context) {
 
     val messagingService: MessagingService = MessagingService(
         ownNodeId = identity.nodeId,
-        meshGateway = meshService,
+        meshService = meshService,
+        security = security,
         conversationStore = conversationStore,
-        securityCodec = PassthroughSecurityCodec()
+        nodesStore = nodesStore
     )
 
     // ── Port constants ────────────────────────────────────────────────────────

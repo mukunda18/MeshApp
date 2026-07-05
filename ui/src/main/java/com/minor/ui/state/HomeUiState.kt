@@ -24,6 +24,7 @@ data class HomeNodeUiState(
 
 data class ProfileUiState(
     val name: String = "Guest",
+    val nodeId: String = "Unavailable",
     val avatarInitials: String = "G"
 )
 

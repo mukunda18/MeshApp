@@ -1,7 +1,7 @@
 package com.minor.model
 
 object HelloProtocol {
-    const val PUBLIC_KEY_LENGTH = 32
+    const val PUBLIC_KEY_LENGTH = 91  // P-256 DER-encoded public key
     const val ROUTE_COUNT_LENGTH = 2
     const val NAME_LEN_LENGTH = 1
 

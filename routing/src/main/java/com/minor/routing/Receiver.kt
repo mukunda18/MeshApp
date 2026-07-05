@@ -7,6 +7,7 @@ import com.minor.model.Packet
 import com.minor.model.PacketVerifier
 import com.minor.model.ParseResult
 import com.minor.model.Payload
+import com.minor.logger.MeshLogger
 import com.minor.packetprocessor.HeaderSerializer
 import com.minor.packetprocessor.PayloadParser
 import java.util.concurrent.ConcurrentHashMap
@@ -32,8 +33,8 @@ class Receiver(
         val createdAtMs: Long
     )
 
-    private val handledMsg = ConcurrentHashMap<Long, Boolean>()
-    private val handledRreq = ConcurrentHashMap<Long, Boolean>()
+    /** Key is Pair(PacketType, PacketId), Value is createdTimestampMs */
+    private val handledPackets = ConcurrentHashMap<Pair<Int, Long>, Long>()
 
     /**
      * Maps rreqId to the immediate upstream NodeId so RREP can be routed back
@@ -49,148 +50,235 @@ class Receiver(
      * senderIp must be the IP of the node that sent this specific datagram or TCP segment
      */
     suspend fun onPacketReceived(packet: Packet, senderIp: String) {
-        val now = System.currentTimeMillis()
-        if (now - packet.header.originTimestamp.millis > freshnessWindowMs) return
-        when (packet.header.type) {
-            HeaderProtocol.Type.HELLO -> handleHello(packet, senderIp)
-            HeaderProtocol.Type.MESSAGE -> handleMessage(packet, senderIp)
-            HeaderProtocol.Type.RREQ -> handleRreq(packet, senderIp)
-            HeaderProtocol.Type.RREP -> handleRrep(packet, senderIp)
-            HeaderProtocol.Type.ACK -> handleAck(packet, senderIp)
-            HeaderProtocol.Type.RERR -> handleRerr(packet, senderIp)
+        try {
+            val now = System.currentTimeMillis()
+            
+            // 1. Discard packets from ourselves (loopback)
+            if (packet.header.sourceNodeId.bytes.contentEquals(selfNodeId.bytes)) {
+                return
+            }
+
+            // 2. Discard stale packets
+            if (now - packet.header.originTimestamp.millis > freshnessWindowMs) {
+                MeshLogger.packetReceived("Receiver", "Dropped stale packet ${packet.header.id}", "From: ${packet.header.sourceNodeId}, Age: ${now - packet.header.originTimestamp.millis}ms")
+                return
+            }
+
+            // 3. Discard already handled packets (De-duplication)
+            val packetKey = Pair(packet.header.type, packet.header.id.value)
+            if (handledPackets.putIfAbsent(packetKey, now) != null) {
+                // Already handled this specific packet type + ID recently
+                return
+            }
+            
+            // Clean up old sessions and handled lists periodically
+            pruneInternalState(now)
+
+            MeshLogger.packetReceived("Receiver", "Received ${packet.header.type} packet ${packet.header.id}", "From IP: $senderIp, Source: ${packet.header.sourceNodeId}")
+        
+            when (packet.header.type) {
+                HeaderProtocol.Type.HELLO -> handleHello(packet, senderIp)
+                HeaderProtocol.Type.MESSAGE -> handleMessage(packet, senderIp)
+                HeaderProtocol.Type.RREQ -> handleRreq(packet, senderIp)
+                HeaderProtocol.Type.RREP -> handleRrep(packet, senderIp)
+                HeaderProtocol.Type.ACK -> handleAck(packet, senderIp)
+                HeaderProtocol.Type.RERR -> handleRerr(packet, senderIp)
+            }
+        } catch (e: Exception) {
+            // Generic catch-all to prevent a malformed or malicious packet from crashing
+            // the entire mesh receiver loop.
+            android.util.Log.e("Receiver", "Failed to process packet from $senderIp", e)
+            MeshLogger.error("Receiver", "Failed to process packet from $senderIp", e.toString())
         }
     }
 
     private fun handleHello(packet: Packet, senderIp: String) {
-        val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
-        val hello = result.value as? Payload.Hello ?: return
-        
-        nodesStore.addOrUpdateNode(packet.header.sourceNodeId, hello.name, hello.publicKey)
-        
-        peers.addOrUpdate(packet.header.sourceNodeId, senderIp)
-        updateRouteFromHeader(packet, senderIp)
-        for (entry in hello.routeEntries) {
-            nodesStore.addOrUpdateNode(entry.nodeId, entry.name, entry.publicKey)
-            router.update(entry.nodeId,
-                packet.header.sourceNodeId,
-                entry.hopcount + 1,
-                entry.timestamp.millis)
+        try {
+            val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
+            val hello = result.value as? Payload.Hello ?: return
+            
+            nodesStore.addOrUpdateNode(packet.header.sourceNodeId, hello.name, hello.publicKey)
+            
+            peers.addOrUpdate(packet.header.sourceNodeId, senderIp)
+            updateRouteFromHeader(packet, senderIp)
+            
+            for (entry in hello.routeEntries) {
+                // Never add a route to ourselves
+                if (entry.nodeId.bytes.contentEquals(selfNodeId.bytes)) continue
+                
+                nodesStore.addOrUpdateNode(entry.nodeId, entry.name, entry.publicKey)
+                router.update(entry.nodeId,
+                    packet.header.sourceNodeId,
+                    entry.hopcount + 1,
+                    entry.timestamp.millis)
+            }
+        } catch (e: Exception) {
+            MeshLogger.error("Receiver", "Error handling HELLO", e.toString())
         }
     }
 
     private suspend fun handleMessage(packet: Packet, senderIp: String) {
-        updateRouteFromHeader(packet, senderIp)
-        val msgId = packet.header.id.value
-        if (handledMsg.putIfAbsent(msgId, true) != null) return
-        val h = packet.header
-        if (h.destNodeId.bytes.contentEquals(selfNodeId.bytes)) {
-            val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
-            val message = result.value as? Payload.Message ?: return
-            incomingPayloadChannel.trySend(packet.header.sourceNodeId to message)
-            sender.sendAck(msgId, h.sourceNodeId, 0x00)
-            return
+        try {
+            updateRouteFromHeader(packet, senderIp)
+            val h = packet.header
+            val msgId = h.id.value
+
+            if (h.destNodeId.bytes.contentEquals(selfNodeId.bytes)) {
+                val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: run {
+                    MeshLogger.error("Receiver", "Failed to parse MESSAGE $msgId payload")
+                    return
+                }
+                val message = result.value as? Payload.Message ?: return
+                
+                MeshLogger.info("Receiver", "Accepted MESSAGE $msgId", "Source: ${packet.header.sourceNodeId}")
+                incomingPayloadChannel.trySend(packet.header.sourceNodeId to message)
+                sender.sendAck(msgId, h.sourceNodeId, 0x00)
+                return
+            }
+            
+            if (h.hopcount >= h.ttl) {
+                MeshLogger.info("Receiver", "Discarded MESSAGE $msgId: TTL expired", "Hopcount: ${h.hopcount}, TTL: ${h.ttl}")
+                return
+            }
+            
+            val nextHop = router.lookup(h.destNodeId) ?: run {
+                MeshLogger.info("Receiver", "Discarded MESSAGE $msgId: No route to ${h.destNodeId}")
+                return
+            }
+            val nextIp = peers.resolveIp(nextHop) ?: run {
+                MeshLogger.info("Receiver", "Discarded MESSAGE $msgId: Peer $nextHop offline")
+                return
+            }
+            sender.forwardTcp(rebuildWithHop(packet, h.hopcount + 1), nextIp)
+        } catch (e: Exception) {
+            MeshLogger.error("Receiver", "Error handling MESSAGE", e.toString())
         }
-        if (h.hopcount >= h.ttl) return
-        val nextHop = router.lookup(h.destNodeId) ?: return
-        val nextIp = peers.resolveIp(nextHop) ?: return
-        sender.forwardTcp(rebuildWithHop(packet, h.hopcount + 1), nextIp)
     }
 
     private suspend fun handleRreq(packet: Packet, senderIp: String) {
-        val now = System.currentTimeMillis()
-        pruneExpiredRreqSessions(now)
+        try {
+            val h = packet.header
+            val rreqId = h.id.value
+            val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
+            val rreq = result.value as? Payload.RREQ ?: return
 
-        val rreqId = packet.header.id.value
-        if (handledRreq.putIfAbsent(rreqId, true) != null) return
-        val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
-        val rreq = result.value as? Payload.RREQ ?: return
-        val h = packet.header
+            nodesStore.addOrUpdateNode(h.sourceNodeId, rreq.name, rreq.publicKey)
 
-        nodesStore.addOrUpdateNode(h.sourceNodeId, rreq.name, rreq.publicKey)
+            // When hopcount is 0 the packet came directly from the originator so we can update peer table
+            if (h.hopcount == 0) {
+                peers.addOrUpdate(h.sourceNodeId, senderIp)
+            }
+            updateRouteFromHeader(packet, senderIp)
 
-        // When hopcount is 0 the packet came directly from the originator so we can update peer table
-        if (h.hopcount == 0) {
-            peers.addOrUpdate(h.sourceNodeId, senderIp)
-        }
-        updateRouteFromHeader(packet, senderIp)
+            // Upstream is whoever sent this packet to us which we look up by senderIp
+            val upstreamNode = peers.getPeers()
+                .firstOrNull { it.ip == senderIp }?.nodeId ?: return
+            rreqSessionTable[rreqId] = RreqSession(
+                upstreamNodeId = upstreamNode,
+                createdAtMs = System.currentTimeMillis()
+            )
 
-        // Upstream is whoever sent this packet to us which we look up by senderIp
-        val upstreamNode = peers.getPeers()
-            .firstOrNull { it.ip == senderIp }?.nodeId ?: return
-        rreqSessionTable[rreqId] = RreqSession(
-            upstreamNodeId = upstreamNode,
-            createdAtMs = now
-        )
-
-        val weAreDestination = h.destNodeId.bytes.contentEquals(selfNodeId.bytes)
-        val weHaveRoute = router.lookup(h.destNodeId) != null
-        if (weAreDestination || weHaveRoute) {
-            val upstreamIp = peers.resolveIp(upstreamNode) ?: return
-            // RREP destination is the RREQ originator and the immediate send target is upstream
-            sender.sendRrep(rreqId, h.sourceNodeId, upstreamIp)
-        } else {
-            if (h.hopcount >= h.ttl) return
-            sender.forwardUdpBroadcast(rebuildWithHop(packet, h.hopcount + 1))
+            val weAreDestination = h.destNodeId.bytes.contentEquals(selfNodeId.bytes)
+            val weHaveRoute = router.lookup(h.destNodeId) != null
+            
+            if (weAreDestination || weHaveRoute) {
+                val upstreamIp = peers.resolveIp(upstreamNode) ?: return
+                // RREP destination is the RREQ originator and the immediate send target is upstream
+                sender.sendRrep(rreqId, h.sourceNodeId, upstreamIp)
+            } else {
+                if (h.hopcount >= h.ttl) {
+                    MeshLogger.info("Receiver", "Discarded RREQ $rreqId: TTL expired")
+                    return
+                }
+                sender.forwardUdpBroadcast(rebuildWithHop(packet, h.hopcount + 1))
+            }
+        } catch (e: Exception) {
+            MeshLogger.error("Receiver", "Error handling RREQ", e.toString())
         }
     }
 
     private suspend fun handleRrep(packet: Packet, senderIp: String) {
-        val now = System.currentTimeMillis()
-        pruneExpiredRreqSessions(now)
+        try {
+            val h = packet.header
+            val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
+            val rrep = result.value as? Payload.RREP ?: return
 
-        val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
-        val rrep = result.value as? Payload.RREP ?: return
-        val h = packet.header
+            nodesStore.addOrUpdateNode(h.sourceNodeId, rrep.name, rrep.publicKey)
 
-        nodesStore.addOrUpdateNode(h.sourceNodeId, rrep.name, rrep.publicKey)
+            if (h.hopcount == 0) {
+                peers.addOrUpdate(h.sourceNodeId, senderIp)
+            }
 
-        if (h.hopcount == 0) {
-            peers.addOrUpdate(h.sourceNodeId, senderIp)
+            updateRouteFromHeader(packet, senderIp)
+
+            if (h.destNodeId.bytes.contentEquals(selfNodeId.bytes)) return
+            
+            if (h.hopcount >= h.ttl) {
+                MeshLogger.info("Receiver", "Discarded RREP ${h.id}: TTL expired")
+                return
+            }
+
+            // Forward upstream along the reverse path recorded when we saw the RREQ
+            val upstream = rreqSessionTable.remove(h.id.value) ?: run {
+                MeshLogger.info("Receiver", "Discarded RREP ${h.id}: No RREQ session found")
+                return
+            }
+            val upstreamNode = upstream.upstreamNodeId
+            val upstreamIp = peers.resolveIp(upstreamNode) ?: run {
+                MeshLogger.info("Receiver", "Discarded RREP ${h.id}: Upstream $upstreamNode offline")
+                return
+            }
+            sender.forwardTcp(rebuildWithHop(packet, h.hopcount + 1), upstreamIp)
+        } catch (e: Exception) {
+            MeshLogger.error("Receiver", "Error handling RREP", e.toString())
         }
-
-        updateRouteFromHeader(packet, senderIp)
-
-        if (h.destNodeId.bytes.contentEquals(selfNodeId.bytes)) return
-        if (h.hopcount >= h.ttl) return
-
-        // Forward upstream along the reverse path recorded when we saw the RREQ
-        val upstream = rreqSessionTable.remove(h.id.value)?.upstreamNodeId ?: return
-        val upstreamIp = peers.resolveIp(upstream) ?: return
-        sender.forwardTcp(rebuildWithHop(packet, h.hopcount + 1), upstreamIp)
     }
 
-    private fun pruneExpiredRreqSessions(nowMs: Long) {
+    private fun pruneInternalState(nowMs: Long) {
+        // Prune RREQ sessions
         rreqSessionTable.entries.removeIf { (_, session) ->
             nowMs - session.createdAtMs > freshnessWindowMs
+        }
+        // Prune handled packets list
+        handledPackets.entries.removeIf { (_, createdAt) ->
+            nowMs - createdAt > freshnessWindowMs
         }
     }
 
     private fun handleAck(packet: Packet, senderIp: String) {
-        updateRouteFromHeader(packet, senderIp)
-        val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
-        val ack = result.value as? Payload.Ack ?: return
-        
-        val valid = verifier?.verifyAck(
-            packet.header.id,
-            ack.status,
-            ack.signature,
-            packet.header.sourceNodeId
-        ) ?: true
+        try {
+            updateRouteFromHeader(packet, senderIp)
+            val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
+            val ack = result.value as? Payload.Ack ?: return
+            
+            val valid = verifier?.verifyAck(
+                packet.header.id,
+                ack.status,
+                ack.signature,
+                packet.header.sourceNodeId
+            ) ?: true
 
-        if (valid && ack.status == 0x00) {
-            sender.onAckReceived(packet.header.id.value)
+            if (valid && ack.status == 0x00) {
+                sender.onAckReceived(packet.header.id.value)
+            }
+        } catch (e: Exception) {
+            MeshLogger.error("Receiver", "Error handling ACK", e.toString())
         }
     }
 
     private suspend fun handleRerr(packet: Packet, senderIp: String) {
-        updateRouteFromHeader(packet, senderIp)
-        val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
-        val rerr = result.value as? Payload.RERR ?: return
-        val affected = rerr.destinations.filter {
-            router.lookup(it)?.bytes?.contentEquals(packet.header.sourceNodeId.bytes) == true
+        try {
+            updateRouteFromHeader(packet, senderIp)
+            val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
+            val rerr = result.value as? Payload.RERR ?: return
+            val affected = rerr.destinations.filter {
+                router.lookup(it)?.bytes?.contentEquals(packet.header.sourceNodeId.bytes) == true
+            }
+            affected.forEach { router.invalidate(it) }
+            if (affected.isNotEmpty()) sender.broadcastRerr(affected)
+        } catch (e: Exception) {
+            MeshLogger.error("Receiver", "Error handling RERR", e.toString())
         }
-        affected.forEach { router.invalidate(it) }
-        if (affected.isNotEmpty()) sender.broadcastRerr(affected)
     }
 
     /** Rebuilds packet bytes with an updated hop count without touching the payload */
@@ -204,8 +292,15 @@ class Receiver(
 
     private fun updateRouteFromHeader(packet: Packet, senderIp: String) {
         val h = packet.header
+        
+        // Never add a route to ourselves
+        if (h.sourceNodeId.bytes.contentEquals(selfNodeId.bytes)) return
+
         val immediateSender = peers.getPeers().find { it.ip == senderIp }?.nodeId
             ?: if (h.hopcount == 0) h.sourceNodeId else return
+        
+        // Ensure immediate sender is not ourselves either
+        if (immediateSender.bytes.contentEquals(selfNodeId.bytes)) return
 
         router.update(h.sourceNodeId, immediateSender, h.hopcount, h.originTimestamp.millis)
     }

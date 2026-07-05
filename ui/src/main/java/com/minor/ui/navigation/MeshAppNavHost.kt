@@ -18,6 +18,7 @@ import com.minor.ui.screens.about.AboutScreen
 import com.minor.ui.screens.chats.ChatsScreen
 import com.minor.ui.screens.conversation.ConversationScreen
 import com.minor.ui.screens.home.HomeScreen
+import com.minor.logger.LogScreen
 import com.minor.ui.screens.nearbynodes.NearbyNodesScreen
 import com.minor.ui.screens.networkinterfaces.NetworkInterfacesScreen
 import com.minor.ui.screens.profile.ProfileScreen
@@ -77,8 +78,12 @@ fun MeshAppNavHost(
                         onNavigateToNearbyNodes = { navController.navigate(MeshRoutes.NEARBY_NODES) },
                         onNavigateToNetworkInterfaces = { navController.navigate(MeshRoutes.NETWORK_INTERFACES) },
                         onNavigateToProfile = { navController.navigate(MeshRoutes.PROFILE) },
-                        onNavigateToAbout = { navController.navigate(MeshRoutes.ABOUT) }
+                        onNavigateToAbout = { navController.navigate(MeshRoutes.ABOUT) },
+                        onNavigateToLogs = { navController.navigate(MeshRoutes.LOGS) }
                     )
+                }
+                composable(MeshRoutes.LOGS) {
+                    LogScreen(onBack = { navController.popBackStack() })
                 }
                 composable(MeshRoutes.PROFILE) {
                     val homeViewModel: HomeViewModel = if (homeViewModelFactory != null) {

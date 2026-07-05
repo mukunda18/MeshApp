@@ -8,8 +8,10 @@ import com.minor.meshcontrol.MeshService
 class HomeViewModelFactory(
     private val application: Application,
     private val meshService: MeshService,
+    private val meshController: MeshController,
     private val appName: String,
-    private val deviceName: String
+    private val deviceName: String,
+    private val nodeId: String
 ) : ViewModelProvider.Factory {
 
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -18,8 +20,10 @@ class HomeViewModelFactory(
             return HomeViewModel(
                 application = application,
                 meshService = meshService,
+                meshController = meshController,
                 appName = appName,
-                deviceName = deviceName
+                deviceName = deviceName,
+                nodeId = nodeId
             ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")

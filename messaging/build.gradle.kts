@@ -4,9 +4,7 @@ plugins {
 
 android {
     namespace = "com.minor.messaging"
-    compileSdk {
-        version = release(37)
-    }
+    compileSdk = 37
 
     defaultConfig {
         minSdk = 30
@@ -23,11 +21,12 @@ android {
 dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.core.ktx)
-    api(libs.kotlinx.coroutines.android)
+    implementation(libs.kotlinx.coroutines.android)
     implementation(libs.material)
-    api(project(":meshControl"))
-    api(project(":model"))
-    api(project(":security"))
+    implementation(project(":meshControl"))
+    implementation(project(":model"))
+    implementation(project(":security"))
+    implementation(project(":logger"))
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)

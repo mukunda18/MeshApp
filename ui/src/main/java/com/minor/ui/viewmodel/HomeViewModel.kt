@@ -5,9 +5,11 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.minor.meshcontrol.MeshService
 import com.minor.meshcontrol.MeshState
+import com.minor.meshcontrol.PeerState
 import com.minor.meshcontrol.PeerStatus
 import com.minor.network.NetworkInfo
 import com.minor.network.NetworkScanner
+import com.minor.routing.PeerEvent
 import com.minor.ui.state.HomeNodeUiState
 import com.minor.ui.state.HomeUiState
 import com.minor.ui.state.ProfileUiState
@@ -22,16 +24,21 @@ import kotlinx.coroutines.launch
 class HomeViewModel(
     application: Application,
     private val meshService: MeshService,
+    private val meshController: MeshController,
     appName: String,
-    deviceName: String
+    deviceName: String,
+    nodeId: String
 ) : AndroidViewModel(application) {
     private val networkInfo = NetworkInfo(application)
+
+    private val _peerMap = MutableStateFlow<Map<String, PeerState>>(emptyMap())
 
     private val _uiState = MutableStateFlow(
         HomeUiState(
             appName = appName,
             profile = ProfileUiState(
                 name = deviceName,
+                nodeId = nodeId,
                 avatarInitials = initialsFrom(deviceName)
             ),
             isStaApSupported = networkInfo.isStaApSupported(),
@@ -48,12 +55,12 @@ class HomeViewModel(
     }
 
     fun toggleMesh() {
-        viewModelScope.launch {
-            if (_uiState.value.isMeshOn) {
-                meshService.stop()
-            } else {
-                meshService.start()
-            }
+        // Drive the foreground service so the notification reflects mesh state.
+        // The UI state itself updates by observing meshService.stateStream.
+        if (meshService.isRunning) {
+            meshController.stop()
+        } else {
+            meshController.start()
         }
     }
 
@@ -65,16 +72,41 @@ class HomeViewModel(
     }
 
     private fun observeMeshState() {
+        // Seed with peers already known to the running service so they appear
+        // immediately when the screen is reopened (not just on future events).
+        _peerMap.update {
+            meshService.getPeers().associate { peer ->
+                peer.nodeId.toString() to PeerState(
+                    peer.nodeId, peer.ip, null, null, PeerStatus.ACTIVE, peer.lastSeen
+                )
+            }
+        }
+
+        viewModelScope.launch {
+            meshService.peerEventsStream.collect { event ->
+                _peerMap.update { current ->
+                    when (event) {
+                        is PeerEvent.Added -> current + (event.peer.nodeId.toString() to
+                            PeerState(event.peer.nodeId, event.peer.ip, null, null, PeerStatus.ACTIVE, event.peer.lastSeen))
+                        is PeerEvent.Updated -> {
+                            val existing = current[event.peer.nodeId.toString()]
+                            current + (event.peer.nodeId.toString() to
+                                PeerState(event.peer.nodeId, event.peer.ip, existing?.name, existing?.publicKey, PeerStatus.ACTIVE, event.peer.lastSeen))
+                        }
+                        is PeerEvent.Removed -> current - event.nodeId.toString()
+                    }
+                }
+            }
+        }
+
         viewModelScope.launch {
             combine(
-                meshService.meshStateStream,
-                meshService.peersStream,
-                meshService.routeStateStream
-            ) { meshState, peers, routeState ->
-                Triple(meshState, peers, routeState)
-            }.collect { (meshState, peers, routeState) ->
-                val hopMap = routeState.routes.associate { it.destinationNodeId.toString() to it.hopCount }
-                val nodes = peers
+                meshService.stateStream,
+                _peerMap
+            ) { meshState, peerMap ->
+                meshState to peerMap
+            }.collect { (meshState, peerMap) ->
+                val nodes = peerMap.values
                     .sortedBy { it.name ?: it.nodeId.toString() }
                     .map { peer ->
                         HomeNodeUiState(
@@ -84,7 +116,7 @@ class HomeViewModel(
                             isOnline = peer.status == PeerStatus.ACTIVE,
                             status = peer.status.name,
                             ip = peer.ip,
-                            hopCount = hopMap[peer.nodeId.toString()]
+                            hopCount = null
                         )
                     }
                 _uiState.update {

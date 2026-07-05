@@ -3,7 +3,7 @@ package com.minor.model
 object RouteProtocol {
     private const val NODE_ID_LENGTH = 32
     private const val HOPCOUNT_LENGTH = 1
-    private const val PUBLIC_KEY_LENGTH = 32
+    private const val PUBLIC_KEY_LENGTH = 91  // P-256 DER-encoded public key
     private const val TIMESTAMP_LENGTH = 8
     private const val NAME_LEN_LENGTH = 1
 

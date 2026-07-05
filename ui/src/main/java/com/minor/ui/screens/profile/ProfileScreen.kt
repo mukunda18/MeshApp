@@ -161,10 +161,11 @@ fun ProfileScreen(
                             letterSpacing = 0.5.sp
                         )
                         Text(
-                            text = " Unavailable",
+                            text = " ${uiState.profile.nodeId}",
                             color = MeshGreen,
                             style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1
                         )
                     }
                 }
@@ -185,7 +186,7 @@ fun ProfileScreen(
                     Column {
                         InfoRow("Device Name", uiState.profile.name, Icons.Filled.DeviceHub)
                         DividerLine()
-                        InfoRow("Node ID", "Unavailable", Icons.Filled.SettingsEthernet)
+                        InfoRow("Node ID", uiState.profile.nodeId, Icons.Filled.SettingsEthernet)
                         DividerLine()
                         Row(
                             modifier = Modifier

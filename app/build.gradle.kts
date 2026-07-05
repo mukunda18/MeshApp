@@ -52,6 +52,8 @@ dependencies {
     implementation(project(":messaging"))
     implementation(project(":packetProcessor"))
     implementation(project(":security"))
+    implementation(project(":model"))
+    implementation(project(":logger"))
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

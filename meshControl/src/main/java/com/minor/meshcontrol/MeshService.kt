@@ -6,14 +6,18 @@ import com.minor.model.NodesStore
 import com.minor.model.PacketSigner
 import com.minor.model.PacketVerifier
 import com.minor.model.Payload
+import com.minor.logger.MeshLogger
 import com.minor.network.MeshTransport
 import com.minor.routing.PeerEvent
 import com.minor.routing.RoutingModule
 import com.minor.routing.SendStatus
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -35,6 +39,14 @@ class MeshService(
     private var sockets: MeshSockets? = null
     private var serviceScope: CoroutineScope? = null
 
+    // Single source of truth for the mesh lifecycle state. Survives UI recreation
+    // because MeshService is an application-scoped singleton.
+    private val _stateStream = MutableStateFlow(MeshState.STOPPED)
+    val stateStream: StateFlow<MeshState> = _stateStream.asStateFlow()
+
+    val isRunning: Boolean
+        get() = _stateStream.value == MeshState.RUNNING
+
     private val _deliveryStatusStream = MutableSharedFlow<DeliveryStatus>(extraBufferCapacity = 64)
     val deliveryStatusStream: SharedFlow<DeliveryStatus> = _deliveryStatusStream.asSharedFlow()
 
@@ -46,6 +58,9 @@ class MeshService(
 
     suspend fun start() = mutex.withLock {
         if (serviceScope != null) return@withLock // Already running
+
+        _stateStream.value = MeshState.STARTING
+        MeshLogger.info("MeshService", "Starting Mesh Service...")
 
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         serviceScope = scope
@@ -96,9 +111,17 @@ class MeshService(
                 _incomingMessageStream.emit(pair)
             }
         }
+
+        _stateStream.value = MeshState.RUNNING
+        MeshLogger.info("MeshService", "Mesh Service RUNNING")
     }
 
     suspend fun stop() = mutex.withLock {
+        if (serviceScope == null) return@withLock // Already stopped
+
+        _stateStream.value = MeshState.STOPPING
+        MeshLogger.info("MeshService", "Stopping Mesh Service...")
+
         serviceScope?.cancel()
         serviceScope = null
 
@@ -112,11 +135,23 @@ class MeshService(
             it.tcpSender.close()
         }
         sockets = null
+
+        _stateStream.value = MeshState.STOPPED
+        MeshLogger.info("MeshService", "Mesh Service STOPPED")
     }
 
     fun sendMessage(destinationNodeID: NodeId, payload: Payload.Message, messageId: MessageId) {
         val rm = routingModule ?: error("MeshService not running")
         rm.sender.enqueue(messageId, payload, destinationNodeID)
+    }
+
+    /** Triggers AODV discovery for a node (route + public key) */
+    fun discoverNode(nodeId: NodeId) {
+        val rm = routingModule ?: return
+        val scope = serviceScope ?: return
+        scope.launch {
+            rm.sender.discover(nodeId)
+        }
     }
 
     fun getRoutes() = routingModule?.router?.getRoutes() ?: emptyList()

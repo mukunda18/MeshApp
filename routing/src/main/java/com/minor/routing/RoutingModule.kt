@@ -68,15 +68,25 @@ class RoutingModule(
 
             launch {
                 for (envelope in tcpIncoming) {
-                    val ip = envelope.remoteAddress.address.hostAddress ?: continue
-                    receiver.onPacketReceived(envelope.packet, ip)
+                    try {
+                        val ip = envelope.remoteAddress.address.hostAddress ?: continue
+                        receiver.onPacketReceived(envelope.packet, ip)
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) throw e
+                        android.util.Log.e("RoutingModule", "Error processing TCP packet", e)
+                    }
                 }
             }
 
             launch {
                 for (envelope in udpIncoming) {
-                    val ip = envelope.remoteAddress.address.hostAddress ?: continue
-                    receiver.onPacketReceived(envelope.packet, ip)
+                    try {
+                        val ip = envelope.remoteAddress.address.hostAddress ?: continue
+                        receiver.onPacketReceived(envelope.packet, ip)
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) throw e
+                        android.util.Log.e("RoutingModule", "Error processing UDP packet", e)
+                    }
                 }
             }
         }

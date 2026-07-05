@@ -1,6 +1,7 @@
 package com.minor.routing
 
 import com.minor.model.NodeId
+import com.minor.logger.MeshLogger
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -32,14 +33,25 @@ class Router {
             (routeTimestamp == existing.routeTimestamp && hopCount < existing.hopCount)
 
         if (isBetter) {
+            val old = table[key]
             table[key] = RouteInfo(destinationNodeId, nextHopNodeId, hopCount, routeTimestamp)
+            if (old == null) {
+                MeshLogger.info("Router", "New route to $destinationNodeId via $nextHopNodeId", "Hops: $hopCount")
+            } else if (old.nextHopNodeId != nextHopNodeId || old.hopCount != hopCount) {
+                MeshLogger.info("Router", "Updated route to $destinationNodeId", "Via $nextHopNodeId, Hops: $hopCount (was ${old.hopCount})")
+            }
         }
     }
 
     /** Marks one route as invalid without removing it so a fresh RREQ may replace it */
     fun invalidate(destinationNodeId: NodeId) {
         val key = destinationNodeId.toString()
-        table[key]?.let { table[key] = it.copy(valid = false) }
+        table[key]?.let { 
+            if (it.valid) {
+                MeshLogger.info("Router", "Invalidated route to $destinationNodeId")
+                table[key] = it.copy(valid = false)
+            }
+        }
     }
 
     /** Marks every route whose next hop matches the given node as invalid */

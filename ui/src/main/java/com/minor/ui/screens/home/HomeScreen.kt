@@ -26,12 +26,12 @@ import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.PowerSettingsNew
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.ListAlt
 import androidx.compose.material.icons.outlined.SettingsInputAntenna
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -70,7 +70,8 @@ fun HomeScreen(
     onNavigateToNearbyNodes: () -> Unit,
     onNavigateToNetworkInterfaces: () -> Unit,
     onNavigateToProfile: () -> Unit,
-    onNavigateToAbout: () -> Unit
+    onNavigateToAbout: () -> Unit,
+    onNavigateToLogs: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var menuExpanded by remember { mutableStateOf(false) }
@@ -113,8 +114,7 @@ fun HomeScreen(
                         onDismissRequest = { menuExpanded = false },
                         modifier = Modifier
                             .width(220.dp)
-                            .background(Color(0xFF1E2123)),
-                        shape = RoundedCornerShape(12.dp)
+                            .background(Color(0xFF1E2123))
                     ) {
                         DropdownMenuItem(
                             text = { Text("Device Profile") },
@@ -156,6 +156,20 @@ fun HomeScreen(
                             onClick = {
                                 menuExpanded = false
                                 onNavigateToAbout()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("System Logs") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Outlined.ListAlt,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                onNavigateToLogs()
                             }
                         )
                     }
@@ -316,8 +330,6 @@ private fun MeshGlyph(
 ) {
     Box(
         modifier = modifier.drawBehind {
-            val lineColor = color
-            val dotColor = color
             val r = (size.width * 0.08f).coerceIn(2.dp.toPx(), 8.dp.toPx())
             val x1 = size.width * 0.22f
             val x2 = size.width * 0.5f
@@ -328,15 +340,15 @@ private fun MeshGlyph(
 
             val stroke = (size.width * 0.06f).coerceIn(1.8.dp.toPx(), 6.dp.toPx())
 
-            drawLine(lineColor, start = androidx.compose.ui.geometry.Offset(x1, y1), end = androidx.compose.ui.geometry.Offset(x2, y2), strokeWidth = stroke)
-            drawLine(lineColor, start = androidx.compose.ui.geometry.Offset(x2, y2), end = androidx.compose.ui.geometry.Offset(x3, y1), strokeWidth = stroke)
-            drawLine(lineColor, start = androidx.compose.ui.geometry.Offset(x1, y3), end = androidx.compose.ui.geometry.Offset(x2, y2), strokeWidth = stroke)
-            drawLine(lineColor, start = androidx.compose.ui.geometry.Offset(x2, y2), end = androidx.compose.ui.geometry.Offset(x3, y3), strokeWidth = stroke)
-            drawCircle(dotColor, r, center = androidx.compose.ui.geometry.Offset(x1, y1))
-            drawCircle(dotColor, r, center = androidx.compose.ui.geometry.Offset(x3, y1))
-            drawCircle(dotColor, r, center = androidx.compose.ui.geometry.Offset(x2, y2))
-            drawCircle(dotColor, r, center = androidx.compose.ui.geometry.Offset(x1, y3))
-            drawCircle(dotColor, r, center = androidx.compose.ui.geometry.Offset(x3, y3))
+            drawLine(color, start = androidx.compose.ui.geometry.Offset(x1, y1), end = androidx.compose.ui.geometry.Offset(x2, y2), strokeWidth = stroke)
+            drawLine(color, start = androidx.compose.ui.geometry.Offset(x2, y2), end = androidx.compose.ui.geometry.Offset(x3, y1), strokeWidth = stroke)
+            drawLine(color, start = androidx.compose.ui.geometry.Offset(x1, y3), end = androidx.compose.ui.geometry.Offset(x2, y2), strokeWidth = stroke)
+            drawLine(color, start = androidx.compose.ui.geometry.Offset(x2, y2), end = androidx.compose.ui.geometry.Offset(x3, y3), strokeWidth = stroke)
+            drawCircle(color, r, center = androidx.compose.ui.geometry.Offset(x1, y1))
+            drawCircle(color, r, center = androidx.compose.ui.geometry.Offset(x3, y1))
+            drawCircle(color, r, center = androidx.compose.ui.geometry.Offset(x2, y2))
+            drawCircle(color, r, center = androidx.compose.ui.geometry.Offset(x1, y3))
+            drawCircle(color, r, center = androidx.compose.ui.geometry.Offset(x3, y3))
         }
     )
 }
@@ -348,6 +360,7 @@ fun HomeScreenPreview() {
         onNavigateToNearbyNodes = {},
         onNavigateToNetworkInterfaces = {},
         onNavigateToProfile = {},
-        onNavigateToAbout = {}
+        onNavigateToAbout = {},
+        onNavigateToLogs = {}
     )
 }

@@ -4,28 +4,35 @@ import com.minor.model.Header
 import com.minor.model.HeaderProtocol
 import com.minor.model.ParseError
 import com.minor.model.ParseResult
+import com.minor.logger.MeshLogger
 
 object HeaderParser {
     fun parse(data: ByteArray): ParseResult<Header> {
         if (data.size < HeaderProtocol.HEADER_SIZE) {
-            return ParseResult.Failure(
-                ParseError.TooShort(data.size, HeaderProtocol.HEADER_SIZE),
-            )
+            val error = ParseError.TooShort(data.size, HeaderProtocol.HEADER_SIZE)
+            MeshLogger.error("HeaderParser", "Failed to parse header: Too short", error.toString())
+            return ParseResult.Failure(error)
         }
 
         val magic = HeaderProtocol.Magic.read(data).value
         if (magic != HeaderProtocol.Magic.EXPECTED) {
-            return ParseResult.Failure(ParseError.InvalidMagic(magic))
+            val error = ParseError.InvalidMagic(magic)
+            MeshLogger.error("HeaderParser", "Failed to parse header: Invalid magic", error.toString())
+            return ParseResult.Failure(error)
         }
 
         val version = HeaderProtocol.Version.read(data).value
         if (version != HeaderProtocol.Version.SUPPORTED_VERSION) {
-            return ParseResult.Failure(ParseError.InvalidVersion(version))
+            val error = ParseError.InvalidVersion(version)
+            MeshLogger.error("HeaderParser", "Failed to parse header: Invalid version", error.toString())
+            return ParseResult.Failure(error)
         }
 
         val payloadLength = HeaderProtocol.PayloadLength.read(data).value
         if (payloadLength !in (0..HeaderProtocol.MAX_PAYLOAD)) {
-            return ParseResult.Failure(ParseError.InvalidPayloadLength(payloadLength))
+            val error = ParseError.InvalidPayloadLength(payloadLength)
+            MeshLogger.error("HeaderParser", "Failed to parse header: Invalid payload length", error.toString())
+            return ParseResult.Failure(error)
         }
 
         val header = Header(
@@ -43,6 +50,7 @@ object HeaderParser {
             payloadLength = payloadLength
         )
 
+        MeshLogger.packetReceived("HeaderParser", "Parsed header for packet ${header.id}", "From: ${header.sourceNodeId} to ${header.destNodeId}")
         return ParseResult.Success(header)
     }
 }

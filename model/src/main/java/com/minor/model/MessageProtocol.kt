@@ -8,7 +8,7 @@ object MessageProtocol {
     // --- Secure Envelope Fields (5.2.1) ---
     const val ENV_VERSION_LENGTH = 1
     const val SENDER_NODE_ID_LENGTH = 32
-    const val ENC_SYM_KEY_LENGTH = 32
+    const val ENC_SYM_KEY_LENGTH = 91  // P-256 DER-encoded ephemeral public key
     const val NONCE_LENGTH = 12
     const val CIPHER_LEN_LENGTH = 4
     const val SIGNATURE_LENGTH = 64
