@@ -35,7 +35,7 @@ object MeshLogger {
 
     fun log(type: LogType, tag: String, message: String, details: String? = null) {
         val entry = LogEntry(id = nextId++, type = type, tag = tag, message = message, details = details)
-        _logs.value = _logs.value + entry
+        _logs.value += entry
     }
 
     fun packetReceived(tag: String, message: String, details: String? = null) = log(LogType.PACKET_RECEIVED, tag, message, details)

@@ -24,10 +24,14 @@ import kotlin.time.Duration.Companion.milliseconds
 
 class TCPReceiver(
     private val port: Int,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val acceptTimeoutMs: Int,
+    private val bufferCapacity: Int,
+    private val tcpReadTimeoutMs: Int,
+    private val tcpMaxPacketSize: Int
 ) {
     private val incomingChannel = Channel<Envelope>(
-        capacity = BUFFER_CAPACITY,
+        capacity = bufferCapacity,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
 
@@ -35,7 +39,7 @@ class TCPReceiver(
 
     private val serverSocket = ServerSocket().apply {
         reuseAddress = true
-        soTimeout = ACCEPT_TIMEOUT_MS
+        soTimeout = acceptTimeoutMs
         bind(InetSocketAddress(port))
     }
 
@@ -53,7 +57,7 @@ class TCPReceiver(
                 try {
                     val clientSocket = serverSocket.accept()
                     MeshLogger.info("TCPReceiver", "Accepted new TCP connection from ${clientSocket.remoteSocketAddress}")
-                    val client = Client(clientSocket, scope, { incomingChannel.trySend(it) }, removeChannel)
+                    val client = Client(clientSocket, scope, tcpMaxPacketSize, tcpReadTimeoutMs, { incomingChannel.trySend(it) }, removeChannel)
                     clientsMutex.withLock { activeClients.add(client) }
                     client.start()
                 } catch (_: SocketTimeoutException) {
@@ -95,10 +99,5 @@ class TCPReceiver(
             activeClients.forEach { it.close() }
             activeClients.clear()
         }
-    }
-
-    companion object {
-        const val ACCEPT_TIMEOUT_MS = 500
-        const val BUFFER_CAPACITY = 1024
     }
 }

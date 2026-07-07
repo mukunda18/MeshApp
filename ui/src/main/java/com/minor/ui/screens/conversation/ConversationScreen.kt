@@ -21,6 +21,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Send
@@ -55,6 +57,7 @@ import com.minor.ui.state.ConversationMessageUiState
 import com.minor.ui.theme.MeshGreen
 import com.minor.ui.theme.MeshMuted
 import com.minor.ui.viewmodel.ConversationViewModel
+import com.minor.messaging.MessageDeliveryStatus
 
 @Composable
 fun ConversationScreen(
@@ -271,10 +274,17 @@ private fun ConversationBubble(message: ConversationMessageUiState) {
             )
             if (message.isOutgoing) {
                 Spacer(modifier = Modifier.size(8.dp))
+                val icon = when (message.deliveryStatus) {
+                    MessageDeliveryStatus.QUEUED, MessageDeliveryStatus.SENT -> Icons.Filled.Done
+                    MessageDeliveryStatus.DELIVERED, MessageDeliveryStatus.READ -> Icons.Filled.DoneAll
+                    MessageDeliveryStatus.FAILED -> Icons.Filled.Close
+                    else -> Icons.Filled.Done
+                }
+                val iconColor = if (message.deliveryStatus == MessageDeliveryStatus.FAILED) Color.Red else MeshGreen
                 Icon(
-                    imageVector = Icons.Filled.DoneAll,
+                    imageVector = icon,
                     contentDescription = null,
-                    tint = MeshGreen,
+                    tint = iconColor,
                     modifier = Modifier.size(18.dp)
                 )
             }

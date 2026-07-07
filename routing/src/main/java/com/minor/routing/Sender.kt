@@ -38,8 +38,9 @@ class Sender(
     private val peers: PeersManagement,
     private val nodesStore: NodesStore,
     private val signer: PacketSigner? = null,
-    private val rreqRetryTimeoutMs: Long = 8_000,
-    private val maxHopCount: Int = 8
+    private val rreqRetryTimeoutMs: Long,
+    private val maxHopCount: Int,
+    private val routeRetryBackoffMs: Long
 ) {
     internal val channel = Channel<QueuedMessage>(capacity = Channel.UNLIMITED)
     private val pendingAck = ConcurrentHashMap<Long, QueuedMessage>()
@@ -59,13 +60,26 @@ class Sender(
 
     /** Builds and broadcasts a HELLO carrying the current valid route snapshot */
     suspend fun broadcastHello(displayName: String) {
-        val routes = router.getRoutes()
+        val directPeers = peers.getPeers()
+        val directPeerIds = directPeers.map { it.nodeId.toString() }.toSet()
+
+        val peerEntries = directPeers.map { peer ->
+            val pubKey = nodesStore.getPublicKey(peer.nodeId) ?: PublicKey(ByteArray(32))
+            val name = nodesStore.getName(peer.nodeId) ?: ""
+            RouteEntry(peer.nodeId, 0, pubKey, Timestamp(peer.lastSeen), name)
+        }
+
+        val routedEntries = router.getRoutes()
             .filter { it.hopCount <= maxHopCount - 1 }
+            .filter { it.destinationNodeId.toString() !in directPeerIds }
             .map { route ->
                 val pubKey = nodesStore.getPublicKey(route.destinationNodeId) ?: PublicKey(ByteArray(32))
                 val name = nodesStore.getName(route.destinationNodeId) ?: ""
                 RouteEntry(route.destinationNodeId, route.hopCount, pubKey, Timestamp(route.routeTimestamp), name)
             }
+
+        val combinedRoutes = peerEntries + routedEntries
+
         transport.broadcastUdp(
             buildPacket(
                 type = HeaderProtocol.Type.HELLO,
@@ -73,10 +87,10 @@ class Sender(
                 dest = NodeId(ByteArray(32)),
                 id = randomMessageId(),
                 hopCount = 0,
-                payload = Payload.Hello(displayName, selfPublicKey, routes)
+                payload = Payload.Hello(displayName, selfPublicKey, combinedRoutes)
             )
         )
-        MeshLogger.packetSent("Sender", "Broadcasted HELLO", "Display Name: $displayName, Routes: ${routes.size}")
+        MeshLogger.packetSent("Sender", "Broadcasted HELLO", "Display Name: $displayName, Routes: ${combinedRoutes.size}")
     }
 
     /** Builds and broadcasts a RERR listing each newly unreachable destination */
@@ -182,7 +196,7 @@ class Sender(
                     // - IllegalStateException (from transport or router)
                     // - NullPointerException (unexpected state)
                     Log.e("Sender", "Error in sender queue loop", e)
-                    delay(100.milliseconds) // Cooling off period
+                    delay(100.milliseconds) // Cooling-off period
                 }
             }
         }
@@ -250,7 +264,7 @@ class Sender(
         }
 
         scope.launch {
-            delay(ROUTE_RETRY_BACKOFF_MS.milliseconds)
+            delay(routeRetryBackoffMs.milliseconds)
             channel.send(msg)
         }
     }
@@ -293,9 +307,4 @@ class Sender(
             )
         )
     }
-
-    companion object {
-        const val ROUTE_RETRY_BACKOFF_MS = 500L
-    }
-
 }

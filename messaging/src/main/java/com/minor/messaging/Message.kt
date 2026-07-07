@@ -8,6 +8,7 @@ enum class MessageDeliveryStatus {
     QUEUED,
     SENT,
     DELIVERED,
+    READ,
     FAILED
 }
 

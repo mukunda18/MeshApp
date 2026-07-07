@@ -8,6 +8,7 @@ import android.database.sqlite.SQLiteOpenHelper
 import com.minor.model.MessageId
 import com.minor.model.NodeId
 import com.minor.model.Timestamp
+import androidx.core.database.sqlite.transaction
 
 class ConversationStore(
     context: Context
@@ -104,6 +105,24 @@ class ConversationStore(
             return storedMessage
         } finally {
             db.endTransaction()
+        }
+    }
+
+    fun markAsRead(nodeID: NodeId) {
+        val db = helper.writableDatabase
+        db.transaction {
+            try {
+                val values = ContentValues().apply {
+                    put(COL_DELIVERY_STATUS, MessageDeliveryStatus.READ.name)
+                }
+                update(
+                    TABLE_MESSAGES,
+                    values,
+                    "$COL_REMOTE_NODE_ID = ? AND $COL_DELIVERY_STATUS = ?",
+                    arrayOf(nodeID.toString(), MessageDeliveryStatus.DELIVERED.name)
+                )
+            } finally {
+            }
         }
     }
 

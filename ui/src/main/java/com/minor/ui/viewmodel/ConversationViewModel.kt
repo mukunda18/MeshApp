@@ -46,6 +46,8 @@ class ConversationViewModel(
         if (activeNodeId?.toString() == parsedNodeId.toString()) return
         activeNodeId = parsedNodeId
 
+        messagingService.markConversationAsRead(parsedNodeId)
+
         val history = messagingService.getHistory(parsedNodeId)
         val peer = _peerMap.value[nodeId]
         val displayName = peer?.name?.takeIf { it.isNotBlank() } ?: shortId(nodeId)
@@ -102,6 +104,8 @@ class ConversationViewModel(
                 val destination = activeNodeId ?: return@collect
                 if (messageUpdate.nodeID.toString() != destination.toString()) return@collect
 
+                messagingService.markConversationAsRead(destination)
+
                 val peer = peerMap[destination.toString()]
                 val currentNode = _uiState.value.node
                 val updatedNodeName = peer?.name?.takeIf { it.isNotBlank() } ?: currentNode.name
@@ -126,7 +130,8 @@ class ConversationViewModel(
             text = plaintextContent,
             isOutgoing = isOutgoing,
             timestamp = formatTime(this),
-            deliveryStatusLabel = if (isOutgoing) deliveryStatus.toUiLabel() else null
+            deliveryStatusLabel = if (isOutgoing) deliveryStatus.toUiLabel() else null,
+            deliveryStatus = if (isOutgoing) deliveryStatus else null
         )
     }
 
@@ -134,6 +139,7 @@ class ConversationViewModel(
         MessageDeliveryStatus.QUEUED -> "Queued"
         MessageDeliveryStatus.SENT -> "Sent"
         MessageDeliveryStatus.DELIVERED -> "Delivered"
+        MessageDeliveryStatus.READ -> "Read"
         MessageDeliveryStatus.FAILED -> "Failed"
     }
 
@@ -156,7 +162,7 @@ class ConversationViewModel(
     }
 
     private fun parseNodeId(value: String): NodeId? {
-        if (value.length != 64 || value.length % 2 != 0) return null
+        if (value.length != 64) return null
         return runCatching {
             val bytes = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
             NodeId(bytes)

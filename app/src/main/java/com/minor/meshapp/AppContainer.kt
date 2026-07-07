@@ -92,7 +92,9 @@ class AppContainer(context: Context) {
         meshService = meshService,
         security = security,
         conversationStore = conversationStore,
-        nodesStore = nodesStore
+        nodesStore = nodesStore,
+        identityResolutionTimeoutMs = meshConfig.identityResolutionTimeoutMs,
+        streamBufferCapacity = meshConfig.streamBufferCapacity
     )
 
     // ── Port constants ────────────────────────────────────────────────────────

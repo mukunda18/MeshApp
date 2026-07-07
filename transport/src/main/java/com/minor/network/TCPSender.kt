@@ -14,7 +14,8 @@ import kotlin.time.Duration.Companion.milliseconds
 
 class TCPSender(
     private val port: Int,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val idleTimeoutMs: Long
 ) {
     private val pool = ConnectionPool()
 
@@ -71,7 +72,7 @@ class TCPSender(
         suspend fun scheduleCleanup(address: String) = mutex.withLock {
             if (!connections.containsKey(address)) return@withLock
             idleJobs[address] = scope.launch {
-                delay(IDLE_TIMEOUT_MS.milliseconds)
+                delay(idleTimeoutMs.milliseconds)
                 mutex.withLock {
                     connections.remove(address)?.let { try { it.close() } catch (_: Exception) {} }
                     idleJobs.remove(address)
@@ -85,9 +86,5 @@ class TCPSender(
             connections.values.forEach { try { it.close() } catch (_: Exception) {} }
             connections.clear()
         }
-    }
-
-    companion object {
-        const val IDLE_TIMEOUT_MS = 60_000L
     }
 }

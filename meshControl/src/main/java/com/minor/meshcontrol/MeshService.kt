@@ -83,7 +83,11 @@ class MeshService(
             verifier = verifier,
             rreqRetryTimeoutMs = config.rreqRetryTimeoutMs,
             maxHopCount = config.maxHopCount,
-            freshnessWindowMs = config.originTimestampFreshnessWindowMs
+            freshnessWindowMs = config.originTimestampFreshnessWindowMs,
+            peerTimeoutMs = config.peerTimeoutMs,
+            reaperCheckMs = config.peerReaperCheckMs,
+            helloIntervalMs = config.helloIntervalMs,
+            routeRetryBackoffMs = config.routeRetryBackoffMs
         ).also { routingModule = it }
 
         // 3. Start Routing Logic

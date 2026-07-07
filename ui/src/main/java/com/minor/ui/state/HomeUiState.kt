@@ -1,5 +1,7 @@
 package com.minor.ui.state
 
+import com.minor.messaging.MessageDeliveryStatus
+
 data class HomeUiState(
     val isMeshOn: Boolean = false,
     val profile: ProfileUiState = ProfileUiState(),
@@ -49,5 +51,6 @@ data class ConversationMessageUiState(
     val text: String,
     val isOutgoing: Boolean,
     val timestamp: String,
-    val deliveryStatusLabel: String? = null
+    val deliveryStatusLabel: String? = null,
+    val deliveryStatus: MessageDeliveryStatus? = null
 )
