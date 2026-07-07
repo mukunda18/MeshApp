@@ -32,16 +32,24 @@ class AndroidMeshSocketFactory(context: Context) : MeshSocketFactory {
         return MeshSockets(
             tcpReceiver = TCPReceiver(
                 port = config.tcpPort,
-                scope = scope
+                scope = scope,
+                acceptTimeoutMs = config.tcpAcceptTimeoutMs,
+                bufferCapacity = config.udpBufferCapacity, // Using general buffer capacity for simplicity
+                tcpReadTimeoutMs = config.tcpReadTimeoutMs,
+                tcpMaxPacketSize = config.udpMaxPacketSize
             ),
             tcpSender = TCPSender(
                 port = config.tcpPort,
-                scope = scope
+                scope = scope,
+                idleTimeoutMs = config.tcpIdleTimeoutMs
             ),
             udpSocket = UdpSocket(
                 context = appContext,
                 port = config.udpBroadcastPort,
                 scope = scope,
+                maxPacketSize = config.udpMaxPacketSize,
+                receiveTimeoutMs = config.udpReceiveTimeoutMs,
+                bufferCapacity = config.udpBufferCapacity,
                 useMulticastLock = true
             )
         )

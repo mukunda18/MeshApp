@@ -17,9 +17,9 @@ import kotlin.time.Duration.Companion.milliseconds
 class PeersManagement(
     private val selfNodeId: NodeId,
     private val router: Router,
-    private val peerTimeoutMs: Long = 15_000,
-    private val reaperCheckMs: Long = 5_000,
-    private val helloIntervalMs: Long = 5_000
+    private val peerTimeoutMs: Long,
+    private val reaperCheckMs: Long,
+    private val helloIntervalMs: Long
 ) {
     private val peers = ConcurrentHashMap<String, Peer>()
 

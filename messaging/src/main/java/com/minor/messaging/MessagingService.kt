@@ -35,15 +35,17 @@ class MessagingService(
     private val security: Security,
     private val conversationStore: ConversationStore,
     private val nodesStore: NodesStore,
+    private val identityResolutionTimeoutMs: Long,
+    private val streamBufferCapacity: Int,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
     private val _messagesStream = MutableSharedFlow<MessageUpdate>(
-        extraBufferCapacity = STREAM_BUFFER_CAPACITY
+        extraBufferCapacity = streamBufferCapacity
     )
     val messagesStream: SharedFlow<MessageUpdate> = _messagesStream.asSharedFlow()
 
     private val _deliveryStatusStream = MutableSharedFlow<MessageStatusUpdate>(
-        extraBufferCapacity = STREAM_BUFFER_CAPACITY
+        extraBufferCapacity = streamBufferCapacity
     )
     val deliveryStatusStream: SharedFlow<MessageStatusUpdate> = _deliveryStatusStream.asSharedFlow()
 
@@ -132,7 +134,7 @@ class MessagingService(
         val now = System.currentTimeMillis()
         
         // 1. Check for timeout (e.g., if the node is offline and we can't find its key)
-        if (now - request.message.composeTimestamp.millis > IDENTITY_RESOLUTION_TIMEOUT_MS) {
+        if (now - request.message.composeTimestamp.millis > identityResolutionTimeoutMs) {
             Log.w("MessagingService", "Identity resolution timed out for ${request.destinationNodeId}")
             MeshLogger.messageDropped("MessagingService", "Identity resolution timed out for ${request.destinationNodeId}", "MsgId: ${request.message.messageId}")
             handleDeliveryUpdate(request.message.messageId.value, DeliveryState.FAILED)
@@ -201,6 +203,11 @@ class MessagingService(
 
     fun getHistory(nodeID: NodeId): List<Message> =
         conversationStore.getConversation(nodeID)?.messages.orEmpty()
+
+    fun markConversationAsRead(nodeID: NodeId) {
+        conversationStore.markAsRead(nodeID)
+        refreshConversations()
+    }
 
     private fun handleIncomingMessage(sourceNodeId: NodeId, payload: Payload.Message) {
         try {
@@ -294,9 +301,6 @@ class MessagingService(
     }
 
     private companion object {
-        const val STREAM_BUFFER_CAPACITY = 64
-        /** Time to wait for a node's Public Key before failing the message */
-        const val IDENTITY_RESOLUTION_TIMEOUT_MS = 30_000L
     }
 }
 

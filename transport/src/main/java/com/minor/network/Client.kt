@@ -23,6 +23,8 @@ import java.net.SocketTimeoutException
 class Client(
     private val socket: Socket,
     private val scope: CoroutineScope,
+    private val maxPacketSize: Int,
+    private val readTimeoutMs: Int,
     private val onMessage: (Envelope) -> Unit,
     private val removeChannel: SendChannel<Client>
 ) {
@@ -31,8 +33,8 @@ class Client(
     fun start() {
         if (job != null) return
         job = scope.launch(Dispatchers.IO) {
-            socket.soTimeout = READ_TIMEOUT_MS
-            val buffer = ByteArray(MAX_PACKET_SIZE)
+            socket.soTimeout = readTimeoutMs
+            val buffer = ByteArray(maxPacketSize)
             var offset = 0
             val input = try {
                 socket.getInputStream()
@@ -52,7 +54,7 @@ class Client(
                         val header = (r as ParseResult.Success).value
                         val payloadLength = header.payloadLength
                         
-                        if (payloadLength + HeaderProtocol.HEADER_SIZE > MAX_PACKET_SIZE) break
+                        if (payloadLength + HeaderProtocol.HEADER_SIZE > maxPacketSize) break
                         
                         val result = readFully(input, buffer, offset, payloadLength + HeaderProtocol.HEADER_SIZE - offset)
                         offset += result.second
@@ -99,9 +101,5 @@ class Client(
         }
         return Pair(true, total)
     }
-
-    companion object {
-        const val READ_TIMEOUT_MS = 500
-        const val MAX_PACKET_SIZE = 64 * 1024
-    }
 }
+

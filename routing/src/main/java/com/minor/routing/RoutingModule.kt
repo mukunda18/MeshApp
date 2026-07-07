@@ -27,10 +27,20 @@ class RoutingModule(
     private val verifier: PacketVerifier? = null,
     rreqRetryTimeoutMs: Long,
     maxHopCount: Int,
-    freshnessWindowMs: Long
+    freshnessWindowMs: Long,
+    peerTimeoutMs: Long,
+    reaperCheckMs: Long,
+    helloIntervalMs: Long,
+    routeRetryBackoffMs: Long
 ) {
     val router = Router()
-    val peers = PeersManagement(selfNodeId, router)
+    val peers = PeersManagement(
+        selfNodeId = selfNodeId,
+        router = router,
+        peerTimeoutMs = peerTimeoutMs,
+        reaperCheckMs = reaperCheckMs,
+        helloIntervalMs = helloIntervalMs
+    )
 
     val sender = Sender(
         selfNodeId = selfNodeId,
@@ -42,7 +52,8 @@ class RoutingModule(
         nodesStore = nodesStore,
         signer = signer,
         rreqRetryTimeoutMs = rreqRetryTimeoutMs,
-        maxHopCount = maxHopCount
+        maxHopCount = maxHopCount,
+        routeRetryBackoffMs = routeRetryBackoffMs
     )
 
     val receiver = Receiver(

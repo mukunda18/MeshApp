@@ -26,7 +26,7 @@ class Receiver(
     private val sender: Sender,
     private val nodesStore: NodesStore,
     private val verifier: PacketVerifier? = null,
-    private val freshnessWindowMs: Long = 30_000
+    private val freshnessWindowMs: Long
 ) {
     private data class RreqSession(
         val upstreamNodeId: NodeId,
@@ -106,6 +106,9 @@ class Receiver(
                 // Never add a route to ourselves
                 if (entry.nodeId.bytes.contentEquals(selfNodeId.bytes)) continue
                 
+                // Do not add a routed path if the node is already a direct neighbor
+                if (peers.isDirectPeer(entry.nodeId)) continue
+
                 nodesStore.addOrUpdateNode(entry.nodeId, entry.name, entry.publicKey)
                 router.update(entry.nodeId,
                     packet.header.sourceNodeId,

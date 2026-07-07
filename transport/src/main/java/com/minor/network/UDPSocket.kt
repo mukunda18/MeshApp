@@ -24,12 +24,16 @@ import java.net.InetSocketAddress
 import java.net.SocketException
 import java.net.SocketTimeoutException
 import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.milliseconds
 
 class UdpSocket(
     context: Context,
     private val port: Int,
     private val scope: CoroutineScope,
+    private val maxPacketSize: Int,
+    private val receiveTimeoutMs: Int,
+    private val bufferCapacity: Int,
     useMulticastLock: Boolean = true,
 ) {
     private val multicastLock = if (useMulticastLock) {
@@ -43,12 +47,12 @@ class UdpSocket(
     private val socket = DatagramSocket(null).apply {
         reuseAddress = true
         broadcast = true
-        soTimeout = RECEIVE_TIMEOUT_MS
+        soTimeout = receiveTimeoutMs
         bind(InetSocketAddress(this@UdpSocket.port))
     }
 
     private val incomingChannel = Channel<Envelope>(
-        capacity = BUFFER_CAPACITY,
+        capacity = bufferCapacity,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
     val incoming: ReceiveChannel<Envelope> get() = incomingChannel
@@ -76,7 +80,7 @@ class UdpSocket(
         MeshLogger.info("UdpSocket", "Starting UDP socket on port $port")
         multicastLock?.acquire()
         job = scope.launch(Dispatchers.IO) {
-            val buffer = ByteArray(MAX_PACKET_SIZE)
+            val buffer = ByteArray(maxPacketSize)
             while (isActive) {
                 val packet = DatagramPacket(buffer, buffer.size)
                 try {
@@ -106,7 +110,7 @@ class UdpSocket(
                         }
                         Log.e("UdpSocket", "Error in receive loop", e)
                         MeshLogger.error("UdpSocket", "Error in receive loop", e.toString())
-                        kotlinx.coroutines.delay(100.milliseconds) // Prevent tight loop on persistent error
+                        delay(100.milliseconds) // Prevent tight loop on persistent error
                     }
                 }
             }
@@ -120,10 +124,5 @@ class UdpSocket(
         job?.cancel()
         job = null
         if (multicastLock?.isHeld == true) multicastLock.release()
-    }
-    private companion object {
-        const val MAX_PACKET_SIZE = 64 * 1024
-        const val RECEIVE_TIMEOUT_MS = 500
-        const val BUFFER_CAPACITY = 1024
     }
 }
