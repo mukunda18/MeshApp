@@ -14,6 +14,7 @@ import com.minor.ui.state.NodeCardState
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class ChatsViewModel(
     private val messagingService: MessagingService,
@@ -28,36 +30,36 @@ class ChatsViewModel(
     private val nodesStore: NodesStore
 ) : ViewModel() {
     private val _peerMap = MutableStateFlow<Map<String, PeerState>>(emptyMap())
-
-    // Known nodes from NodesStore (have name + publicKey from HELLO/routing)
     private val _knownNodes = MutableStateFlow<List<KnownNode>>(emptyList())
-
-    // Node IDs that have a valid route (includes nodes NOT in NodesStore)
     private val _routeNodeIds = MutableStateFlow<Set<String>>(emptySet())
 
     private val _uiState = MutableStateFlow(ChatsUiState(nodes = emptyList()))
     val uiState: StateFlow<ChatsUiState> = _uiState.asStateFlow()
 
     init {
-        refreshFromRouting()
+        // 1. Initial load off the main thread so startup doesn't freeze
+        viewModelScope.launch {
+            refreshFromRouting()
+        }
 
-        // React to peer events + refresh routing tables
+        // 2. React to peer events + refresh routing tables safely
         viewModelScope.launch {
             meshService.peerEventsStream.collect { event ->
+                // Trigger the background data refresh first
+                refreshFromRouting()
+
                 _peerMap.update { current ->
                     when (event) {
                         is PeerEvent.Added -> {
-                            refreshFromRouting()
                             current + (event.peer.nodeId.toString() to
-                                PeerState(event.peer.nodeId, event.peer.ip, null, null, PeerStatus.ACTIVE, event.peer.lastSeen))
+                                    PeerState(event.peer.nodeId, event.peer.ip, null, null, PeerStatus.ACTIVE, event.peer.lastSeen))
                         }
                         is PeerEvent.Updated -> {
                             val existing = current[event.peer.nodeId.toString()]
                             current + (event.peer.nodeId.toString() to
-                                PeerState(event.peer.nodeId, event.peer.ip, existing?.name, existing?.publicKey, PeerStatus.ACTIVE, event.peer.lastSeen))
+                                    PeerState(event.peer.nodeId, event.peer.ip, existing?.name, existing?.publicKey, PeerStatus.ACTIVE, event.peer.lastSeen))
                         }
                         is PeerEvent.Removed -> {
-                            refreshFromRouting()
                             current - event.nodeId.toString()
                         }
                     }
@@ -65,7 +67,7 @@ class ChatsViewModel(
             }
         }
 
-        // Periodic route refresh (routes change without peer events, e.g. RREP received)
+        // 3. Periodic route refresh shifted entirely to IO thread pool
         viewModelScope.launch {
             while (true) {
                 delay(5_000)
@@ -73,7 +75,7 @@ class ChatsViewModel(
             }
         }
 
-        // Build the UI list from all sources
+        // 4. Build the UI list computation off-thread
         viewModelScope.launch {
             combine(
                 _knownNodes,
@@ -81,13 +83,14 @@ class ChatsViewModel(
                 _routeNodeIds,
                 messagingService.conversationsStream
             ) { knownNodes, peerMap, routeNodeIds, conversations ->
+                // Shifting computational work out of the layout layer
                 val convByNodeId = conversations.associateBy { it.nodeID.toString() }
                 val onlineIds = peerMap.keys + routeNodeIds
 
                 val seenNodeIds = mutableSetOf<String>()
                 val nodes = mutableListOf<NodeCardState>()
 
-                // 1. All nodes in NodesStore (have real names)
+                // All nodes in NodesStore
                 knownNodes.forEach { node ->
                     val nodeId = node.nodeId.toString()
                     seenNodeIds.add(nodeId)
@@ -105,7 +108,7 @@ class ChatsViewModel(
                     )
                 }
 
-                // 2. Route-only nodes: have a route but are NOT in NodesStore (no name/key)
+                // Route-only nodes
                 routeNodeIds.forEach { nodeId ->
                     if (nodeId !in seenNodeIds) {
                         seenNodeIds.add(nodeId)
@@ -123,7 +126,7 @@ class ChatsViewModel(
                     }
                 }
 
-                // 3. Orphan conversations: message history but not in NodesStore or route table
+                // Orphan conversations
                 convByNodeId.forEach { (nodeId, conv) ->
                     if (nodeId !in seenNodeIds) {
                         nodes += NodeCardState(
@@ -139,7 +142,6 @@ class ChatsViewModel(
                     }
                 }
 
-                // Online nodes first, then alphabetical
                 nodes.sortWith(compareByDescending<NodeCardState> { it.isOnline }.thenBy { it.name })
                 nodes
             }.collect { nodes ->
@@ -148,9 +150,14 @@ class ChatsViewModel(
         }
     }
 
-    private fun refreshFromRouting() {
-        _knownNodes.value = nodesStore.listNodes()
-        _routeNodeIds.value = meshService.getRoutes().map { it.destinationNodeId.toString() }.toSet()
+    // Explicitly switches context to background workers for heavy lifting
+    private suspend fun refreshFromRouting() = withContext(Dispatchers.IO) {
+        val fetchedNodes = nodesStore.listNodes()
+        val fetchedRoutes = meshService.getRoutes().map { it.destinationNodeId.toString() }.toSet()
+
+        // Push the values back to the UI state flows
+        _knownNodes.value = fetchedNodes
+        _routeNodeIds.value = fetchedRoutes
     }
 
     private fun initialsFrom(value: String): String {

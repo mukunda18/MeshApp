@@ -1,0 +1,20 @@
+# Favicon MIME Types
+AddType image/x-icon .ico
+AddType image/png .png
+AddType application/json .json
+AddType application/xml .xml
+
+# Cache favicon files
+<IfModule mod_expires.c>
+    ExpiresActive on
+    ExpiresByType image/x-icon "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType application/json "access plus 1 day"
+    ExpiresByType application/xml "access plus 1 day"
+</IfModule>
+
+# Compress favicon files
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE application/json
+    AddOutputFilterByType DEFLATE application/xml
+</IfModule>

@@ -135,7 +135,7 @@ private fun ChatsTopBar() {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = "MeshApp",
+            text = "Resham",
             style = MaterialTheme.typography.titleLarge,
             color = MeshTextPrimary,
             fontWeight = FontWeight.SemiBold
@@ -244,10 +244,4 @@ private fun ChatListItem(node: NodeCardState, onClick: () -> Unit) {
             }
         }
     }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun ChatsScreenPreview() {
-    ChatsScreen(viewModel = viewModel(), onNodeClick = {})
 }
