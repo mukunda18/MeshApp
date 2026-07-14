@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "com.minor.network"
+    namespace = "com.meshapp.network"
     compileSdk = 37
 
     defaultConfig {

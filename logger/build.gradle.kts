@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "com.minor.logger"
+    namespace = "com.meshapp.logger"
     compileSdk = 37
 
     defaultConfig {

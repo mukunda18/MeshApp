@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "com.minor.routing"
+    namespace = "com.meshapp.routing"
     compileSdk = 37
 
     defaultConfig {
@@ -33,6 +33,7 @@ dependencies {
     implementation(project(":model"))
     implementation(project(":packetProcessor"))
     implementation(project(":transport"))
+    implementation(project(":security"))
     implementation(project(":logger"))
 
     testImplementation(libs.junit)

@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "com.minor.packetprocessor"
+    namespace = "com.meshapp.packetprocessor"
     compileSdk {
         version = release(37)
     }

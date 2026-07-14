@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "com.minor.security"
+    namespace = "com.meshapp.security"
     compileSdk = 37
 
     defaultConfig {

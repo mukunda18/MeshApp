@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "com.minor.messaging"
+    namespace = "com.meshapp.messaging"
     compileSdk = 37
 
     defaultConfig {

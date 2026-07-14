@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "com.minor.model"
+    namespace = "com.meshapp.model"
     compileSdk = 37
 
     defaultConfig {

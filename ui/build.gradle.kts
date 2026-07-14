@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "com.minor.ui"
+    namespace = "com.meshapp.ui"
     compileSdk = 37
 
     defaultConfig {
@@ -42,6 +42,7 @@ dependencies {
     implementation(project(":routing"))
     implementation(project(":transport"))
     implementation(project(":logger"))
+    implementation(project(":security"))
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     testImplementation(libs.junit)
