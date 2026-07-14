@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "com.minor.meshcontrol"
+    namespace = "com.meshapp.meshcontrol"
     compileSdk = 37
 
     defaultConfig {
@@ -26,6 +26,7 @@ dependencies {
     implementation(project(":model"))
     implementation(project(":routing"))
     implementation(project(":transport"))
+    implementation(project(":security"))
     implementation(project(":logger"))
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.espresso.core)
