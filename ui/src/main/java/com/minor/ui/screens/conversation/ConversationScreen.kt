@@ -1,5 +1,8 @@
 package com.minor.ui.screens.conversation
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,9 +24,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AttachFile
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Done
-import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Icon
@@ -44,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -54,10 +55,15 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.minor.ui.state.ConversationMessageUiState
+import com.minor.ui.theme.MeshAccentBlue
+import com.minor.ui.theme.MeshBackground
+import com.minor.ui.theme.MeshBorder
 import com.minor.ui.theme.MeshGreen
+import com.minor.ui.theme.MeshHeader
 import com.minor.ui.theme.MeshMuted
+import com.minor.ui.theme.MeshSurface
+import com.minor.ui.theme.MeshTextPrimary
 import com.minor.ui.viewmodel.ConversationViewModel
-import com.minor.messaging.MessageDeliveryStatus
 
 @Composable
 fun ConversationScreen(
@@ -80,7 +86,7 @@ fun ConversationScreen(
     }
 
     Scaffold(
-        containerColor = ConversationBg,
+        containerColor = MeshBackground,
         topBar = {
             ConversationTopBar(
                 title = uiState.node.name.ifBlank { "Conversation" },
@@ -108,18 +114,18 @@ fun ConversationScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 16.dp, bottom = 8.dp),
+                    .padding(top = 20.dp, bottom = 12.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Surface(
                     shape = RoundedCornerShape(18.dp),
-                    color = Color(0xFF222529)
+                    color = MeshHeader
                 ) {
                     Text(
                         text = "Today",
-                        color = Color(0xFFD7D9DB),
-                        fontWeight = FontWeight.SemiBold,
-                        style = MaterialTheme.typography.labelMedium,
+                        color = MeshMuted,
+                        fontWeight = FontWeight.Medium,
+                        style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                     )
                 }
@@ -128,24 +134,18 @@ fun ConversationScreen(
             LazyColumn(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 16.dp),
+                    .padding(horizontal = 20.dp),
                 state = listState,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
                 items(uiState.messages, key = { it.id }) { message ->
                     ConversationBubble(message = message)
                 }
-                item { Spacer(modifier = Modifier.height(6.dp)) }
+                item { Spacer(modifier = Modifier.height(8.dp)) }
             }
         }
     }
 }
-
-private val ConversationBg = Color(0xFF0A0B0D)
-private val InboundBg = Color(0xFF1F2E44)
-private val InboundBorder = Color(0xFF334865)
-private val OutboundBg = Color(0xFF05543F)
-private val OutboundBorder = Color(0xFF0C6D50)
 
 @Composable
 private fun ConversationTopBar(
@@ -157,54 +157,53 @@ private fun ConversationTopBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(ConversationBg)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .background(MeshBackground)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(onClick = onBack) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = "Back",
-                tint = MeshGreen
+                tint = MeshTextPrimary
             )
         }
         Box(modifier = Modifier.padding(start = 4.dp)) {
             Box(
                 modifier = Modifier
-                    .size(64.dp)
+                    .size(56.dp)
                     .clip(CircleShape)
-                    .background(MeshGreen),
+                    .background(MeshHeader),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = initials,
-                    color = Color(0xFF052A12),
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold
+                    color = MeshTextPrimary,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .size(14.dp)
+                    .size(12.dp)
                     .clip(CircleShape)
                     .background(if (isOnline) MeshGreen else MeshMuted)
-                    .border(2.dp, ConversationBg, CircleShape)
+                    .border(2.dp, MeshBackground, CircleShape)
             )
         }
         Column(modifier = Modifier.padding(start = 16.dp)) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.headlineMedium,
-                color = Color(0xFFE6E9EA),
+                style = MaterialTheme.typography.titleLarge,
+                color = MeshTextPrimary,
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = if (isOnline) "ONLINE" else "OFFLINE",
-                color = if (isOnline) MeshGreen else MeshMuted,
-                style = MaterialTheme.typography.labelMedium,
-                letterSpacing = 1.sp,
-                fontWeight = FontWeight.Medium,
+                text = if (isOnline) "Online" else "Offline",
+                color = MeshMuted,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Normal,
                 modifier = Modifier.padding(top = 2.dp)
             )
         }
@@ -213,7 +212,7 @@ private fun ConversationTopBar(
             Icon(
                 imageVector = Icons.Filled.MoreVert,
                 contentDescription = "More",
-                tint = Color(0xFFB5BABE)
+                tint = MeshMuted
             )
         }
     }
@@ -222,8 +221,19 @@ private fun ConversationTopBar(
 @Composable
 private fun ConversationBubble(message: ConversationMessageUiState) {
     val alignment = if (message.isOutgoing) Alignment.End else Alignment.Start
-    val bubbleColor = if (message.isOutgoing) OutboundBg else InboundBg
-    val borderColor = if (message.isOutgoing) OutboundBorder else InboundBorder
+
+    // Asymmetric taper based on sender, no gradients
+    val bubbleShape: Shape = RoundedCornerShape(
+        topStart = 20.dp,
+        topEnd = 20.dp,
+        bottomStart = if (message.isOutgoing) 20.dp else 4.dp,
+        bottomEnd = if (message.isOutgoing) 4.dp else 20.dp
+    )
+
+    var statusVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(message.id) {
+        statusVisible = true
+    }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -231,62 +241,50 @@ private fun ConversationBubble(message: ConversationMessageUiState) {
     ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth(0.85f)
-                .clip(
-                    RoundedCornerShape(
-                        topStart = 22.dp,
-                        topEnd = 22.dp,
-                        bottomStart = if (message.isOutgoing) 22.dp else 6.dp,
-                        bottomEnd = if (message.isOutgoing) 6.dp else 22.dp
-                    )
+                .fillMaxWidth(0.82f)
+                .clip(bubbleShape)
+                .then(
+                    if (message.isOutgoing) {
+                        Modifier.background(MeshAccentBlue)
+                    } else {
+                        Modifier
+                            .background(MeshHeader.copy(alpha = 0.85f))
+                            .border(1.dp, MeshBorder, bubbleShape)
+                    }
                 )
-                .background(bubbleColor)
-                .border(
-                    width = 1.dp,
-                    color = borderColor,
-                    shape = RoundedCornerShape(
-                        topStart = 22.dp,
-                        topEnd = 22.dp,
-                        bottomStart = if (message.isOutgoing) 22.dp else 6.dp,
-                        bottomEnd = if (message.isOutgoing) 6.dp else 22.dp
-                    )
-                )
-                .padding(16.dp)
+                .padding(horizontal = 18.dp, vertical = 14.dp)
         ) {
             Text(
                 text = message.text,
-                color = Color(0xFFE4E7E9),
+                color = if (message.isOutgoing) Color.White else MeshTextPrimary,
                 style = MaterialTheme.typography.bodyLarge
             )
         }
 
         Row(
-            modifier = Modifier.padding(top = 6.dp, start = 8.dp, end = 8.dp),
+            modifier = Modifier.padding(top = 6.dp, start = 6.dp, end = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = message.timestamp,
-                color = Color(0xFFA9B0B4),
-                style = MaterialTheme.typography.bodySmall,
-                letterSpacing = 0.8.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(top = 2.dp)
+                color = MeshMuted,
+                style = MaterialTheme.typography.labelSmall,
+                letterSpacing = 0.4.sp,
+                fontWeight = FontWeight.Normal
             )
             if (message.isOutgoing) {
-                Spacer(modifier = Modifier.size(8.dp))
-                val icon = when (message.deliveryStatus) {
-                    MessageDeliveryStatus.QUEUED, MessageDeliveryStatus.SENT -> Icons.Filled.Done
-                    MessageDeliveryStatus.DELIVERED, MessageDeliveryStatus.READ -> Icons.Filled.DoneAll
-                    MessageDeliveryStatus.FAILED -> Icons.Filled.Close
-                    else -> Icons.Filled.Done
+                Spacer(modifier = Modifier.size(6.dp))
+                AnimatedVisibility(
+                    visible = statusVisible,
+                    enter = fadeIn(animationSpec = tween(durationMillis = 500))
+                ) {
+                    Text(
+                        text = message.deliveryStatusLabel ?: "Sent",
+                        color = MeshMuted,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Normal
+                    )
                 }
-                val iconColor = if (message.deliveryStatus == MessageDeliveryStatus.FAILED) Color.Red else MeshGreen
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = iconColor,
-                    modifier = Modifier.size(18.dp)
-                )
             }
         }
     }
@@ -301,15 +299,15 @@ private fun ConversationInputBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(ConversationBg)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .background(MeshBackground)
+            .padding(horizontal = 20.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
             Icon(
                 imageVector = Icons.Filled.AttachFile,
                 contentDescription = "Attach",
-                tint = Color(0xFFB8BDBF)
+                tint = MeshMuted
             )
         }
 
@@ -317,21 +315,21 @@ private fun ConversationInputBar(
             value = draftMessage,
             onValueChange = onDraftChange,
             modifier = Modifier.weight(1f),
-            shape = RoundedCornerShape(30.dp),
+            shape = RoundedCornerShape(24.dp),
             placeholder = {
                 Text(
-                    text = "Type a message...",
-                    color = Color(0xFF7F868A),
+                    text = "Type a message",
+                    color = MeshMuted,
                     style = MaterialTheme.typography.bodyLarge
                 )
             },
             colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = Color(0xFF07090A),
-                unfocusedContainerColor = Color(0xFF07090A),
-                focusedBorderColor = Color(0xFF304A42),
-                unfocusedBorderColor = Color(0xFF304A42),
-                focusedTextColor = Color(0xFFE1E4E6),
-                unfocusedTextColor = Color(0xFFE1E4E6)
+                focusedContainerColor = MeshSurface,
+                unfocusedContainerColor = MeshSurface,
+                focusedBorderColor = MeshAccentBlue,
+                unfocusedBorderColor = MeshBorder,
+                focusedTextColor = MeshTextPrimary,
+                unfocusedTextColor = MeshTextPrimary
             ),
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
@@ -341,16 +339,16 @@ private fun ConversationInputBar(
         Box(
             modifier = Modifier
                 .padding(start = 12.dp)
-                .size(56.dp)
+                .size(52.dp)
                 .clip(CircleShape)
-                .background(MeshGreen)
+                .background(MeshAccentBlue)
                 .clickable(onClick = onSend),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.Filled.Send,
                 contentDescription = "Send",
-                tint = Color(0xFF052A12)
+                tint = Color.White
             )
         }
     }

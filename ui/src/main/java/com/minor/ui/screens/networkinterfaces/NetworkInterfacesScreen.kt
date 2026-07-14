@@ -196,7 +196,7 @@ fun NetworkInterfacesScreen(
                     badgeColor = Color(0xFF8AD8C3),
                     icon = Icons.Filled.SignalWifi4Bar,
                     ip = apInterface?.localIp ?: uiState.interfaces.getOrNull(1)?.localIp.orEmpty().ifBlank { "--" },
-                    statusText = "Active",
+                    statusText = "Idle",
                     statusColor = Color(0xFF8AD8C3),
                     thirdLabel = "CLIENTS",
                     thirdValue = {

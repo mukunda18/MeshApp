@@ -1,6 +1,7 @@
 package com.minor.ui.screens.home
 
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -26,7 +27,7 @@ import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.PowerSettingsNew
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.ListAlt
+import androidx.compose.material.icons.outlined.Article
 import androidx.compose.material.icons.outlined.SettingsInputAntenna
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -45,6 +46,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
@@ -55,14 +58,21 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.minor.ui.components.ProfileAvatar
+import com.minor.ui.state.HomeUiState
+import com.minor.ui.theme.MeshAccentBlue
+import com.minor.ui.theme.MeshBackground
+import com.minor.ui.theme.MeshBorder
 import com.minor.ui.theme.MeshGreen
+import com.minor.ui.theme.MeshHeader
 import com.minor.ui.theme.MeshMuted
+import com.minor.ui.theme.MeshSurface
+import com.minor.ui.theme.MeshTextPrimary
 import com.minor.ui.viewmodel.HomeViewModel
 
-private val HomeBackground = Color(0xFF050706)
-private val TopBarBackground = Color(0xFF111314)
-private val HeroCenter = Color(0xFF1A1C1E)
-private val PrimaryCtaColor = Color(0xFF29DC67)
+private val HomeBackground = MeshBackground
+private val TopBarBackground = MeshHeader
+private val HeroCenter = MeshSurface
+private val PrimaryCtaColor = MeshGreen
 
 @Composable
 fun HomeScreen(
@@ -71,9 +81,33 @@ fun HomeScreen(
     onNavigateToNetworkInterfaces: () -> Unit,
     onNavigateToProfile: () -> Unit,
     onNavigateToAbout: () -> Unit,
-    onNavigateToLogs: () -> Unit
+    onNavigateToLogs: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    HomeScreenContent(
+        uiState = uiState,
+        onToggleMesh = { viewModel.toggleMesh() },
+        onRefreshNetwork = { viewModel.refreshNetworkInterfaces() },
+        onNavigateToNearbyNodes = onNavigateToNearbyNodes,
+        onNavigateToNetworkInterfaces = onNavigateToNetworkInterfaces,
+        onNavigateToProfile = onNavigateToProfile,
+        onNavigateToAbout = onNavigateToAbout,
+        onNavigateToLogs = onNavigateToLogs
+    )
+}
+
+@Composable
+fun HomeScreenContent(
+    uiState: HomeUiState,
+    onToggleMesh: () -> Unit,
+    onRefreshNetwork: () -> Unit,
+    onNavigateToNearbyNodes: () -> Unit,
+    onNavigateToNetworkInterfaces: () -> Unit,
+    onNavigateToProfile: () -> Unit,
+    onNavigateToAbout: () -> Unit,
+    onNavigateToLogs: () -> Unit = {}
+) {
     var menuExpanded by remember { mutableStateOf(false) }
 
     Box(
@@ -98,13 +132,13 @@ fun HomeScreen(
                 Text(
                     text = uiState.appName.replace(" ", ""),
                     style = MaterialTheme.typography.titleLarge,
-                    color = Color(0xFFF3F4F5),
+                    color = MeshTextPrimary,
                     fontWeight = FontWeight.ExtraBold
                 )
                 Spacer(modifier = Modifier.weight(1f))
                 Box {
                     IconButton(onClick = {
-                        viewModel.refreshNetworkInterfaces()
+                        onRefreshNetwork()
                         menuExpanded = true
                     }) {
                         ProfileAvatar(initials = uiState.profile.avatarInitials, size = 36.dp)
@@ -114,7 +148,8 @@ fun HomeScreen(
                         onDismissRequest = { menuExpanded = false },
                         modifier = Modifier
                             .width(220.dp)
-                            .background(Color(0xFF1E2123))
+                            .background(MeshHeader),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
                         DropdownMenuItem(
                             text = { Text("Device Profile") },
@@ -145,6 +180,20 @@ fun HomeScreen(
                             }
                         )
                         DropdownMenuItem(
+                            text = { Text("Logs") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Outlined.Article,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                onNavigateToLogs()
+                            }
+                        )
+                        DropdownMenuItem(
                             text = { Text("About") },
                             leadingIcon = {
                                 Icon(
@@ -158,20 +207,6 @@ fun HomeScreen(
                                 onNavigateToAbout()
                             }
                         )
-                        DropdownMenuItem(
-                            text = { Text("System Logs") },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Outlined.ListAlt,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            },
-                            onClick = {
-                                menuExpanded = false
-                                onNavigateToLogs()
-                            }
-                        )
                     }
                 }
             }
@@ -180,7 +215,7 @@ fun HomeScreen(
 
             MeshStatusOrb(
                 isMeshOn = uiState.isMeshOn,
-                onToggle = { viewModel.toggleMesh() }
+                onToggle = onToggleMesh
             )
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -207,7 +242,7 @@ fun HomeScreen(
             Text(
                 text = uiState.connectionStatus,
                 modifier = Modifier.padding(horizontal = 32.dp),
-                color = Color(0xFFCFD3D6),
+                color = MeshTextPrimary,
                 style = MaterialTheme.typography.bodyLarge,
                 textAlign = TextAlign.Center,
                 lineHeight = 24.sp
@@ -220,7 +255,7 @@ fun HomeScreen(
                 shape = RoundedCornerShape(30.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = PrimaryCtaColor,
-                    contentColor = Color(0xFF0D2B1A)
+                    contentColor = MeshBackground
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -241,8 +276,8 @@ fun HomeScreen(
                 text = if (uiState.isMeshOn) "Tap to disable mesh" else "Tap to enable mesh",
                 modifier = Modifier
                     .padding(top = 16.dp)
-                    .clickable { viewModel.toggleMesh() },
-                color = Color(0xFFB5B9BD),
+                    .clickable(onClick = onToggleMesh),
+                color = MeshMuted,
                 style = MaterialTheme.typography.bodyMedium,
                 letterSpacing = 0.8.sp
             )
@@ -250,7 +285,7 @@ fun HomeScreen(
             Icon(
                 imageVector = Icons.Outlined.PowerSettingsNew,
                 contentDescription = null,
-                tint = Color(0xFFB5B9BD),
+                tint = MeshMuted,
                 modifier = Modifier
                     .padding(top = 4.dp)
                     .size(18.dp)
@@ -265,40 +300,69 @@ private fun MeshStatusOrb(
     onToggle: () -> Unit
 ) {
     val transition = rememberInfiniteTransition(label = "mesh-rings")
-    val pulse by transition.animateFloat(
-        initialValue = 0.96f,
-        targetValue = 1.04f,
+
+    // Three rings scanning outward at staggered offsets
+    val ringOne by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2600, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 3000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "ring-one"
+    )
+    val ringTwo by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3000, easing = LinearEasing, delayMillis = 1000),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "ring-two"
+    )
+    val ringThree by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3000, easing = LinearEasing, delayMillis = 2000),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "ring-three"
+    )
+
+    val corePulse by transition.animateFloat(
+        initialValue = 0.97f,
+        targetValue = 1.03f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2200, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "mesh-pulse"
+        label = "core-pulse"
     )
+
+    val ringColor = if (isMeshOn) MeshGreen else MeshMuted
+    val minRadiusDp = 96.dp
+    val maxRadiusDp = 152.dp
 
     Box(
         modifier = Modifier
             .size(288.dp)
             .drawBehind {
-                val color = if (isMeshOn) MeshGreen else Color(0xFF596268)
                 val center = this.center
-                drawCircle(
-                    color = color.copy(alpha = 0.25f),
-                    radius = 112.dp.toPx() * pulse,
-                    center = center,
-                    style = Stroke(width = 1.4.dp.toPx())
-                )
-                drawCircle(
-                    color = color.copy(alpha = 0.18f),
-                    radius = 132.dp.toPx() * pulse,
-                    center = center,
-                    style = Stroke(width = 1.2.dp.toPx())
-                )
-                drawCircle(
-                    color = color.copy(alpha = 0.12f),
-                    radius = 152.dp.toPx() * pulse,
-                    center = center,
-                    style = Stroke(width = 1.dp.toPx())
-                )
+                val minRadius = minRadiusDp.toPx()
+                val maxRadius = maxRadiusDp.toPx()
+                val span = maxRadius - minRadius
+
+                listOf(ringOne, ringTwo, ringThree).forEach { progress ->
+                    val radius = minRadius + span * progress
+                    val alpha = (1f - progress) * 0.6f
+                    drawCircle(
+                        color = ringColor.copy(alpha = alpha),
+                        radius = radius,
+                        center = center,
+                        style = Stroke(width = 1.6.dp.toPx())
+                    )
+                }
             },
         contentAlignment = Alignment.Center
     ) {
@@ -309,15 +373,25 @@ private fun MeshStatusOrb(
                 .background(HeroCenter)
                 .border(
                     width = 3.dp,
-                    color = if (isMeshOn) MeshGreen else Color(0xFF6A757C),
+                    color = if (isMeshOn) MeshGreen else MeshBorder,
                     shape = CircleShape
                 )
-                .clickable(onClick = onToggle),
+                .clickable(onClick = onToggle)
+                .drawBehind {
+                    if (isMeshOn) {
+                        val inset = size.minDimension * 0.06f * (corePulse - 1f) * 10f
+                        drawCircle(
+                            color = MeshAccentBlue.copy(alpha = 0.18f),
+                            radius = (size.minDimension / 2f) - inset,
+                            center = this.center
+                        )
+                    }
+                },
             contentAlignment = Alignment.Center
         ) {
             MeshGlyph(
                 modifier = Modifier.size(110.dp),
-                color = if (isMeshOn) MeshGreen else Color(0xFF6A757C)
+                color = if (isMeshOn) MeshGreen else MeshMuted
             )
         }
     }
@@ -330,6 +404,8 @@ private fun MeshGlyph(
 ) {
     Box(
         modifier = modifier.drawBehind {
+            val lineColor = color
+            val dotColor = color
             val r = (size.width * 0.08f).coerceIn(2.dp.toPx(), 8.dp.toPx())
             val x1 = size.width * 0.22f
             val x2 = size.width * 0.5f
@@ -340,15 +416,15 @@ private fun MeshGlyph(
 
             val stroke = (size.width * 0.06f).coerceIn(1.8.dp.toPx(), 6.dp.toPx())
 
-            drawLine(color, start = androidx.compose.ui.geometry.Offset(x1, y1), end = androidx.compose.ui.geometry.Offset(x2, y2), strokeWidth = stroke)
-            drawLine(color, start = androidx.compose.ui.geometry.Offset(x2, y2), end = androidx.compose.ui.geometry.Offset(x3, y1), strokeWidth = stroke)
-            drawLine(color, start = androidx.compose.ui.geometry.Offset(x1, y3), end = androidx.compose.ui.geometry.Offset(x2, y2), strokeWidth = stroke)
-            drawLine(color, start = androidx.compose.ui.geometry.Offset(x2, y2), end = androidx.compose.ui.geometry.Offset(x3, y3), strokeWidth = stroke)
-            drawCircle(color, r, center = androidx.compose.ui.geometry.Offset(x1, y1))
-            drawCircle(color, r, center = androidx.compose.ui.geometry.Offset(x3, y1))
-            drawCircle(color, r, center = androidx.compose.ui.geometry.Offset(x2, y2))
-            drawCircle(color, r, center = androidx.compose.ui.geometry.Offset(x1, y3))
-            drawCircle(color, r, center = androidx.compose.ui.geometry.Offset(x3, y3))
+            drawLine(lineColor, start = Offset(x1, y1), end = Offset(x2, y2), strokeWidth = stroke)
+            drawLine(lineColor, start = Offset(x2, y2), end = Offset(x3, y1), strokeWidth = stroke)
+            drawLine(lineColor, start = Offset(x1, y3), end = Offset(x2, y2), strokeWidth = stroke)
+            drawLine(lineColor, start = Offset(x2, y2), end = Offset(x3, y3), strokeWidth = stroke)
+            drawCircle(dotColor, r, center = Offset(x1, y1))
+            drawCircle(dotColor, r, center = Offset(x3, y1))
+            drawCircle(dotColor, r, center = Offset(x2, y2))
+            drawCircle(dotColor, r, center = Offset(x1, y3))
+            drawCircle(dotColor, r, center = Offset(x3, y3))
         }
     )
 }
@@ -356,7 +432,10 @@ private fun MeshGlyph(
 @Preview(showBackground = true)
 @Composable
 fun HomeScreenPreview() {
-    HomeScreen(
+    HomeScreenContent(
+        uiState = HomeUiState(),
+        onToggleMesh = {},
+        onRefreshNetwork = {},
         onNavigateToNearbyNodes = {},
         onNavigateToNetworkInterfaces = {},
         onNavigateToProfile = {},
