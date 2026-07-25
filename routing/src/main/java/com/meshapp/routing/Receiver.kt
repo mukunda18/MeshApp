@@ -65,7 +65,12 @@ class Receiver(
 
             // 3. Discard stale packets
             if (now - h.originTimestamp.millis > freshnessWindowMs) {
-                MeshLogger.packetReceived("Receiver", "Dropped stale packet ${h.id}", "From: ${h.sourceNodeId}, Age: ${now - h.originTimestamp.millis}ms")
+                MeshLogger.packetReceived("Receiver", "Dropped stale packet ${h.id}", "From: ${h.sourceNodeId}, Age: ${now - h.originTimestamp.millis}ms, Window: ${freshnessWindowMs}ms")
+                return
+            }
+            // Future slack for clock skew
+            if (h.originTimestamp.millis - now > 30000) {
+                MeshLogger.packetReceived("Receiver", "Dropped future packet ${h.id}", "From: ${h.sourceNodeId}, Diff: ${h.originTimestamp.millis - now}ms")
                 return
             }
 
@@ -76,7 +81,7 @@ class Receiver(
                 return
             }
             
-            MeshLogger.packetReceived("Receiver", "Received ${h.type} packet ${h.id}", "From IP: $senderIp, Source: ${h.sourceNodeId}")
+            MeshLogger.packetReceived("Receiver", "Received type ${h.type} packet ${h.id}", "From IP: $senderIp, Source: ${h.sourceNodeId}")
         
             when (h.type) {
                 HeaderProtocol.Type.HELLO -> handleHello(packet)
@@ -85,6 +90,7 @@ class Receiver(
                 HeaderProtocol.Type.RREP -> handleRrep(packet)
                 HeaderProtocol.Type.ACK -> handleAck(packet)
                 HeaderProtocol.Type.RERR -> handleRerr(packet)
+                else -> MeshLogger.error("Receiver", "Unknown packet type ${h.type}", "ID: ${h.id}")
             }
         } catch (e: Exception) {
             // Generic catch-all to prevent a malformed or malicious packet from crashing
@@ -131,27 +137,28 @@ class Receiver(
                 }
                 val message = result.value as? Payload.Message ?: return
                 
-                MeshLogger.info("Receiver", "Accepted MESSAGE $msgId", "Source: ${packet.header.sourceNodeId}")
+                MeshLogger.messageReceived("Receiver", "Accepted MESSAGE $msgId", "Source: ${packet.header.sourceNodeId}")
                 incomingPayloadChannel.trySend(packet.header.sourceNodeId to message)
                 sender.sendAck(msgId, h.sourceNodeId, 0x00)
                 return
             }
             
             if (h.hopcount >= h.ttl) {
-                MeshLogger.info("Receiver", "Discarded MESSAGE $msgId: TTL expired", "Hopcount: ${h.hopcount}, TTL: ${h.ttl}")
+                MeshLogger.messageDropped("Receiver", "Discarded MESSAGE $msgId: TTL expired", "Hopcount: ${h.hopcount}, TTL: ${h.ttl}")
                 return
             }
             
             val nextHop = router.lookup(h.destNodeId) ?: run {
-                MeshLogger.info("Receiver", "Discarded MESSAGE $msgId: No route to ${h.destNodeId}")
+                MeshLogger.messageDropped("Receiver", "Discarded MESSAGE $msgId: No route to ${h.destNodeId}")
                 // Reactive RERR: Inform the source (and others) that this destination is unreachable
                 sender.broadcastRerr(listOf(h.destNodeId))
                 return
             }
             val nextIp = peers.resolveIp(nextHop) ?: run {
-                MeshLogger.info("Receiver", "Discarded MESSAGE $msgId: Peer $nextHop offline")
+                MeshLogger.messageDropped("Receiver", "Discarded MESSAGE $msgId: Peer $nextHop offline")
                 return
             }
+            MeshLogger.packetSent("Receiver", "Forwarding MESSAGE $msgId", "To: ${h.destNodeId} via $nextIp")
             sender.forwardTcp(rebuildWithHop(packet, h.hopcount + 1), nextIp)
         } catch (e: Exception) {
             MeshLogger.error("Receiver", "Error handling MESSAGE", e.toString())
@@ -174,12 +181,14 @@ class Receiver(
                 // RREP destination is the RREQ originator (h.sourceNodeId)
                 // The immediate next hop back is the guy who just sent us the RREQ
                 val upstreamIp = peers.resolveIp(h.immediateSenderNodeId) ?: return
+                MeshLogger.packetSent("Receiver", "Sending RREP for RREQ $rreqId", "To: $upstreamIp")
                 sender.sendRrep(rreqId, h.sourceNodeId, upstreamIp)
             } else {
                 if (h.hopcount >= h.ttl) {
-                    MeshLogger.info("Receiver", "Discarded RREQ $rreqId: TTL expired")
+                    MeshLogger.messageDropped("Receiver", "Discarded RREQ $rreqId: TTL expired", "")
                     return
                 }
+                MeshLogger.packetSent("Receiver", "Forwarding RREQ $rreqId", "Broadcast")
                 sender.forwardUdpBroadcast(rebuildWithHop(packet, h.hopcount + 1))
             }
         } catch (e: Exception) {
@@ -195,22 +204,26 @@ class Receiver(
 
             nodesStore.addOrUpdateNode(h.sourceNodeId, rrep.name, rrep.publicKey)
 
-            if (h.destNodeId.bytes.contentEquals(selfNodeId.bytes)) return
+            if (h.destNodeId.bytes.contentEquals(selfNodeId.bytes)) {
+                MeshLogger.info("Receiver", "Accepted RREP ${h.id}", "Source: ${h.sourceNodeId}")
+                return
+            }
             
             if (h.hopcount >= h.ttl) {
-                MeshLogger.info("Receiver", "Discarded RREP ${h.id}: TTL expired")
+                MeshLogger.messageDropped("Receiver", "Discarded RREP ${h.id}: TTL expired", "")
                 return
             }
 
             // Forward toward the RREQ originator using our learned routes
             val nextHop = router.lookup(h.destNodeId) ?: run {
-                MeshLogger.info("Receiver", "Discarded RREP ${h.id}: No route back to ${h.destNodeId}")
+                MeshLogger.messageDropped("Receiver", "Discarded RREP ${h.id}: No route back to ${h.destNodeId}", "")
                 return
             }
             val nextIp = peers.resolveIp(nextHop) ?: run {
-                MeshLogger.info("Receiver", "Discarded RREP ${h.id}: Next hop $nextHop offline")
+                MeshLogger.messageDropped("Receiver", "Discarded RREP ${h.id}: Next hop $nextHop offline", "")
                 return
             }
+            MeshLogger.packetSent("Receiver", "Forwarding RREP ${h.id}", "To: ${h.destNodeId} via $nextIp")
             sender.forwardTcp(rebuildWithHop(packet, h.hopcount + 1), nextIp)
         } catch (e: Exception) {
             MeshLogger.error("Receiver", "Error handling RREP", e.toString())
@@ -279,24 +292,28 @@ class Receiver(
                 ) ?: true
 
                 if (valid && ack.status == 0x00) {
+                    MeshLogger.info("Receiver", "Received ACK for ${packet.header.id}", "From: ${packet.header.sourceNodeId}")
                     sender.onAckReceived(packet.header.id)
+                } else if (!valid) {
+                    MeshLogger.error("Receiver", "Invalid ACK signature", "ID: ${packet.header.id}")
                 }
                 return
             }
 
             if (h.hopcount >= h.ttl) {
-                MeshLogger.info("Receiver", "Discarded ACK ${h.id}: TTL expired")
+                MeshLogger.messageDropped("Receiver", "Discarded ACK ${h.id}: TTL expired", "")
                 return
             }
 
             val nextHop = router.lookup(h.destNodeId) ?: run {
-                MeshLogger.info("Receiver", "Discarded ACK ${h.id}: No route to ${h.destNodeId}")
+                MeshLogger.messageDropped("Receiver", "Discarded ACK ${h.id}: No route to ${h.destNodeId}", "")
                 return
             }
             val nextIp = peers.resolveIp(nextHop) ?: run {
-                MeshLogger.info("Receiver", "Discarded ACK ${h.id}: Peer $nextHop offline")
+                MeshLogger.messageDropped("Receiver", "Discarded ACK ${h.id}: Peer $nextHop offline", "")
                 return
             }
+            MeshLogger.packetSent("Receiver", "Forwarding ACK ${h.id}", "To: ${h.destNodeId} via $nextIp")
             sender.forwardTcp(rebuildWithHop(packet, h.hopcount + 1), nextIp)
         } catch (e: Exception) {
             MeshLogger.error("Receiver", "Error handling ACK", e.toString())
@@ -311,7 +328,10 @@ class Receiver(
                 router.lookup(it)?.bytes?.contentEquals(packet.header.sourceNodeId.bytes) == true
             }
             affected.forEach { router.invalidate(it) }
-            if (affected.isNotEmpty()) sender.broadcastRerr(affected)
+            if (affected.isNotEmpty()) {
+                MeshLogger.packetSent("Receiver", "Forwarding RERR", "Affected: ${affected.size}")
+                sender.broadcastRerr(affected)
+            }
         } catch (e: Exception) {
             MeshLogger.error("Receiver", "Error handling RERR", e.toString())
         }
