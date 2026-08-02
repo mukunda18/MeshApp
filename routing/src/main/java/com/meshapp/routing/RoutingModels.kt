@@ -20,6 +20,12 @@ data class RouteInfo(
     val valid: Boolean = true
 )
 
+/** Emitted whenever the routing table is modified */
+sealed class RouteEvent {
+    data class Updated(val route: RouteInfo) : RouteEvent()
+    data class Invalidated(val nodeId: NodeId) : RouteEvent()
+}
+
 /** Emitted whenever the peer table changes so upper layers can observe neighbour status */
 sealed class PeerEvent {
     data class Added(val peer: Peer) : PeerEvent()

@@ -1,5 +1,7 @@
 package com.meshapp.ui.viewmodel
 
+import kotlinx.coroutines.flow.StateFlow
+
 /**
  * Abstraction over the platform mesh lifecycle (the foreground service).
  *
@@ -12,4 +14,13 @@ interface MeshController {
 
     /** Turn the mesh OFF: stop the foreground service and remove its notification. */
     fun stop()
+
+    /** Start voice call simulation in the foreground service. */
+    fun startVoiceSim()
+
+    /** Stop voice call simulation. */
+    fun stopVoiceSim()
+
+    /** Observable state of the voice simulation. */
+    val isVoiceSimActive: StateFlow<Boolean>
 }

@@ -5,6 +5,9 @@ import com.meshapp.logger.MeshLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.milliseconds
@@ -16,6 +19,9 @@ import kotlin.time.Duration.Companion.milliseconds
 class Router {
 
     private val table = ConcurrentHashMap<NodeId, RouteInfo>()
+
+    private val _routeEvents = MutableSharedFlow<RouteEvent>(extraBufferCapacity = 64)
+    val routeEvents: SharedFlow<RouteEvent> = _routeEvents.asSharedFlow()
 
     /** Returns the next hop NodeId for a destination or null when no valid route exists */
     fun lookup(destinationNodeId: NodeId): NodeId? {
@@ -38,7 +44,11 @@ class Router {
 
         if (isBetter) {
             val old = table[destinationNodeId]
-            table[destinationNodeId] = RouteInfo(destinationNodeId, nextHopNodeId, hopCount, routeTimestamp)
+            val newRoute = RouteInfo(destinationNodeId, nextHopNodeId, hopCount, routeTimestamp)
+            table[destinationNodeId] = newRoute
+            
+            _routeEvents.tryEmit(RouteEvent.Updated(newRoute))
+
             if (old == null) {
                 MeshLogger.info("Router", "New route to $destinationNodeId via $nextHopNodeId", "Hops: $hopCount")
             } else if (old.nextHopNodeId != nextHopNodeId || old.hopCount != hopCount) {
@@ -53,6 +63,7 @@ class Router {
             if (it.valid) {
                 MeshLogger.info("Router", "Invalidated route to $destinationNodeId")
                 table[destinationNodeId] = it.copy(valid = false)
+                _routeEvents.tryEmit(RouteEvent.Invalidated(destinationNodeId))
             }
         }
     }
@@ -64,6 +75,7 @@ class Router {
             if (info.valid && info.nextHopNodeId == nextHopNodeId) {
                 table[nodeId] = info.copy(valid = false)
                 affected.add(info.destinationNodeId)
+                _routeEvents.tryEmit(RouteEvent.Invalidated(nodeId))
             }
         }
         return affected

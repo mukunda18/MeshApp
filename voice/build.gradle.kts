@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "com.meshapp.meshcontrol"
+    namespace = "com.meshapp.voice"
     compileSdk = 37
 
     defaultConfig {
@@ -19,16 +19,15 @@ android {
 }
 
 dependencies {
+    implementation(project(":model"))
+    implementation(project(":logger"))
+    implementation(project(":messaging"))
+    implementation(project(":meshControl"))
+    implementation(project(":routing"))
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.core.ktx)
-    implementation(libs.kotlinx.coroutines.android)
     implementation(libs.material)
-    implementation(project(":model"))
-    implementation(project(":routing"))
-    implementation(project(":transport"))
-    implementation(project(":security"))
-    implementation(project(":logger"))
-    implementation(project(":packetProcessor"))
+    implementation(libs.kotlinx.coroutines.android)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)

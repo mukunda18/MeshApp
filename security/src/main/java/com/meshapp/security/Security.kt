@@ -22,7 +22,6 @@ class Security(
     private val freshnessWindowMs: Long = 30_000L
 ) : PacketSigner, PacketVerifier {
     private val keyFactory = KeyFactory.getInstance("EC")
-    private val keyAgreement = KeyAgreement.getInstance("ECDH")
     private val secureRandom = SecureRandom()
 
     /**
@@ -30,7 +29,8 @@ class Security(
      * Layout: [ Version(1) | SenderNodeId(32) | EphemeralPubKey(91) | Nonce(12) | CiphertextLen(4) | Ciphertext(var) | Signature(64) ]
      */
     fun encode(
-        plaintext: String,
+        payload: ByteArray,
+        contentType: Int,
         recipientNodeID: NodeId,
         messageID: MessageId,
         timestamp: Timestamp = Timestamp(System.currentTimeMillis())
@@ -45,12 +45,13 @@ class Security(
         val recipientPubKey = keyFactory.generatePublic(X509EncodedKeySpec(recipientPubKeyBytes.bytes))
 
         // 2. Generate ephemeral ECDH keypair
-        val ephemeralKeyPairGen = java.security.KeyPairGenerator.getInstance("EC").apply {
+        val ephemeralKeyPair = java.security.KeyPairGenerator.getInstance("EC").apply {
             initialize(256)  // NIST P-256
-        }
-        val ephemeralKeyPair = ephemeralKeyPairGen.generateKeyPair()
+        }.generateKeyPair()
 
         // 3. Derive shared secret via ECDH using ephemeral private key
+        // KeyAgreement is not thread-safe and must not be shared across operations.
+        val keyAgreement = KeyAgreement.getInstance("ECDH")
         keyAgreement.init(ephemeralKeyPair.private)
         keyAgreement.doPhase(recipientPubKey, true)
         val sharedSecret = keyAgreement.generateSecret()
@@ -60,16 +61,17 @@ class Security(
         val aesKey = SecretKeySpec(derivedKey, 0, 32, "AES")
 
         // 5. Create Inner Plaintext Block
-        val contentBytes = plaintext.encodeToByteArray()
         val innerBlockSize = MessageProtocol.MESSAGE_ID_LENGTH + 
                           MessageProtocol.TIMESTAMP_LENGTH + 
-                          MessageProtocol.CONTENT_LEN_LENGTH + contentBytes.size
+                          MessageProtocol.CONTENT_TYPE_LENGTH +
+                          MessageProtocol.CONTENT_LEN_LENGTH + payload.size
         val innerBlock = ByteArray(innerBlockSize)
         
         var innerOffset = 0
         innerOffset += MessageProtocol.messageId.write(innerBlock, messageID, innerOffset)
         innerOffset += MessageProtocol.timestamp.write(innerBlock, timestamp, innerOffset)
-        MessageProtocol.content.write(innerBlock, plaintext, innerOffset)
+        innerOffset += MessageProtocol.contentType.write(innerBlock, contentType, innerOffset)
+        MessageProtocol.content.write(innerBlock, payload, innerOffset)
 
         // 6. Generate nonce (12 bytes for AES-GCM)
         val nonce = ByteArray(12)
@@ -170,6 +172,8 @@ class Security(
         val ephemeralPubKey = keyFactory.generatePublic(X509EncodedKeySpec(ephemeralPubKeyRead.value))
 
         // 4. Derive shared secret via ECDH
+        // KeyAgreement is not thread-safe and must not be shared across operations.
+        val keyAgreement = KeyAgreement.getInstance("ECDH")
         keyAgreement.init(identity.privateKeyObj)
         keyAgreement.doPhase(ephemeralPubKey, true)
         val sharedSecret = keyAgreement.generateSecret()
@@ -191,6 +195,8 @@ class Security(
         innerCursor += msgIdRead.bytesRead
         val timestampRead = MessageProtocol.timestamp.read(decrypted, innerCursor)
         innerCursor += timestampRead.bytesRead
+        val contentTypeRead = MessageProtocol.contentType.read(decrypted, innerCursor)
+        innerCursor += contentTypeRead.bytesRead
         val contentRead = MessageProtocol.content.read(decrypted, innerCursor)
         
         if (System.currentTimeMillis() - timestampRead.value.millis > freshnessWindowMs) {
@@ -203,6 +209,7 @@ class Security(
             senderNodeId = senderNodeIdRead.value,
             messageId = msgIdRead.value,
             timestamp = timestampRead.value,
+            contentType = contentTypeRead.value,
             content = contentRead.value
         )
     }
@@ -248,24 +255,42 @@ class Security(
     private fun derToP1363(der: ByteArray): ByteArray {
         val result = ByteArray(64)
         var offset = 0
-        if (der[offset++] != 0x30.toByte()) throw IllegalArgumentException("Invalid DER")
-        val totalLen = der[offset++].toInt() and 0xFF
-        
+        if (der[offset++] != 0x30.toByte()) throw IllegalArgumentException("Invalid DER: missing SEQUENCE header")
+
+        // Skip total length byte(s); DER length may be short or long form.
+        val firstLenByte = der[offset++].toInt() and 0xFF
+        if (firstLenByte and 0x80 != 0) {
+            val numLenBytes = firstLenByte and 0x7F
+            if (numLenBytes < 1 || numLenBytes > 2) {
+                throw IllegalArgumentException("Invalid DER: unsupported length encoding")
+            }
+            var remaining = 0
+            repeat(numLenBytes) { remaining = (remaining shl 8) or (der[offset++].toInt() and 0xFF) }
+        }
+
         // R
-        if (der[offset++] != 0x02.toByte()) throw IllegalArgumentException("Invalid DER R")
+        if (der[offset++] != 0x02.toByte()) throw IllegalArgumentException("Invalid DER: missing INTEGER R")
         val rLen = der[offset++].toInt() and 0xFF
+        if (rLen == 0 || offset + rLen > der.size) {
+            throw IllegalArgumentException("Invalid DER: R length out of bounds")
+        }
         val rStart = if (der[offset] == 0.toByte() && rLen > 32) offset + 1 else offset
-        val rCopyLen = if (rLen > 32) 32 else rLen
+        val rCopyLen = (rLen - (rStart - offset)).coerceAtMost(32)
         der.copyInto(result, 32 - rCopyLen, rStart, rStart + rCopyLen)
         offset += rLen
-        
+
         // S
-        if (der[offset++] != 0x02.toByte()) throw IllegalArgumentException("Invalid DER S")
+        if (offset >= der.size || der[offset++] != 0x02.toByte()) {
+            throw IllegalArgumentException("Invalid DER: missing INTEGER S")
+        }
         val sLen = der[offset++].toInt() and 0xFF
+        if (sLen == 0 || offset + sLen > der.size) {
+            throw IllegalArgumentException("Invalid DER: S length out of bounds")
+        }
         val sStart = if (der[offset] == 0.toByte() && sLen > 32) offset + 1 else offset
-        val sCopyLen = if (sLen > 32) 32 else sLen
+        val sCopyLen = (sLen - (sStart - offset)).coerceAtMost(32)
         der.copyInto(result, 64 - sCopyLen, sStart, sStart + sCopyLen)
-        
+
         return result
     }
 
@@ -291,5 +316,27 @@ data class DecodedContent(
     val senderNodeId: NodeId,
     val messageId: MessageId,
     val timestamp: Timestamp,
-    val content: String
-)
+    val contentType: Int,
+    val content: ByteArray
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+        other as DecodedContent
+        if (senderNodeId != other.senderNodeId) return false
+        if (messageId != other.messageId) return false
+        if (timestamp != other.timestamp) return false
+        if (contentType != other.contentType) return false
+        if (!content.contentEquals(other.content)) return false
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = senderNodeId.hashCode()
+        result = 31 * result + messageId.hashCode()
+        result = 31 * result + timestamp.hashCode()
+        result = 31 * result + contentType
+        result = 31 * result + content.contentHashCode()
+        return result
+    }
+}

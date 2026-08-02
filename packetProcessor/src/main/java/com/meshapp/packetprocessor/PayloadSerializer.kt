@@ -17,6 +17,7 @@ object PayloadSerializer {
             is Payload.RREQ -> serializeRreq(payload, buffer, offset)
             is Payload.RREP -> serializeRrep(payload, buffer, offset)
             is Payload.RERR -> serializeRerr(payload, buffer, offset)
+            is Payload.Voice -> serializeVoice(payload, buffer, offset)
         }
     }
 
@@ -63,5 +64,9 @@ object PayloadSerializer {
 
     private fun serializeRerr(payload: Payload.RERR, buffer: ByteArray, offset: Int): Int {
         return RERRProtocol.destinations.write(buffer, payload.destinations, offset)
+    }
+
+    private fun serializeVoice(payload: Payload.Voice, buffer: ByteArray, offset: Int): Int {
+        return com.meshapp.model.VoicePacketProtocol.voicePacket.write(buffer, payload.packet, offset)
     }
 }

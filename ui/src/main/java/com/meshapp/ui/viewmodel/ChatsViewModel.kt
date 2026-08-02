@@ -10,6 +10,8 @@ import com.meshapp.messaging.MessagingService
 import com.meshapp.security.KnownNode
 import com.meshapp.security.NodesStore
 import com.meshapp.routing.PeerEvent
+import com.meshapp.model.NodeId
+import com.meshapp.voice.VoiceCallManager
 import com.meshapp.ui.state.NodeCardState
 import java.time.Instant
 import java.time.ZoneId
@@ -21,11 +23,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 class ChatsViewModel(
     private val messagingService: MessagingService,
     private val meshService: MeshService,
-    private val nodesStore: NodesStore
+    private val nodesStore: NodesStore,
+    private val voiceCallManager: VoiceCallManager,
+    private val ownNodeId: NodeId
 ) : ViewModel() {
     private val _peerMap = MutableStateFlow<Map<String, PeerState>>(emptyMap())
 
@@ -68,7 +73,7 @@ class ChatsViewModel(
         // Periodic route refresh (routes change without peer events, e.g. RREP received)
         viewModelScope.launch {
             while (true) {
-                delay(5_000)
+                delay(5_000.milliseconds)
                 refreshFromRouting()
             }
         }
@@ -82,50 +87,57 @@ class ChatsViewModel(
                 messagingService.conversationsStream
             ) { knownNodes, peerMap, routeNodeIds, conversations ->
                 val convByNodeId = conversations.associateBy { it.nodeID.toString() }
-                val onlineIds = peerMap.keys + routeNodeIds
+                val onlineIds = (peerMap.keys + routeNodeIds)
+                    .filter { it != ownNodeId.toString() }
 
                 val seenNodeIds = mutableSetOf<String>()
+                seenNodeIds.add(ownNodeId.toString())
+
                 val nodes = mutableListOf<NodeCardState>()
 
                 // 1. All nodes in NodesStore (have real names)
-                knownNodes.forEach { node ->
-                    val nodeId = node.nodeId.toString()
-                    seenNodeIds.add(nodeId)
-                    val conv = convByNodeId[nodeId]
-                    val name = node.name.ifBlank { shortId(nodeId) }
-                    nodes += NodeCardState(
-                        id = nodeId,
-                        name = name,
-                        isOnline = nodeId in onlineIds,
-                        avatarInitials = initialsFrom(name),
-                        lastMessagePreview = conv?.lastMessage?.plaintextContent,
-                        lastMessageTimestamp = conv?.lastMessage?.let(::formatTime),
-                        unreadCount = conv?.unreadCount ?: 0,
-                        isPinned = false
-                    )
-                }
+                knownNodes
+                    .filter { it.nodeId.toString() != ownNodeId.toString() }
+                    .forEach { node ->
+                        val nodeId = node.nodeId.toString()
+                        if (seenNodeIds.add(nodeId)) {
+                            val conv = convByNodeId[nodeId]
+                            val name = node.name.ifBlank { shortId(nodeId) }
+                            nodes += NodeCardState(
+                                id = nodeId,
+                                name = name,
+                                isOnline = nodeId in onlineIds,
+                                avatarInitials = initialsFrom(name),
+                                lastMessagePreview = conv?.lastMessage?.plaintextContent,
+                                lastMessageTimestamp = conv?.lastMessage?.let(::formatTime),
+                                unreadCount = conv?.unreadCount ?: 0,
+                                isPinned = false
+                            )
+                        }
+                    }
 
                 // 2. Route-only nodes: have a route but are NOT in NodesStore (no name/key)
-                routeNodeIds.forEach { nodeId ->
-                    if (nodeId !in seenNodeIds) {
-                        seenNodeIds.add(nodeId)
-                        val conv = convByNodeId[nodeId]
-                        nodes += NodeCardState(
-                            id = nodeId,
-                            name = shortId(nodeId),
-                            isOnline = true,
-                            avatarInitials = initialsFrom(shortId(nodeId)),
-                            lastMessagePreview = conv?.lastMessage?.plaintextContent,
-                            lastMessageTimestamp = conv?.lastMessage?.let(::formatTime),
-                            unreadCount = conv?.unreadCount ?: 0,
-                            isPinned = false
-                        )
+                routeNodeIds
+                    .filter { it != ownNodeId.toString() }
+                    .forEach { nodeId ->
+                        if (seenNodeIds.add(nodeId)) {
+                            val conv = convByNodeId[nodeId]
+                            nodes += NodeCardState(
+                                id = nodeId,
+                                name = shortId(nodeId),
+                                isOnline = true,
+                                avatarInitials = initialsFrom(shortId(nodeId)),
+                                lastMessagePreview = conv?.lastMessage?.plaintextContent,
+                                lastMessageTimestamp = conv?.lastMessage?.let(::formatTime),
+                                unreadCount = conv?.unreadCount ?: 0,
+                                isPinned = false
+                            )
+                        }
                     }
-                }
 
                 // 3. Orphan conversations: message history but not in NodesStore or route table
                 convByNodeId.forEach { (nodeId, conv) ->
-                    if (nodeId !in seenNodeIds) {
+                    if (seenNodeIds.add(nodeId)) {
                         nodes += NodeCardState(
                             id = nodeId,
                             name = shortId(nodeId),
@@ -146,6 +158,19 @@ class ChatsViewModel(
                 _uiState.value = ChatsUiState(nodes = nodes)
             }
         }
+    }
+
+    fun dial(nodeId: String) {
+        val parsedNodeId = parseNodeId(nodeId) ?: return
+        voiceCallManager.dial(parsedNodeId)
+    }
+
+    private fun parseNodeId(value: String): NodeId? {
+        if (value.length != 64) return null
+        return runCatching {
+            val bytes = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            NodeId(bytes)
+        }.getOrNull()
     }
 
     private fun refreshFromRouting() {

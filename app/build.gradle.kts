@@ -47,6 +47,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(project(":ui"))
+    implementation(project(":voice"))
     implementation(project(":transport"))
     implementation(project(":meshControl"))
     implementation(project(":messaging"))

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -156,7 +158,11 @@ fun NearbyNodesScreen(
                 }
 
                 items(uiState.connectedNodes, key = { it.nodeId }) { node ->
-                    NearbyNodeCard(node = node, onClick = { onNodeClick(node.nodeId) })
+                    NearbyNodeCard(
+                        node = node, 
+                        onClick = { onNodeClick(node.nodeId) },
+                        onCall = { viewModel.dial(node.nodeId) }
+                    )
                 }
 
                 item {
@@ -187,7 +193,7 @@ fun NearbyNodesScreen(
 }
 
 @Composable
-private fun NearbyNodeCard(node: HomeNodeUiState, onClick: () -> Unit) {
+private fun NearbyNodeCard(node: HomeNodeUiState, onClick: () -> Unit, onCall: () -> Unit) {
     SurfaceCard(
         modifier = Modifier
             .fillMaxWidth()
@@ -236,6 +242,22 @@ private fun NearbyNodeCard(node: HomeNodeUiState, onClick: () -> Unit) {
 
             Column(horizontalAlignment = Alignment.End) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (node.isOnline) {
+                        IconButton(
+                            onClick = onCall,
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(Color(0xFF1E2123), CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Call,
+                                contentDescription = "Call",
+                                tint = MeshGreen,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                    }
                     Box(
                         modifier = Modifier
                             .size(10.dp)

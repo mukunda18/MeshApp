@@ -73,6 +73,7 @@ object HeaderProtocol {
         const val RREP = 0x04
         const val ACK = 0x05
         const val RERR = 0x06
+        const val VOICE = 0x07
         override fun read(data: ByteArray, baseOffset: Int): ReadWithLength<Int> =
             ReadWithLength(readU8(data, baseOffset + TYPE_OFFSET), TYPE_LENGTH)
 

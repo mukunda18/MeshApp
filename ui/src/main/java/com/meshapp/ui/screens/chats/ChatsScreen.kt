@@ -25,8 +25,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -105,7 +107,8 @@ fun ChatsScreen(viewModel: ChatsViewModel = viewModel(), onNodeClick: (NodeCardS
                     items(uiState.nodes) { node ->
                         ChatListItem(
                             node = node,
-                            onClick = { onNodeClick(node) }
+                            onClick = { onNodeClick(node) },
+                            onCall = { viewModel.dial(node.id) }
                         )
                     }
 
@@ -189,7 +192,7 @@ private fun ChatsTopBar() {
 }
 
 @Composable
-private fun ChatListItem(node: NodeCardState, onClick: () -> Unit) {
+private fun ChatListItem(node: NodeCardState, onClick: () -> Unit, onCall: () -> Unit) {
     val transition = rememberInfiniteTransition(label = "unread-glow")
     val glowPulse by transition.animateFloat(
         initialValue = 0.25f,
@@ -224,6 +227,17 @@ private fun ChatListItem(node: NodeCardState, onClick: () -> Unit) {
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
+            
+            if (node.isOnline) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(12.dp)
+                        .clip(CircleShape)
+                        .background(MeshGreen)
+                        .border(2.dp, Color(0xFF0E1012), CircleShape)
+                )
+            }
         }
 
         Spacer(modifier = Modifier.width(12.dp))
@@ -289,6 +303,23 @@ private fun ChatListItem(node: NodeCardState, onClick: () -> Unit) {
                         )
                     }
                 }
+            }
+        }
+
+        if (node.isOnline) {
+            IconButton(
+                onClick = onCall,
+                modifier = Modifier
+                    .padding(start = 8.dp)
+                    .size(44.dp)
+                    .background(Color(0xFF1E2123), CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Call,
+                    contentDescription = "Call",
+                    tint = MeshGreen,
+                    modifier = Modifier.size(22.dp)
+                )
             }
         }
     }

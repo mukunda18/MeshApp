@@ -4,11 +4,13 @@ import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.meshapp.meshcontrol.MeshService
+import com.meshapp.voice.VoiceCallManager
 
 class HomeViewModelFactory(
     private val application: Application,
     private val meshService: MeshService,
     private val meshController: MeshController,
+    private val voiceCallManager: VoiceCallManager,
     private val appName: String,
     private val deviceName: String,
     private val nodeId: String
@@ -21,6 +23,7 @@ class HomeViewModelFactory(
                 application = application,
                 meshService = meshService,
                 meshController = meshController,
+                voiceCallManager = voiceCallManager,
                 appName = appName,
                 deviceName = deviceName,
                 nodeId = nodeId

@@ -12,6 +12,7 @@ import com.meshapp.logger.MeshLogger
 import com.meshapp.model.RREPProtocol
 import com.meshapp.model.RREQProtocol
 import com.meshapp.model.RERRProtocol
+import com.meshapp.model.VoicePacketProtocol
 
 object PayloadParser {
     fun parse(packet: Packet): ParseResult<Payload> = parse(packet.header.type, packet.payload)
@@ -23,6 +24,7 @@ object PayloadParser {
         HeaderProtocol.Type.RREP -> parseRrep(data)
         HeaderProtocol.Type.ACK -> parseAck(data)
         HeaderProtocol.Type.RERR -> parseRerr(data)
+        HeaderProtocol.Type.VOICE -> parseVoice(data)
         else -> {
             val error = ParseError.UnsupportedType(type)
             MeshLogger.error("PayloadParser", "Unsupported payload type: $type")
@@ -197,6 +199,22 @@ object PayloadParser {
         } catch (e: IndexOutOfBoundsException) {
             val error = ParseError.TooShort(data.size, data.size + 1)
             MeshLogger.error("PayloadParser", "Failed to parse RERR: Buffer too short", e.toString())
+            return ParseResult.Failure(error)
+        }
+    }
+
+    private fun parseVoice(data: ByteArray): ParseResult<Payload> {
+        try {
+            val packetRead = VoicePacketProtocol.voicePacket.read(data, 0)
+            if (data.size != packetRead.bytesRead) {
+                val error = ParseError.MalformedPayload("VOICE has trailing bytes")
+                MeshLogger.error("PayloadParser", "Failed to parse VOICE", error.toString())
+                return ParseResult.Failure(error)
+            }
+            return ParseResult.Success(Payload.Voice(packetRead.value))
+        } catch (e: IndexOutOfBoundsException) {
+            val error = ParseError.TooShort(data.size, data.size + 1)
+            MeshLogger.error("PayloadParser", "Failed to parse VOICE: Buffer too short", e.toString())
             return ParseResult.Failure(error)
         }
     }

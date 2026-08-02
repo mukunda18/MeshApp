@@ -194,6 +194,16 @@ class Sender(
         }
     }
 
+    /** Passes raw pre-built bytes to the UDP unicast transport */
+    suspend fun forwardUdp(bytes: ByteArray, ip: String) {
+        try {
+            transport.sendUdp(bytes, ip)
+        } catch (e: Exception) {
+            Log.w("Sender", "Failed to forward UDP to $ip", e)
+            MeshLogger.error("Sender", "Failed to forward UDP to $ip", e.toString())
+        }
+    }
+
     /** Called by Receiver when a verified ACK arrives for a pending message */
     fun onAckReceived(messageId: MessageId) {
         pendingAck.remove(messageId)?.let {

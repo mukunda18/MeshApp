@@ -3,6 +3,9 @@ package com.meshapp.messaging
 import android.util.Log
 import com.meshapp.meshcontrol.DeliveryState
 import com.meshapp.meshcontrol.MeshService
+import com.meshapp.model.CallSignal
+import com.meshapp.model.CallSignalProtocol
+import com.meshapp.model.ContentType
 import com.meshapp.model.MessageId
 import com.meshapp.model.MessageProtocol
 import com.meshapp.model.NodeId
@@ -36,7 +39,7 @@ class MessagingService(
     private val conversationStore: ConversationStore,
     private val nodesStore: NodesStore,
     private val identityResolutionTimeoutMs: Long,
-    private val streamBufferCapacity: Int,
+    streamBufferCapacity: Int,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
     private val _messagesStream = MutableSharedFlow<MessageUpdate>(
@@ -47,7 +50,11 @@ class MessagingService(
     private val _deliveryStatusStream = MutableSharedFlow<MessageStatusUpdate>(
         extraBufferCapacity = streamBufferCapacity
     )
-    val deliveryStatusStream: SharedFlow<MessageStatusUpdate> = _deliveryStatusStream.asSharedFlow()
+
+    private val _callSignalsStream = MutableSharedFlow<Pair<NodeId, CallSignal>>(
+        extraBufferCapacity = streamBufferCapacity
+    )
+    val callSignalsStream: SharedFlow<Pair<NodeId, CallSignal>> = _callSignalsStream.asSharedFlow()
 
     private val _conversationsStream = MutableStateFlow<List<ConversationSummary>>(emptyList())
     val conversationsStream: StateFlow<List<ConversationSummary>> = _conversationsStream.asStateFlow()
@@ -117,11 +124,11 @@ class MessagingService(
             // Possible exceptions:
             // - SQLiteException (database full, disk I/O error, or corruption)
             Log.e("MessagingService", "Failed to persist outgoing message", e)
-            MeshLogger.error("MessagingService", "Failed to persist outgoing message to ${destinationNodeID}", e.toString())
+            MeshLogger.error("MessagingService", "Failed to persist outgoing message to $destinationNodeID", e.toString())
         }
         
-        outboundChannel.trySend(OutboundRequest(destinationNodeID, outgoingMessage))
-        MeshLogger.messageQueued("MessagingService", "Message ${messageId} queued for ${destinationNodeID}", plaintext)
+        outboundChannel.trySend(OutboundRequest.Chat(destinationNodeID, outgoingMessage))
+        MeshLogger.messageQueued("MessagingService", "Message $messageId queued for $destinationNodeID", plaintext)
 
         emitMessageUpdate(destinationNodeID, outgoingMessage, MessageDirection.OUTGOING)
         emitStatusUpdate(destinationNodeID, messageId, MessageDeliveryStatus.QUEUED)
@@ -130,21 +137,33 @@ class MessagingService(
         return outgoingMessage
     }
 
+    fun sendCallSignal(destination: NodeId, signal: CallSignal) {
+        val timestamp = Timestamp(System.currentTimeMillis())
+        outboundChannel.trySend(OutboundRequest.Signal(destination, signal, timestamp))
+        MeshLogger.info("MessagingService", "Call signal ${signal.type} queued for $destination")
+    }
+
     private fun processOutbound(request: OutboundRequest) {
         val now = System.currentTimeMillis()
-        
-        // 1. Check for timeout (e.g., if the node is offline and we can't find its key)
-        if (now - request.message.composeTimestamp.millis > identityResolutionTimeoutMs) {
+        val composeTime = when (request) {
+            is OutboundRequest.Chat -> request.message.composeTimestamp.millis
+            is OutboundRequest.Signal -> request.timestamp.millis
+        }
+
+        // 1. Check for timeout (e.g., if the node is offline, and we can't find its key)
+        if (now - composeTime > identityResolutionTimeoutMs) {
             Log.w("MessagingService", "Identity resolution timed out for ${request.destinationNodeId}")
-            MeshLogger.messageDropped("MessagingService", "Identity resolution timed out for ${request.destinationNodeId}", "MsgId: ${request.message.messageId}")
-            handleDeliveryUpdate(request.message.messageId, DeliveryState.FAILED)
+            if (request is OutboundRequest.Chat) {
+                MeshLogger.messageDropped("MessagingService", "Identity resolution timed out for ${request.destinationNodeId}", "MsgId: ${request.message.messageId}")
+                handleDeliveryUpdate(request.message.messageId, DeliveryState.FAILED)
+            }
             return
         }
 
         val pubKey = nodesStore.getPublicKey(request.destinationNodeId)
         if (pubKey == null) {
             // Key missing: Trigger RREQ and put back in queue to retry
-            MeshLogger.info("MessagingService", "Public key missing for ${request.destinationNodeId}, discovering...", "MsgId: ${request.message.messageId}")
+            MeshLogger.info("MessagingService", "Public key missing for ${request.destinationNodeId}, discovering...")
             meshService.discoverNode(request.destinationNodeId)
             
             // Unblock the main loop: delay and re-enqueue in the background
@@ -156,22 +175,41 @@ class MessagingService(
         }
 
         try {
+            val (payloadBytes, contentType, transportMessageId, timestamp) = when (request) {
+                is OutboundRequest.Chat -> {
+                    val bytes = request.message.plaintextContent.encodeToByteArray()
+                    Quad(bytes, ContentType.CHAT, request.message.messageId, request.message.composeTimestamp)
+                }
+                is OutboundRequest.Signal -> {
+                    // Estimate size for buffer
+                    val buf = ByteArray(1024) 
+                    val size = CallSignalProtocol.callSignal.write(buf, request.signal, 0)
+                    // Use random ID for transport to avoid deduplication, but callId remains inside.
+                    Quad(buf.copyOfRange(0, size), ContentType.CALL_SIGNAL, randomMessageId(), request.timestamp)
+                }
+            }
+
             val envelopeBytes = security.encode(
-                plaintext = request.message.plaintextContent,
+                payload = payloadBytes,
+                contentType = contentType,
                 recipientNodeID = request.destinationNodeId,
-                messageID = request.message.messageId,
-                timestamp = request.message.composeTimestamp
+                messageID = transportMessageId,
+                timestamp = timestamp
             )
             val envelope = parseEnvelope(envelopeBytes)
 
-            MeshLogger.messageSent("MessagingService", "Sending message ${request.message.messageId} to ${request.destinationNodeId}")
-            meshService.sendMessage(request.destinationNodeId, Payload.Message(envelope), request.message.messageId)
+            MeshLogger.info("MessagingService", "Sending ${if (contentType == ContentType.CHAT) "chat" else "signal"} to ${request.destinationNodeId}")
+            meshService.sendMessage(request.destinationNodeId, Payload.Message(envelope), transportMessageId)
         } catch (e: Exception) {
-            Log.e("MessagingService", "Failed to encrypt message for ${request.destinationNodeId}", e)
-            MeshLogger.error("MessagingService", "Failed to encrypt message for ${request.destinationNodeId}", e.toString())
-            handleDeliveryUpdate(request.message.messageId, DeliveryState.FAILED)
+            Log.e("MessagingService", "Failed to encrypt for ${request.destinationNodeId}", e)
+            MeshLogger.error("MessagingService", "Failed to encrypt for ${request.destinationNodeId}", e.toString())
+            if (request is OutboundRequest.Chat) {
+                handleDeliveryUpdate(request.message.messageId, DeliveryState.FAILED)
+            }
         }
     }
+
+    private data class Quad<A, B, C, D>(val a: A, val b: B, val c: C, val d: D)
 
     private fun parseEnvelope(data: ByteArray): SecureEnvelope {
         var cursor = 0
@@ -180,7 +218,7 @@ class MessagingService(
         val encKey = MessageProtocol.encSymKey.read(data, cursor).also { cursor += it.bytesRead }.value
         val nonce = MessageProtocol.nonce.read(data, cursor).also { cursor += it.bytesRead }.value
         val cipher = MessageProtocol.ciphertext.read(data, cursor).also { cursor += it.bytesRead }.value
-        val sig = MessageProtocol.signature.read(data, cursor).also { cursor += it.bytesRead }.value
+        val sig = MessageProtocol.signature.read(data, cursor).value
         return SecureEnvelope(version, sender, encKey, nonce, cipher, sig)
     }
 
@@ -202,9 +240,6 @@ class MessagingService(
         return buf.copyOfRange(0, cursor)
     }
 
-    fun listConversations(): List<Conversation> =
-        conversationStore.listConversations()
-
     fun getHistory(nodeID: NodeId): List<Message> =
         conversationStore.getConversation(nodeID)?.messages.orEmpty()
 
@@ -216,30 +251,42 @@ class MessagingService(
     private fun handleIncomingMessage(sourceNodeId: NodeId, payload: Payload.Message) {
         try {
             val decoded = security.decode(serializeEnvelope(payload.envelope))
-            val message = Message(
-                senderNodeId = decoded.senderNodeId,
-                plaintextContent = decoded.content,
-                composeTimestamp = decoded.timestamp,
-                messageId = decoded.messageId,
-                deliveryStatus = MessageDeliveryStatus.DELIVERED
-            )
-            MeshLogger.messageReceived("MessagingService", "Received message from ${sourceNodeId}", decoded.content)
-            try {
-                conversationStore.appendMessage(sourceNodeId, message)
-            } catch (e: Exception) {
-                // SQLiteException: Failed to save incoming message. 
-                // We log it but continue so the stream update can still happen.
-                Log.e("MessagingService", "Failed to save incoming message to store", e)
-                MeshLogger.error("MessagingService", "Failed to save incoming message from ${sourceNodeId} to store", e.toString())
+            
+            if (decoded.contentType == ContentType.CHAT) {
+                val contentString = decoded.content.decodeToString()
+                val message = Message(
+                    senderNodeId = decoded.senderNodeId,
+                    plaintextContent = contentString,
+                    composeTimestamp = decoded.timestamp,
+                    messageId = decoded.messageId,
+                    deliveryStatus = MessageDeliveryStatus.DELIVERED
+                )
+                MeshLogger.messageReceived("MessagingService", "Received message from $sourceNodeId", contentString)
+                try {
+                    conversationStore.appendMessage(sourceNodeId, message)
+                } catch (e: Exception) {
+                    // SQLiteException: Failed to save incoming message. 
+                    // We log it but continue so the stream update can still happen.
+                    Log.e("MessagingService", "Failed to save incoming message to store", e)
+                    MeshLogger.error("MessagingService", "Failed to save incoming message from $sourceNodeId to store", e.toString())
+                }
+                emitMessageUpdate(sourceNodeId, message, MessageDirection.INCOMING)
+                refreshConversations()
+            } else if (decoded.contentType == ContentType.CALL_SIGNAL) {
+                try {
+                    val signalRead = CallSignalProtocol.callSignal.read(decoded.content, 0)
+                    _callSignalsStream.tryEmit(sourceNodeId to signalRead.value)
+                    MeshLogger.info("MessagingService", "Received call signal ${signalRead.value.type} from $sourceNodeId")
+                } catch (e: Exception) {
+                    Log.e("MessagingService", "Failed to parse call signal from $sourceNodeId", e)
+                }
             }
-            emitMessageUpdate(sourceNodeId, message, MessageDirection.INCOMING)
-            refreshConversations()
         } catch (e: Exception) {
             // Possible exceptions:
             // - SecurityException (invalid signature, expired message, or malformed envelope)
             // - IllegalStateException (missing public key for sender)
-            Log.w("MessagingService", "Failed to decode incoming message from ${sourceNodeId}", e)
-            MeshLogger.error("MessagingService", "Failed to decode incoming message from ${sourceNodeId}", e.toString())
+            Log.w("MessagingService", "Failed to decode incoming message from $sourceNodeId", e)
+            MeshLogger.error("MessagingService", "Failed to decode incoming message from $sourceNodeId", e.toString())
         }
     }
 
@@ -303,12 +350,19 @@ class MessagingService(
         DeliveryState.DELIVERED -> MessageDeliveryStatus.DELIVERED
         DeliveryState.FAILED -> MessageDeliveryStatus.FAILED
     }
-
-    private companion object {
-    }
 }
 
-private data class OutboundRequest(
-    val destinationNodeId: NodeId,
-    val message: Message
-)
+private sealed class OutboundRequest {
+    abstract val destinationNodeId: NodeId
+
+    data class Chat(
+        override val destinationNodeId: NodeId,
+        val message: Message
+    ) : OutboundRequest()
+
+    data class Signal(
+        override val destinationNodeId: NodeId,
+        val signal: CallSignal,
+        val timestamp: Timestamp
+    ) : OutboundRequest()
+}

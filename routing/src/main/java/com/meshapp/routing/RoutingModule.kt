@@ -66,6 +66,9 @@ class RoutingModule(
         freshnessWindowMs = freshnessWindowMs
     )
 
+    /** Exposes the UDP unicast sender for voice packets */
+    suspend fun sendVoice(bytes: ByteArray, ip: String) = sender.forwardUdp(bytes, ip)
+
     private var activeJob: Job? = null
 
     /** Starts all background loops and begins collecting from both inbound channels */

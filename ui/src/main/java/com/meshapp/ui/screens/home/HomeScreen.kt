@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Group
+import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.PowerSettingsNew
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Info
@@ -234,6 +235,42 @@ fun HomeScreen(
                     text = "View Nearby Nodes",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Medium
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = { viewModel.toggleVoiceSimulation() },
+                enabled = uiState.isMeshOn,
+                shape = RoundedCornerShape(30.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (uiState.isVoiceSimActive) Color(0xFFE57373) else HeroCenter,
+                    contentColor = if (uiState.isVoiceSimActive) Color.Black else Color.White,
+                    disabledContainerColor = HeroCenter.copy(alpha = 0.5f)
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 32.dp)
+                    .height(56.dp)
+                    .border(
+                        width = 1.dp,
+                        color = if (uiState.isVoiceSimActive) Color(0xFFE57373) else Color(0xFF35393C),
+                        shape = RoundedCornerShape(30.dp)
+                    ),
+                contentPadding = ButtonDefaults.ContentPadding
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Mic,
+                    contentDescription = null,
+                    tint = if (uiState.isVoiceSimActive) Color.Black else Color.White
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = if (uiState.isVoiceSimActive) "STOP LOOPBACK TEST" else "VOICE LOOPBACK TEST",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp
                 )
             }
 
