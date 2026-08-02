@@ -1,10 +1,13 @@
 package com.meshapp.voice
 
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.security.KeyPairGenerator
+import java.util.PriorityQueue
 import kotlin.math.abs
 import kotlin.math.log10
 import kotlin.math.sin
@@ -48,7 +51,6 @@ class VoicePerformanceTest {
         val pcmFrame = generateSineWavePCM(frequency = 440.0, amplitude = 15000)
         val iterations = 1000
 
-        // Warmup JVM execution path
         repeat(100) {
             val encoded = codec.encode(pcmFrame)
             val encrypted = callerCrypto.encrypt(1, encoded)
@@ -56,7 +58,6 @@ class VoicePerformanceTest {
             codec.decode(decrypted)
         }
 
-        // Measure total execution time for 1,000 frames (20 seconds of speech audio)
         val totalNano = measureNanoTime {
             for (i in 0 until iterations) {
                 val encoded = codec.encode(pcmFrame)
@@ -73,7 +74,6 @@ class VoicePerformanceTest {
         println("Average processing latency per 20ms frame: ${String.format("%.4f", avgMsPerFrame)} ms")
         println("==================================================")
 
-        // A 20ms frame must take LESS than 1ms to process computationally on CPU!
         assertTrue("Pipeline processing latency ($avgMsPerFrame ms) is too slow!", avgMsPerFrame < 1.0)
     }
 
@@ -85,7 +85,6 @@ class VoicePerformanceTest {
     fun `measure Signal-to-Noise Ratio (SNR) for codec output`() {
         val originalPcm = generateSineWavePCM(frequency = 1000.0, amplitude = 20000)
 
-        // Encode -> Decode
         val encoded = codec.encode(originalPcm)
         val decodedPcm = codec.decode(encoded)
 
@@ -96,7 +95,6 @@ class VoicePerformanceTest {
         println("Codec Signal-to-Noise Ratio (SNR): ${String.format("%.2f", snrDb)} dB")
         println("==================================================")
 
-        // G.711 mu-law speech codec typically yields > 30 dB SNR
         assertTrue("Audio SNR ($snrDb dB) is below acceptable speech clarity threshold!", snrDb > 30.0)
     }
 
@@ -107,8 +105,6 @@ class VoicePerformanceTest {
     @Test
     fun `test gain filter prevents hard clipping harmonic distortion`() {
         val quietAudio = generateSineWavePCM(frequency = 440.0, amplitude = 25000)
-
-        // Apply 2.0x Gain
         val boostedAudio = applyAudioFilters(quietAudio, gain = 2.0f, useNoiseGate = false)
 
         var clippedSamplesCount = 0
@@ -133,8 +129,100 @@ class VoicePerformanceTest {
         println("Hard Clipped Samples Count: $clippedSamplesCount")
         println("==================================================")
 
-        // Verify that values stay strictly bounded within 16-bit limits without overflow distortion
         assertTrue("Output sample overflowed 16-bit limits!", maxAmplitude <= 32767)
+    }
+
+    // =========================================================================
+    // 4. JITTER BUFFER & OUT-OF-ORDER PACKET RE-ORDERING
+    // =========================================================================
+
+    @Test
+    fun `simulate Out-Of-Order packets and Jitter Buffer re-ordering`() {
+        val frameCount = 10
+        val originalFrames = List(frameCount) { i ->
+            generateSineWavePCM(frequency = 200.0 + (i * 50), amplitude = 10000)
+        }
+
+        // Encrypt packets in order
+        val encryptedPackets = originalFrames.mapIndexed { seq, pcm ->
+            val encoded = codec.encode(pcm)
+            seq to callerCrypto.encrypt(seq, encoded)
+        }
+
+        // Simulate network jitter by scrambling packet delivery order (e.g. 1, 3, 0, 4, 2...)
+        val scrambledPackets = encryptedPackets.shuffled()
+
+        // Jitter buffer queue sorted by sequence number
+        val jitterBuffer = PriorityQueue<Pair<Int, ByteArray>>(compareBy { it.first })
+
+        // Push scrambled packets into buffer
+        scrambledPackets.forEach { jitterBuffer.add(it) }
+
+        // Pop sorted packets and decrypt
+        val processedFrames = mutableListOf<ByteArray>()
+        while (jitterBuffer.isNotEmpty()) {
+            val (seq, cipher) = jitterBuffer.poll()!!
+            val decrypted = calleeCrypto.decrypt(seq, cipher)
+            assertNotNull("Packet $seq decryption failed!", decrypted)
+            processedFrames.add(codec.decode(decrypted!!))
+        }
+
+        println("==================================================")
+        println("📊 JITTER BUFFER RESILIENCE")
+        println("Scrambled Packets Input: ${scrambledPackets.map { it.first }}")
+        println("Re-ordered Sequence: $frameCount / $frameCount packets restored correctly")
+        println("==================================================")
+
+        // Verify sequence is perfectly restored
+        assertEquals(frameCount, processedFrames.size)
+        for (i in 0 until frameCount) {
+            assertArrayEquals("Packet $i sequence order mismatch!", codec.decode(codec.encode(originalFrames[i])), processedFrames[i])
+        }
+    }
+
+    // =========================================================================
+    // 5. PACKET LOSS RESILIENCE (PLC / CONCEALMENT SIMULATION)
+    // =========================================================================
+
+    @Test
+    fun `simulate 10 percent packet loss resilience and recovery`() {
+        val totalPackets = 100
+        val droppedSeqNumbers = setOf(7, 18, 29, 41, 53, 62, 74, 83, 91, 98) // Exactly 10% lost packets
+
+        var successfulDecodes = 0
+        var concealedFramesInserted = 0
+
+        val emptyConcealmentFrame = ByteArray(VoiceCodec.BYTES_PER_FRAME) // Zero/Silence fill for lost frame
+
+        for (seq in 0 until totalPackets) {
+            val pcm = generateSineWavePCM(frequency = 440.0, amplitude = 12000)
+            val encoded = codec.encode(pcm)
+            val encrypted = callerCrypto.encrypt(seq, encoded)
+
+            // Simulate packet loss on mesh transport
+            if (droppedSeqNumbers.contains(seq)) {
+                // PLC Strategy: Insert synthetic comfort frame/silence when gap is detected
+                val plcFrame = emptyConcealmentFrame
+                concealedFramesInserted++
+                assertEquals(VoiceCodec.BYTES_PER_FRAME, plcFrame.size)
+            } else {
+                val decrypted = calleeCrypto.decrypt(seq, encrypted)
+                assertNotNull(decrypted)
+                val decoded = codec.decode(decrypted!!)
+                assertEquals(VoiceCodec.BYTES_PER_FRAME, decoded.size)
+                successfulDecodes++
+            }
+        }
+
+        println("==================================================")
+        println("📊 PACKET LOSS RECOVERY METRICS")
+        println("Total Packets Sent: $totalPackets")
+        println("Packets Decoded Successfully: $successfulDecodes")
+        println("Loss Concealment Frames Inserted: $concealedFramesInserted (10% Simulated Loss)")
+        println("==================================================")
+
+        assertEquals(90, successfulDecodes)
+        assertEquals(10, concealedFramesInserted)
     }
 
     // =========================================================================
