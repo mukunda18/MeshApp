@@ -9,6 +9,7 @@ import com.meshapp.messaging.Message
 import com.meshapp.messaging.MessageDeliveryStatus
 import com.meshapp.messaging.MessagingService
 import com.meshapp.model.NodeId
+import com.meshapp.voice.VoiceCallManager
 import com.meshapp.routing.PeerEvent
 import com.meshapp.ui.state.ConversationMessageUiState
 import com.meshapp.ui.state.ConversationUiState
@@ -16,6 +17,7 @@ import com.meshapp.ui.state.NodeCardState
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,10 +28,12 @@ import kotlinx.coroutines.launch
 class ConversationViewModel(
     private val ownNodeId: NodeId,
     private val messagingService: MessagingService,
-    private val meshService: MeshService
+    private val meshService: MeshService,
+    private val voiceCallManager: VoiceCallManager
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(ConversationUiState(node = NodeCardState("", "", false, "")))
     private val _peerMap = MutableStateFlow<Map<String, PeerState>>(emptyMap())
+    private val _routeNodeIds = MutableStateFlow<Set<String>>(emptySet())
 
     val uiState: StateFlow<ConversationUiState> = _uiState.asStateFlow()
 
@@ -37,6 +41,7 @@ class ConversationViewModel(
 
     init {
         collectPeerEvents()
+        startRouteRefreshLoop()
         observeConversationUpdates()
     }
 
@@ -50,12 +55,14 @@ class ConversationViewModel(
 
         val history = messagingService.getHistory(parsedNodeId)
         val peer = _peerMap.value[nodeId]
+        val isInRouteTable = nodeId in _routeNodeIds.value
         val displayName = peer?.name?.takeIf { it.isNotBlank() } ?: shortId(nodeId)
+        
         _uiState.value = ConversationUiState(
             node = NodeCardState(
                 id = nodeId,
                 name = displayName,
-                isOnline = peer?.status == PeerStatus.ACTIVE,
+                isOnline = (peer?.status == PeerStatus.ACTIVE) || isInRouteTable,
                 avatarInitials = initialsFrom(displayName)
             ),
             messages = history.map { message ->
@@ -74,13 +81,29 @@ class ConversationViewModel(
         }
     }
 
+    fun dial() {
+        val destination = activeNodeId ?: return
+        voiceCallManager.dial(destination)
+    }
+
+    private fun startRouteRefreshLoop() {
+        viewModelScope.launch {
+            while (true) {
+                _routeNodeIds.value = meshService.getRoutes().map { it.destinationNodeId.toString() }.toSet()
+                delay(5_000)
+            }
+        }
+    }
+
     private fun collectPeerEvents() {
         viewModelScope.launch {
             meshService.peerEventsStream.collect { event ->
                 _peerMap.update { current ->
-                    when (event) {
-                        is PeerEvent.Added -> current + (event.peer.nodeId.toString() to
-                            PeerState(event.peer.nodeId, event.peer.ip, null, null, PeerStatus.ACTIVE, event.peer.lastSeen))
+                    val next = when (event) {
+                        is PeerEvent.Added -> {
+                            current + (event.peer.nodeId.toString() to
+                                PeerState(event.peer.nodeId, event.peer.ip, null, null, PeerStatus.ACTIVE, event.peer.lastSeen))
+                        }
                         is PeerEvent.Updated -> {
                             val existing = current[event.peer.nodeId.toString()]
                             current + (event.peer.nodeId.toString() to
@@ -88,6 +111,9 @@ class ConversationViewModel(
                         }
                         is PeerEvent.Removed -> current - event.nodeId.toString()
                     }
+                    // Trigger an immediate route refresh when peers change
+                    _routeNodeIds.value = meshService.getRoutes().map { it.destinationNodeId.toString() }.toSet()
+                    next
                 }
             }
         }
@@ -97,23 +123,26 @@ class ConversationViewModel(
         viewModelScope.launch {
             combine(
                 messagingService.messagesStream,
-                _peerMap
-            ) { messageUpdate, peerMap ->
-                messageUpdate to peerMap
-            }.collect { (messageUpdate, peerMap) ->
+                _peerMap,
+                _routeNodeIds
+            ) { messageUpdate, peerMap, routeNodeIds ->
+                Triple(messageUpdate, peerMap, routeNodeIds)
+            }.collect { (messageUpdate, peerMap, routeNodeIds) ->
                 val destination = activeNodeId ?: return@collect
                 if (messageUpdate.nodeID.toString() != destination.toString()) return@collect
 
                 messagingService.markConversationAsRead(destination)
 
                 val peer = peerMap[destination.toString()]
+                val isInRouteTable = destination.toString() in routeNodeIds
                 val currentNode = _uiState.value.node
                 val updatedNodeName = peer?.name?.takeIf { it.isNotBlank() } ?: currentNode.name
                 val messageList = messagingService.getHistory(destination)
+                
                 _uiState.value = _uiState.value.copy(
                     node = currentNode.copy(
                         name = updatedNodeName,
-                        isOnline = peer?.status == PeerStatus.ACTIVE,
+                        isOnline = (peer?.status == PeerStatus.ACTIVE) || isInRouteTable,
                         avatarInitials = initialsFrom(updatedNodeName)
                     ),
                     messages = messageList.map { msg ->

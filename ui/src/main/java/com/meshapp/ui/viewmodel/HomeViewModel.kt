@@ -13,6 +13,9 @@ import com.meshapp.routing.PeerEvent
 import com.meshapp.ui.state.HomeNodeUiState
 import com.meshapp.ui.state.HomeUiState
 import com.meshapp.ui.state.ProfileUiState
+import com.meshapp.voice.CallState
+import com.meshapp.voice.VoiceCallManager
+import com.meshapp.model.NodeId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,6 +28,7 @@ class HomeViewModel(
     application: Application,
     private val meshService: MeshService,
     private val meshController: MeshController,
+    private val voiceCallManager: VoiceCallManager,
     appName: String,
     deviceName: String,
     nodeId: String
@@ -51,7 +55,58 @@ class HomeViewModel(
 
     init {
         observeMeshState()
+        observeVoiceSimState()
+        observeVoiceCallState()
         refreshNetworkInterfaces()
+    }
+
+    fun dial(nodeId: String) {
+        val peer = _peerMap.value[nodeId] ?: return
+        voiceCallManager.dial(peer.nodeId)
+        _uiState.update { it.copy(isCallMinimized = false) }
+    }
+
+    fun acceptCall() {
+        voiceCallManager.accept()
+    }
+
+    fun rejectCall() {
+        voiceCallManager.reject()
+    }
+
+    fun cancelCall() {
+        voiceCallManager.cancel()
+    }
+
+    fun hangupCall() {
+        voiceCallManager.hangup()
+    }
+
+    fun minimizeCall() {
+        _uiState.update { it.copy(isCallMinimized = true) }
+    }
+
+    fun maximizeCall() {
+        _uiState.update { it.copy(isCallMinimized = false) }
+    }
+
+    private fun observeVoiceCallState() {
+        viewModelScope.launch {
+            voiceCallManager.callState.collect { state ->
+                _uiState.update {
+                    val wasIdle = it.voiceCallState is CallState.Idle
+                    val isIdle = state is CallState.Idle
+                    it.copy(
+                        voiceCallState = state,
+                        isCallMinimized = when {
+                            isIdle -> false
+                            wasIdle -> false
+                            else -> it.isCallMinimized
+                        }
+                    )
+                }
+            }
+        }
     }
 
     fun toggleMesh() {
@@ -61,6 +116,26 @@ class HomeViewModel(
             meshController.stop()
         } else {
             meshController.start()
+        }
+    }
+
+    fun toggleVoiceSimulation() {
+        if (meshController.isVoiceSimActive.value) {
+            meshController.stopVoiceSim()
+        } else {
+            // Ensure mesh is running first, as simulation lives in the service
+            if (!meshService.isRunning) {
+                meshController.start()
+            }
+            meshController.startVoiceSim()
+        }
+    }
+
+    private fun observeVoiceSimState() {
+        viewModelScope.launch {
+            meshController.isVoiceSimActive.collect { active ->
+                _uiState.update { it.copy(isVoiceSimActive = active) }
+            }
         }
     }
 

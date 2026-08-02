@@ -3,6 +3,7 @@ package com.meshapp.model
 object MessageProtocol {
     const val MESSAGE_ID_LENGTH = 8
     const val TIMESTAMP_LENGTH = 8
+    const val CONTENT_TYPE_LENGTH = 1
     const val CONTENT_LEN_LENGTH = 4
 
     // --- Secure Envelope Fields (5.2.1) ---
@@ -102,20 +103,29 @@ object MessageProtocol {
         }
     }
 
-    object content : Field<String> {
-        override fun read(data: ByteArray, baseOffset: Int): ReadWithLength<String> {
+    object contentType : Field<Int> {
+        override fun read(data: ByteArray, baseOffset: Int): ReadWithLength<Int> =
+            ReadWithLength(readU8(data, baseOffset), CONTENT_TYPE_LENGTH)
+
+        override fun write(data: ByteArray, value: Int, baseOffset: Int): Int {
+            writeU8(data, baseOffset, value)
+            return CONTENT_TYPE_LENGTH
+        }
+    }
+
+    object content : Field<ByteArray> {
+        override fun read(data: ByteArray, baseOffset: Int): ReadWithLength<ByteArray> {
             val len = readU32(data, baseOffset).toInt()
             return ReadWithLength(
-                readString(data, baseOffset + CONTENT_LEN_LENGTH, len),
+                readBytes(data, baseOffset + CONTENT_LEN_LENGTH, len),
                 CONTENT_LEN_LENGTH + len
             )
         }
 
-        override fun write(data: ByteArray, value: String, baseOffset: Int): Int {
-            val bytes = value.encodeToByteArray()
-            writeU32(data, baseOffset, bytes.size.toLong())
-            writeBytes(data, baseOffset + CONTENT_LEN_LENGTH, bytes, bytes.size)
-            return CONTENT_LEN_LENGTH + bytes.size
+        override fun write(data: ByteArray, value: ByteArray, baseOffset: Int): Int {
+            writeU32(data, baseOffset, value.size.toLong())
+            writeBytes(data, baseOffset + CONTENT_LEN_LENGTH, value, value.size)
+            return CONTENT_LEN_LENGTH + value.size
         }
     }
 }

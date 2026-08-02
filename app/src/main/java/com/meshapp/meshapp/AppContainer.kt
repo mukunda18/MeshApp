@@ -7,6 +7,7 @@ import com.meshapp.meshcontrol.MeshConfig
 import com.meshapp.meshcontrol.MeshService
 import com.meshapp.messaging.ConversationStore
 import com.meshapp.messaging.MessagingService
+import com.meshapp.voice.VoiceCallManager
 import com.meshapp.security.Identity
 import com.meshapp.security.IdentityManager
 import com.meshapp.security.PersistentIdentityStore
@@ -95,6 +96,14 @@ class AppContainer(context: Context) {
         nodesStore = nodesStore,
         identityResolutionTimeoutMs = meshConfig.identityResolutionTimeoutMs,
         streamBufferCapacity = meshConfig.streamBufferCapacity
+    )
+
+    val voiceCallManager: VoiceCallManager = VoiceCallManager(
+        context = appContext,
+        messagingService = messagingService,
+        meshService = meshService,
+        config = meshConfig,
+        ownNodeId = identity.nodeId
     )
 
     // ── Port constants ────────────────────────────────────────────────────────

@@ -30,4 +30,9 @@ class MeshTransport(
             }
         }
     }
+
+    suspend fun sendUdp(bytes: ByteArray, ip: String) {
+        MeshLogger.info("MeshTransport", "UDP Unicast request to $ip", "Size: ${bytes.size} bytes")
+        udpSocket.send(bytes, ip)
+    }
 }

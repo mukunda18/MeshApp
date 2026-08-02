@@ -1,14 +1,21 @@
 package com.meshapp.meshcontrol
 
+import com.meshapp.model.Header
+import com.meshapp.model.HeaderProtocol
 import com.meshapp.model.MessageId
 import com.meshapp.model.NodeId
+import com.meshapp.packetprocessor.HeaderSerializer
+import com.meshapp.packetprocessor.PayloadSerializer
 import com.meshapp.security.NodesStore
 import com.meshapp.security.PacketSigner
 import com.meshapp.security.PacketVerifier
 import com.meshapp.model.Payload
+import com.meshapp.model.Timestamp
+import com.meshapp.model.randomMessageId
 import com.meshapp.logger.MeshLogger
 import com.meshapp.network.MeshTransport
 import com.meshapp.routing.PeerEvent
+import com.meshapp.routing.RouteEvent
 import com.meshapp.routing.RoutingModule
 import com.meshapp.routing.SendStatus
 import kotlinx.coroutines.*
@@ -53,8 +60,14 @@ class MeshService(
     private val _peerEventsStream = MutableSharedFlow<PeerEvent>(extraBufferCapacity = 64)
     val peerEventsStream: SharedFlow<PeerEvent> = _peerEventsStream.asSharedFlow()
 
+    private val _routeEventsStream = MutableSharedFlow<RouteEvent>(extraBufferCapacity = 64)
+    val routeEventsStream: SharedFlow<RouteEvent> = _routeEventsStream.asSharedFlow()
+
     private val _incomingMessageStream = MutableSharedFlow<Pair<NodeId, Payload.Message>>(extraBufferCapacity = 64)
     val incomingMessageStream: SharedFlow<Pair<NodeId, Payload.Message>> = _incomingMessageStream.asSharedFlow()
+
+    private val _incomingVoiceStream = MutableSharedFlow<Pair<NodeId, Payload.Voice>>(extraBufferCapacity = 256)
+    val incomingVoiceStream: SharedFlow<Pair<NodeId, Payload.Voice>> = _incomingVoiceStream.asSharedFlow()
 
     suspend fun start() = mutex.withLock {
         if (serviceScope != null) return@withLock // Already running
@@ -111,8 +124,20 @@ class MeshService(
         }
 
         scope.launch {
+            rm.router.routeEvents.collect { event ->
+                _routeEventsStream.emit(event)
+            }
+        }
+
+        scope.launch {
             for (pair in rm.receiver.incomingPayloadChannel) {
                 _incomingMessageStream.emit(pair)
+            }
+        }
+
+        scope.launch {
+            for (pair in rm.receiver.incomingVoiceChannel) {
+                _incomingVoiceStream.emit(pair)
             }
         }
 
@@ -147,6 +172,42 @@ class MeshService(
     fun sendMessage(destinationNodeID: NodeId, payload: Payload.Message, messageId: MessageId) {
         val rm = routingModule ?: error("MeshService not running")
         rm.sender.enqueue(messageId, payload, destinationNodeID)
+    }
+
+    /** Sends a VOICE payload via UDP unicast, routed if necessary */
+    fun sendVoice(destinationNodeID: NodeId, payload: Payload.Voice) {
+        val rm = routingModule ?: return
+        val scope = serviceScope ?: return
+        scope.launch {
+            val nextHop = rm.router.lookup(destinationNodeID)
+                ?: destinationNodeID.takeIf { rm.peers.isDirectPeer(destinationNodeID) }
+            val ip = nextHop?.let { rm.peers.resolveIp(it) }
+            if (ip != null) {
+                // Voice payload is tiny (callId 8 + seq 4 + ts 8 + len 2 + encrypted audio ~370),
+                // so a 2 KB buffer is more than enough and avoids huge allocations.
+                val buf = ByteArray(2048)
+                val len = PayloadSerializer.serialize(payload, buf, HeaderProtocol.HEADER_SIZE)
+                val header = Header(
+                    magic = HeaderProtocol.Magic.EXPECTED,
+                    version = HeaderProtocol.Version.SUPPORTED_VERSION,
+                    type = HeaderProtocol.Type.VOICE,
+                    flags = 0,
+                    hopcount = 0,
+                    ttl = config.maxHopCount,
+                    reserved = 0,
+                    immediateSenderNodeId = config.ownNodeId,
+                    sourceNodeId = config.ownNodeId,
+                    destNodeId = destinationNodeID,
+                    id = randomMessageId(),
+                    originTimestamp = Timestamp(System.currentTimeMillis()),
+                    payloadLength = len
+                )
+                HeaderSerializer.serialize(header, buf, 0)
+                rm.sendVoice(buf.copyOfRange(0, HeaderProtocol.HEADER_SIZE + len), ip)
+            } else {
+                MeshLogger.error("MeshService", "No route for voice to $destinationNodeID")
+            }
+        }
     }
 
     /** Triggers AODV discovery for a node (route + public key) */

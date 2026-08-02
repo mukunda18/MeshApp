@@ -24,8 +24,8 @@ import com.meshapp.ui.viewmodel.MeshController
 
 class MainActivity : ComponentActivity() {
 
-    private val requestNotificationPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* no-op */ }
+    private val requestPermissions =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { /* no-op */ }
 
     private class AppFactories(
         val home: HomeViewModelFactory,
@@ -36,11 +36,20 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Android 13+ requires runtime permission to post notifications (including foreground service)
+        // Android 13+ requires runtime permission to post notifications
+        // Voice simulation requires RECORD_AUDIO
+        val permissions = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
-            requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            permissions.add(Manifest.permission.RECORD_AUDIO)
+        }
+
+        if (permissions.isNotEmpty()) {
+            requestPermissions.launch(permissions.toTypedArray())
         }
 
         val meshApp = application as MeshApplication
@@ -49,6 +58,9 @@ class MainActivity : ComponentActivity() {
         val meshController = object : MeshController {
             override fun start() = MeshForegroundService.start(applicationContext)
             override fun stop() = MeshForegroundService.stop(applicationContext)
+            override fun startVoiceSim() = MeshForegroundService.startVoiceSim(applicationContext)
+            override fun stopVoiceSim() = MeshForegroundService.stopVoiceSim(applicationContext)
+            override val isVoiceSimActive = MeshForegroundService.isVoiceSimActive
         }
 
         setContent {
@@ -61,6 +73,7 @@ class MainActivity : ComponentActivity() {
                             application = meshApp,
                             meshService = container.meshService,
                             meshController = meshController,
+                            voiceCallManager = container.voiceCallManager,
                             appName = getString(R.string.app_name),
                             deviceName = container.identity.name,
                             nodeId = container.identity.nodeId.toString()
@@ -68,12 +81,15 @@ class MainActivity : ComponentActivity() {
                         chats = ChatsViewModelFactory(
                             messagingService = container.messagingService,
                             meshService = container.meshService,
-                            nodesStore = container.nodesStore
+                            nodesStore = container.nodesStore,
+                            voiceCallManager = container.voiceCallManager,
+                            ownNodeId = container.identity.nodeId
                         ),
                         conversation = ConversationViewModelFactory(
                             ownNodeId = container.identity.nodeId,
                             messagingService = container.messagingService,
-                            meshService = container.meshService
+                            meshService = container.meshService,
+                            voiceCallManager = container.voiceCallManager
                         )
                     )
                 } catch (e: Exception) {

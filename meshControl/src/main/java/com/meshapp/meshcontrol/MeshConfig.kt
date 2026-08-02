@@ -30,7 +30,10 @@ data class MeshConfig(
     val routeRetryBackoffMs: Long = 500L,
     val tcpReadTimeoutMs: Int = 500,
     val tcpAcceptTimeoutMs: Int = 500,
-    val udpReceiveTimeoutMs: Int = 500
+    val udpReceiveTimeoutMs: Int = 500,
+    val callDialingTimeoutMs: Long = 60_000L,
+    val callRingingTimeoutMs: Long = 45_000L,
+    val callEndedDisplayMs: Long = 3_000L
 ) {
     init {
         require(udpBroadcastPort in 1..65535) { "Invalid UDP port: $udpBroadcastPort" }

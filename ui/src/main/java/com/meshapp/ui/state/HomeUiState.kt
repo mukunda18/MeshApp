@@ -1,6 +1,7 @@
 package com.meshapp.ui.state
 
 import com.meshapp.messaging.MessageDeliveryStatus
+import com.meshapp.voice.CallState
 
 data class HomeUiState(
     val isMeshOn: Boolean = false,
@@ -8,6 +9,9 @@ data class HomeUiState(
     val appName: String = "Mesh App",
     val meshStatusLabel: String = "STOPPED",
     val connectionStatus: String = "No nearby nodes",
+    val isVoiceSimActive: Boolean = false,
+    val voiceCallState: CallState = CallState.Idle,
+    val isCallMinimized: Boolean = false,
     val isStaApSupported: Boolean = false,
     val isStaApLikelySupported: Boolean = false,
     val networkInterfaceCount: Int = 0,

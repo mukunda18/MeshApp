@@ -2,6 +2,21 @@ package com.meshapp.model
 
 import java.net.InetSocketAddress
 
+object ContentType {
+    const val CHAT = 0x01
+    const val CALL_SIGNAL = 0x02
+}
+
+object CallSignalType {
+    const val OFFER = 0x01
+    const val RINGING = 0x02
+    const val ACCEPT = 0x03
+    const val REJECT = 0x04
+    const val BUSY = 0x05
+    const val CANCEL = 0x06
+    const val HANGUP = 0x07
+}
+
 data class NodeId(val bytes: ByteArray) {
     init {
         require(bytes.size == 32) { "NodeId must be exactly 32 bytes, got ${bytes.size}" }
@@ -146,8 +161,77 @@ data class SecureEnvelope(
 data class InnerPlaintextBlock(
     val messageId: MessageId,
     val timestamp: Timestamp,
-    val content: String
-)
+    val contentType: Int,
+    val content: ByteArray
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+        other as InnerPlaintextBlock
+        if (messageId != other.messageId) return false
+        if (timestamp != other.timestamp) return false
+        if (contentType != other.contentType) return false
+        if (!content.contentEquals(other.content)) return false
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = messageId.hashCode()
+        result = 31 * result + timestamp.hashCode()
+        result = 31 * result + contentType
+        result = 31 * result + content.contentHashCode()
+        return result
+    }
+}
+
+data class CallSignal(
+    val callId: MessageId,
+    val type: Int,
+    val payload: ByteArray
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+        other as CallSignal
+        if (callId != other.callId) return false
+        if (type != other.type) return false
+        if (!payload.contentEquals(other.payload)) return false
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = callId.hashCode()
+        result = 31 * result + type
+        result = 31 * result + payload.contentHashCode()
+        return result
+    }
+}
+
+data class CallOffer(
+    val ephemeralPublicKey: ByteArray
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+        other as CallOffer
+        return ephemeralPublicKey.contentEquals(other.ephemeralPublicKey)
+    }
+
+    override fun hashCode(): Int = ephemeralPublicKey.contentHashCode()
+}
+
+data class CallAccept(
+    val ephemeralPublicKey: ByteArray
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+        other as CallAccept
+        return ephemeralPublicKey.contentEquals(other.ephemeralPublicKey)
+    }
+
+    override fun hashCode(): Int = ephemeralPublicKey.contentHashCode()
+}
 
 sealed interface Payload {
     data class Hello(
@@ -178,6 +262,36 @@ sealed interface Payload {
     data class RERR(
         val destinations: List<NodeId>
     ) : Payload
+
+    data class Voice(
+        val packet: VoicePacket
+    ) : Payload
+}
+
+data class VoicePacket(
+    val callId: MessageId,
+    val sequenceNumber: Int,
+    val timestampMs: Long,
+    val encodedAudio: ByteArray
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+        other as VoicePacket
+        if (callId != other.callId) return false
+        if (sequenceNumber != other.sequenceNumber) return false
+        if (timestampMs != other.timestampMs) return false
+        if (!encodedAudio.contentEquals(other.encodedAudio)) return false
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = callId.hashCode()
+        result = 31 * result + sequenceNumber
+        result = 31 * result + timestampMs.hashCode()
+        result = 31 * result + encodedAudio.contentHashCode()
+        return result
+    }
 }
 
 data class Packet(

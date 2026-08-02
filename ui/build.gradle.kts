@@ -39,6 +39,7 @@ dependencies {
     implementation(project(":meshControl"))
     implementation(project(":messaging"))
     implementation(project(":model"))
+    implementation(project(":voice"))
     implementation(project(":routing"))
     implementation(project(":transport"))
     implementation(project(":logger"))

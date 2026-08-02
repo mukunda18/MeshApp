@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
@@ -86,7 +87,8 @@ fun ConversationScreen(
                 title = uiState.node.name.ifBlank { "Conversation" },
                 initials = uiState.node.avatarInitials.ifBlank { "?" }.take(1),
                 isOnline = uiState.node.isOnline,
-                onBack = onBack
+                onBack = onBack,
+                onCall = { viewModel.dial() }
             )
         },
         bottomBar = {
@@ -152,7 +154,8 @@ private fun ConversationTopBar(
     title: String,
     initials: String,
     isOnline: Boolean,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onCall: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -209,6 +212,17 @@ private fun ConversationTopBar(
             )
         }
         Spacer(modifier = Modifier.weight(1f))
+        
+        if (isOnline) {
+            IconButton(onClick = onCall) {
+                Icon(
+                    imageVector = Icons.Default.Call,
+                    contentDescription = "Call",
+                    tint = MeshGreen
+                )
+            }
+        }
+
         Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
             Icon(
                 imageVector = Icons.Filled.MoreVert,

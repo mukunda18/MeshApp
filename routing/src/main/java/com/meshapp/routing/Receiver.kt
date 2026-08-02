@@ -42,6 +42,9 @@ class Receiver(
     /** Delivers MSG payloads addressed to this node to the MessagingService layer */
     val incomingPayloadChannel = Channel<Pair<NodeId, Payload.Message>>(capacity = Channel.UNLIMITED)
 
+    /** Delivers VOICE payloads addressed to this node to the Voice layer */
+    val incomingVoiceChannel = Channel<Pair<NodeId, Payload.Voice>>(capacity = Channel.UNLIMITED)
+
     /**
      * Entry point called by RoutingModule for every packet received from transport
      * senderIp must be the IP of the node that sent this specific datagram or TCP segment
@@ -90,6 +93,7 @@ class Receiver(
                 HeaderProtocol.Type.RREP -> handleRrep(packet)
                 HeaderProtocol.Type.ACK -> handleAck(packet)
                 HeaderProtocol.Type.RERR -> handleRerr(packet)
+                HeaderProtocol.Type.VOICE -> handleVoice(packet, senderIp)
                 else -> MeshLogger.error("Receiver", "Unknown packet type ${h.type}", "ID: ${h.id}")
             }
         } catch (e: Exception) {
@@ -108,10 +112,8 @@ class Receiver(
             nodesStore.addOrUpdateNode(packet.header.sourceNodeId, hello.name, hello.publicKey)
             
             for (entry in hello.routeEntries) {
-                // Never add a route to ourselves
                 if (entry.nodeId.bytes.contentEquals(selfNodeId.bytes)) continue
-                
-                // Do not add a routed path if the node is already a direct neighbor
+
                 if (peers.isDirectPeer(entry.nodeId)) continue
 
                 nodesStore.addOrUpdateNode(entry.nodeId, entry.name, entry.publicKey)
@@ -334,6 +336,38 @@ class Receiver(
             }
         } catch (e: Exception) {
             MeshLogger.error("Receiver", "Error handling RERR", e.toString())
+        }
+    }
+
+    private suspend fun handleVoice(packet: Packet, senderIp: String) {
+        try {
+            val h = packet.header
+            val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
+            val voice = result.value as? Payload.Voice ?: return
+
+            if (h.destNodeId.bytes.contentEquals(selfNodeId.bytes)) {
+                MeshLogger.packetReceived("Receiver", "Accepted VOICE ${voice.packet.sequenceNumber}", "From: ${h.sourceNodeId}")
+                incomingVoiceChannel.trySend(h.sourceNodeId to voice)
+                return
+            }
+
+            if (h.hopcount >= h.ttl) {
+                MeshLogger.messageDropped("Receiver", "Discarded VOICE: TTL expired", "Seq: ${voice.packet.sequenceNumber}")
+                return
+            }
+
+            val nextHop = router.lookup(h.destNodeId) ?: run {
+                MeshLogger.messageDropped("Receiver", "Discarded VOICE: No route to ${h.destNodeId}")
+                return
+            }
+            val nextIp = peers.resolveIp(nextHop) ?: run {
+                MeshLogger.messageDropped("Receiver", "Discarded VOICE: Peer $nextHop offline")
+                return
+            }
+            MeshLogger.packetSent("Receiver", "Forwarding VOICE ${voice.packet.sequenceNumber}", "To: ${h.destNodeId} via $nextIp")
+            sender.forwardUdp(rebuildWithHop(packet, h.hopcount + 1), nextIp)
+        } catch (e: Exception) {
+            MeshLogger.error("Receiver", "Error handling VOICE", e.toString())
         }
     }
 

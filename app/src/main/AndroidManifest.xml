@@ -23,6 +23,11 @@
     <!-- Required on Android 13+ to post the foreground service notification -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Required for voice call simulation -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
     <application
         android:name=".MeshApplication"
         android:allowBackup="true"
@@ -48,7 +53,7 @@
 
         <service
             android:name=".MeshForegroundService"
-            android:foregroundServiceType="dataSync"
+            android:foregroundServiceType="dataSync|microphone"
             android:exported="false" />
     </application>
 
