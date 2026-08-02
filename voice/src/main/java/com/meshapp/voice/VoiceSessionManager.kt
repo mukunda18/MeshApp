@@ -2,18 +2,18 @@ package com.meshapp.voice
 
 import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
-import android.media.AudioManager
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
-import android.content.pm.PackageManager
-import androidx.core.content.ContextCompat
 import androidx.annotation.RequiresPermission
+import androidx.core.content.ContextCompat
 import com.meshapp.logger.MeshLogger
 import com.meshapp.meshcontrol.MeshService
 import com.meshapp.model.MessageId
@@ -31,16 +31,21 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.math.abs
+import kotlin.math.tanh
 
 /**
- * Manages a real-time encrypted voice call session.
+ * Manages a real-time encrypted voice call session over the P2P mesh.
  *
- * - Records 16-bit PCM at 16 kHz mono.
- * - Encodes with mu-law (20 ms frames).
- * - Encrypts each frame with the per-call AES-GCM key derived from ECDH.
- * - Sends VOICE packets via UDP through the mesh.
- * - Receives VOICE packets, decrypts, places them in a small jitter buffer,
- *   reorders by sequence number, and plays them via AudioTrack.
+ * Recording & Transmission:
+ * - Records 16-bit PCM at 16 kHz mono in 20 ms frames.
+ * - Encodes with mu-law and encrypts via AES-GCM (ECDH-derived key).
+ * - Transmits frames over UDP.
+ *
+ * Reception & Playback:
+ * - Collects, decrypts, and reorders frames in a sequence-indexed jitter buffer.
+ * - Pre-buffers incoming frames before playback to prevent jitter/choppiness.
+ * - Applies soft-clipping (tanh) to avoid distortion when volume/gain is boosted.
  */
 class VoiceSessionManager(
     private val context: Context,
@@ -52,28 +57,32 @@ class VoiceSessionManager(
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
+    @Volatile
     private var isRunning = false
     private var sessionJob: Job? = null
 
     private val codec = VoiceCodec()
     private val nextSequenceNumber = AtomicInteger(0)
 
-    // Jitter buffer: sequence number -> decrypted PCM frame.
+    // Jitter buffer management
     private val jitterBuffer = ConcurrentHashMap<Int, ByteArray>()
     private val expectedSequence = AtomicInteger(0)
-    private val maxJitterPackets = 6 // ~120 ms at 20 ms/frame
 
-    // Keep unity gain for natural call audio and to avoid clipping artifacts.
+    // Buffer tuning parameters
+    private var isBuffering = true
+    private val initialBufferCount = 3 // ~60 ms initial delay cushion
+    private val maxJitterPackets = 6    // ~120 ms latency ceiling
+
+    // Playback and filter settings
     private val playbackGain = 1.0f
-
-    // Disabled by default; aggressive gating causes choppy/buzzy speech.
     private val noiseGateThreshold = 0
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun start() {
         if (isRunning) return
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
-            != PackageManager.PERMISSION_GRANTED) {
+            != PackageManager.PERMISSION_GRANTED
+        ) {
             MeshLogger.error("VoiceSessionManager", "RECORD_AUDIO permission not granted")
             return
         }
@@ -127,23 +136,17 @@ class VoiceSessionManager(
             return
         }
 
-        // Buffer to collect raw bytes from the hardware.
         val readBuffer = ByteArray(minBufferSize.coerceAtLeast(VoiceCodec.BYTES_PER_FRAME))
-        // Accumulator to assemble exact 20ms (BYTES_PER_FRAME) chunks.
         val frameAccumulator = ByteBuffer.allocate(VoiceCodec.BYTES_PER_FRAME * 2)
             .order(ByteOrder.LITTLE_ENDIAN)
 
         recorder.startRecording()
 
-        // Attempt to enable hardware Echo Cancellation, Noise Suppression, and AGC.
-        if (AcousticEchoCanceler.isAvailable()) {
-            AcousticEchoCanceler.create(recorder.audioSessionId)?.enabled = true
-        }
-        if (NoiseSuppressor.isAvailable()) {
-            NoiseSuppressor.create(recorder.audioSessionId)?.enabled = true
-        }
-        if (AutomaticGainControl.isAvailable()) {
-            AutomaticGainControl.create(recorder.audioSessionId)?.enabled = true
+        // Hardware audio enhancements
+        runCatching {
+            if (AcousticEchoCanceler.isAvailable()) AcousticEchoCanceler.create(recorder.audioSessionId)?.enabled = true
+            if (NoiseSuppressor.isAvailable()) NoiseSuppressor.create(recorder.audioSessionId)?.enabled = true
+            if (AutomaticGainControl.isAvailable()) AutomaticGainControl.create(recorder.audioSessionId)?.enabled = true
         }
 
         try {
@@ -151,18 +154,13 @@ class VoiceSessionManager(
                 val read = recorder.read(readBuffer, 0, readBuffer.size)
                 if (read > 0) {
                     frameAccumulator.put(readBuffer, 0, read)
-                    
-                    // While we have at least one full frame (640 bytes) in the accumulator...
+
                     while (frameAccumulator.position() >= VoiceCodec.BYTES_PER_FRAME) {
-                        // 1. Extract exactly one frame.
                         val frame = ByteArray(VoiceCodec.BYTES_PER_FRAME)
                         frameAccumulator.flip()
                         frameAccumulator.get(frame)
-                        
-                        // 2. Compact the buffer to move remaining bytes to the front.
                         frameAccumulator.compact()
-                        
-                        // 3. Send it.
+
                         val seq = nextSequenceNumber.getAndIncrement()
                         sendFrame(seq, frame)
                     }
@@ -180,12 +178,10 @@ class VoiceSessionManager(
         } catch (e: Exception) {
             MeshLogger.error("VoiceSessionManager", "Record loop crash", e.toString())
         } finally {
-            try {
+            runCatching {
                 if (recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
                     recorder.stop()
                 }
-            } catch (e: Exception) {
-                MeshLogger.error("VoiceSessionManager", "Error stopping recorder", e.toString())
             }
             recorder.release()
         }
@@ -193,13 +189,14 @@ class VoiceSessionManager(
 
     private fun sendFrame(sequenceNumber: Int, pcmFrame: ByteArray) {
         try {
-            // Keep sender path clean and avoid destructive pre-processing.
             val processed = applyAudioFilters(pcmFrame, gain = 1.0f, useNoiseGate = false)
             val encoded = codec.encode(processed)
             val encrypted = callCrypto.encrypt(sequenceNumber, encoded)
+
             require(encrypted.size <= 0xFFFF) {
                 "Encrypted voice frame too large: ${encrypted.size}"
             }
+
             val packet = VoicePacket(
                 callId = callId,
                 sequenceNumber = sequenceNumber,
@@ -250,21 +247,31 @@ class VoiceSessionManager(
             if (e is CancellationException) throw e
             MeshLogger.error("VoiceSessionManager", "Receive loop error", e.toString())
         } finally {
-            track.stop()
+            runCatching { track.stop() }
             track.release()
         }
     }
 
     private fun drainJitterBuffer(track: AudioTrack) {
+        // Pre-buffer frames before playback starts to withstand initial jitter
+        if (isBuffering) {
+            if (jitterBuffer.size >= initialBufferCount) {
+                isBuffering = false
+                val minSeq = jitterBuffer.keys.minOrNull() ?: 0
+                expectedSequence.set(minSeq)
+            } else {
+                return
+            }
+        }
+
         val minSeq = jitterBuffer.keys.minOrNull() ?: return
 
-        // If we're waiting for a packet that is older than the oldest one in the buffer,
-        // we likely missed it. Jump to the oldest available to resume playback.
+        // Jump sequence forward if intermediate packets were dropped by network
         if (expectedSequence.get() < minSeq) {
             expectedSequence.set(minSeq)
         }
 
-        // Latency control: if buffer grows too large, fast-forward to the oldest available.
+        // Limit latency build-up if buffer overfills
         if (jitterBuffer.size > maxJitterPackets) {
             expectedSequence.set(minSeq)
         }
@@ -272,20 +279,25 @@ class VoiceSessionManager(
         while (true) {
             val seq = expectedSequence.get()
             val frame = jitterBuffer.remove(seq) ?: break
-            // Apply playback gain and soft limiting on the receiver side.
+
             val amplified = applyAudioFilters(frame, gain = playbackGain, useNoiseGate = false)
             track.write(amplified, 0, amplified.size)
             expectedSequence.incrementAndGet()
         }
+
+        // Re-enter buffering state if the stream completely stalls
+        if (jitterBuffer.isEmpty()) {
+            isBuffering = true
+        }
     }
 
     /**
-     * Applies noise gating, software gain, and soft-limiting to a PCM frame.
+     * Applies noise gating, software gain amplification, and soft-clipping (tanh)
+     * to prevent digital waveform truncation at high gain.
      */
     private fun applyAudioFilters(pcm16: ByteArray, gain: Float, useNoiseGate: Boolean): ByteArray {
-        if (!useNoiseGate && gain == 1.0f) {
-            return pcm16
-        }
+        if (!useNoiseGate && gain == 1.0f) return pcm16
+
         val out = ByteArray(pcm16.size)
         var i = 0
         while (i < pcm16.size - 1) {
@@ -294,24 +306,25 @@ class VoiceSessionManager(
             var sample = high or low
             if (sample and 0x8000 != 0) sample -= 0x10000
 
-            // 1. Noise Gate (if requested, typically for the sender).
-            if (useNoiseGate && Math.abs(sample) < noiseGateThreshold) {
+            // 1. Noise Gate
+            if (useNoiseGate && abs(sample) < noiseGateThreshold) {
                 sample = 0
             }
 
-            // 2. Apply Gain.
-            var processed = sample * gain
+            // 2. Gain
+            val amplified = sample * gain
 
-            // 3. Advanced Soft-Limiting: Smoothly compress samples as they approach clipping.
-            // This prevents "sharp static" by rounding off the peaks.
-            val limit = 28000.0f
-            if (processed > limit) {
-                processed = limit + (processed - limit) * 0.1f
-            } else if (processed < -limit) {
-                processed = -limit + (processed + limit) * 0.1f
+            // 3. Hyperbolic Tangent Soft Clipping
+            val maxVal = 32767.0f
+            val normalized = amplified / maxVal
+            val softClipped = if (abs(normalized) > 0.8f) {
+                tanh(normalized.toDouble()).toFloat() * maxVal
+            } else {
+                amplified
             }
 
-            val finalSample = processed.toInt().coerceIn(-32768, 32767)
+            val finalSample = softClipped.toInt().coerceIn(-32768, 32767)
+
             out[i] = (finalSample and 0xFF).toByte()
             out[i + 1] = ((finalSample shr 8) and 0xFF).toByte()
             i += 2
