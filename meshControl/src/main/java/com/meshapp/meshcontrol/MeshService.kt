@@ -69,6 +69,9 @@ class MeshService(
     private val _incomingVoiceStream = MutableSharedFlow<Pair<NodeId, Payload.Voice>>(extraBufferCapacity = 256)
     val incomingVoiceStream: SharedFlow<Pair<NodeId, Payload.Voice>> = _incomingVoiceStream.asSharedFlow()
 
+    private val _incomingFileChunkStream = MutableSharedFlow<Pair<NodeId, Payload.FileChunk>>(extraBufferCapacity = 256)
+    val incomingFileChunkStream: SharedFlow<Pair<NodeId, Payload.FileChunk>> = _incomingFileChunkStream.asSharedFlow()
+
     suspend fun start() = mutex.withLock {
         if (serviceScope != null) return@withLock // Already running
 
@@ -141,6 +144,12 @@ class MeshService(
             }
         }
 
+        scope.launch {
+            for (pair in rm.receiver.incomingFileChunkChannel) {
+                _incomingFileChunkStream.emit(pair)
+            }
+        }
+
         _stateStream.value = MeshState.RUNNING
         MeshLogger.info("MeshService", "Mesh Service RUNNING")
     }
@@ -207,6 +216,15 @@ class MeshService(
             } else {
                 MeshLogger.error("MeshService", "No route for voice to $destinationNodeID")
             }
+        }
+    }
+
+    /** Sends a FILE_CHUNK payload via TCP, routed if necessary */
+    fun sendFileChunk(destinationNodeID: NodeId, payload: Payload.FileChunk) {
+        val rm = routingModule ?: return
+        val scope = serviceScope ?: return
+        scope.launch {
+            rm.sender.sendFileChunk(destinationNodeID, payload)
         }
     }
 

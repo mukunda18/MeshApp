@@ -5,6 +5,7 @@ import java.net.InetSocketAddress
 object ContentType {
     const val CHAT = 0x01
     const val CALL_SIGNAL = 0x02
+    const val FILE_SIGNAL = 0x03
 }
 
 object CallSignalType {
@@ -15,6 +16,14 @@ object CallSignalType {
     const val BUSY = 0x05
     const val CANCEL = 0x06
     const val HANGUP = 0x07
+}
+
+object FileSignalType {
+    const val OFFER = 0x01
+    const val ACCEPT = 0x02
+    const val REJECT = 0x03
+    const val CANCEL = 0x04
+    const val COMPLETE = 0x05
 }
 
 data class NodeId(val bytes: ByteArray) {
@@ -233,6 +242,39 @@ data class CallAccept(
     override fun hashCode(): Int = ephemeralPublicKey.contentHashCode()
 }
 
+data class FileTransferMetadata(
+    val filename: String,
+    val size: Long,
+    val checksum: String,
+    val chunkSize: Int,
+    val totalChunks: Int,
+    val senderNodeId: NodeId,
+    val createdAt: Long
+)
+
+data class FileSignal(
+    val transferId: MessageId,
+    val type: Int,
+    val payload: ByteArray
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+        other as FileSignal
+        if (transferId != other.transferId) return false
+        if (type != other.type) return false
+        if (!payload.contentEquals(other.payload)) return false
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = transferId.hashCode()
+        result = 31 * result + type
+        result = 31 * result + payload.contentHashCode()
+        return result
+    }
+}
+
 sealed interface Payload {
     data class Hello(
         val name: String,
@@ -266,6 +308,10 @@ sealed interface Payload {
     data class Voice(
         val packet: VoicePacket
     ) : Payload
+
+    data class FileChunk(
+        val packet: FileChunkPacket
+    ) : Payload
 }
 
 data class VoicePacket(
@@ -290,6 +336,32 @@ data class VoicePacket(
         result = 31 * result + sequenceNumber
         result = 31 * result + timestampMs.hashCode()
         result = 31 * result + encodedAudio.contentHashCode()
+        return result
+    }
+}
+
+data class FileChunkPacket(
+    val transferId: MessageId,
+    val chunkIndex: Int,
+    val totalChunks: Int,
+    val data: ByteArray
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+        other as FileChunkPacket
+        if (transferId != other.transferId) return false
+        if (chunkIndex != other.chunkIndex) return false
+        if (totalChunks != other.totalChunks) return false
+        if (!data.contentEquals(other.data)) return false
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = transferId.hashCode()
+        result = 31 * result + chunkIndex
+        result = 31 * result + totalChunks
+        result = 31 * result + data.contentHashCode()
         return result
     }
 }
