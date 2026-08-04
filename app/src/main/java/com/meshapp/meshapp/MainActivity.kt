@@ -89,7 +89,8 @@ class MainActivity : ComponentActivity() {
                             ownNodeId = container.identity.nodeId,
                             messagingService = container.messagingService,
                             meshService = container.meshService,
-                            voiceCallManager = container.voiceCallManager
+                            voiceCallManager = container.voiceCallManager,
+                            fileTransferService = container.fileTransferService
                         )
                     )
                 } catch (e: Exception) {

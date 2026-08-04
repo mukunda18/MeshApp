@@ -18,6 +18,7 @@ object PayloadSerializer {
             is Payload.RREP -> serializeRrep(payload, buffer, offset)
             is Payload.RERR -> serializeRerr(payload, buffer, offset)
             is Payload.Voice -> serializeVoice(payload, buffer, offset)
+            is Payload.FileChunk -> serializeFileChunk(payload, buffer, offset)
         }
     }
 
@@ -68,5 +69,9 @@ object PayloadSerializer {
 
     private fun serializeVoice(payload: Payload.Voice, buffer: ByteArray, offset: Int): Int {
         return com.meshapp.model.VoicePacketProtocol.voicePacket.write(buffer, payload.packet, offset)
+    }
+
+    private fun serializeFileChunk(payload: Payload.FileChunk, buffer: ByteArray, offset: Int): Int {
+        return com.meshapp.model.FileChunkPacketProtocol.write(buffer, payload.packet, offset)
     }
 }

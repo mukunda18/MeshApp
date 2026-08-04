@@ -25,6 +25,7 @@ object PayloadParser {
         HeaderProtocol.Type.ACK -> parseAck(data)
         HeaderProtocol.Type.RERR -> parseRerr(data)
         HeaderProtocol.Type.VOICE -> parseVoice(data)
+        HeaderProtocol.Type.FILE_CHUNK -> parseFileChunk(data)
         else -> {
             val error = ParseError.UnsupportedType(type)
             MeshLogger.error("PayloadParser", "Unsupported payload type: $type")
@@ -215,6 +216,22 @@ object PayloadParser {
         } catch (e: IndexOutOfBoundsException) {
             val error = ParseError.TooShort(data.size, data.size + 1)
             MeshLogger.error("PayloadParser", "Failed to parse VOICE: Buffer too short", e.toString())
+            return ParseResult.Failure(error)
+        }
+    }
+
+    private fun parseFileChunk(data: ByteArray): ParseResult<Payload> {
+        try {
+            val packetRead = com.meshapp.model.FileChunkPacketProtocol.read(data, 0)
+            if (data.size != packetRead.bytesRead) {
+                val error = ParseError.MalformedPayload("FILE_CHUNK has trailing bytes")
+                MeshLogger.error("PayloadParser", "Failed to parse FILE_CHUNK", error.toString())
+                return ParseResult.Failure(error)
+            }
+            return ParseResult.Success(Payload.FileChunk(packetRead.value))
+        } catch (e: IndexOutOfBoundsException) {
+            val error = ParseError.TooShort(data.size, data.size + 1)
+            MeshLogger.error("PayloadParser", "Failed to parse FILE_CHUNK: Buffer too short", e.toString())
             return ParseResult.Failure(error)
         }
     }

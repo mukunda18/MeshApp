@@ -45,6 +45,9 @@ class Receiver(
     /** Delivers VOICE payloads addressed to this node to the Voice layer */
     val incomingVoiceChannel = Channel<Pair<NodeId, Payload.Voice>>(capacity = Channel.UNLIMITED)
 
+    /** Delivers FILE_CHUNK payloads addressed to this node to the FileTransfer layer */
+    val incomingFileChunkChannel = Channel<Pair<NodeId, Payload.FileChunk>>(capacity = Channel.UNLIMITED)
+
     /**
      * Entry point called by RoutingModule for every packet received from transport
      * senderIp must be the IP of the node that sent this specific datagram or TCP segment
@@ -94,6 +97,7 @@ class Receiver(
                 HeaderProtocol.Type.ACK -> handleAck(packet)
                 HeaderProtocol.Type.RERR -> handleRerr(packet)
                 HeaderProtocol.Type.VOICE -> handleVoice(packet, senderIp)
+                HeaderProtocol.Type.FILE_CHUNK -> handleFileChunk(packet)
                 else -> MeshLogger.error("Receiver", "Unknown packet type ${h.type}", "ID: ${h.id}")
             }
         } catch (e: Exception) {
@@ -368,6 +372,38 @@ class Receiver(
             sender.forwardUdp(rebuildWithHop(packet, h.hopcount + 1), nextIp)
         } catch (e: Exception) {
             MeshLogger.error("Receiver", "Error handling VOICE", e.toString())
+        }
+    }
+
+    private suspend fun handleFileChunk(packet: Packet) {
+        try {
+            val h = packet.header
+            val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
+            val chunk = result.value as? Payload.FileChunk ?: return
+
+            if (h.destNodeId.bytes.contentEquals(selfNodeId.bytes)) {
+                MeshLogger.packetReceived("Receiver", "Accepted FILE_CHUNK ${chunk.packet.chunkIndex}", "From: ${h.sourceNodeId}")
+                incomingFileChunkChannel.trySend(h.sourceNodeId to chunk)
+                return
+            }
+
+            if (h.hopcount >= h.ttl) {
+                MeshLogger.messageDropped("Receiver", "Discarded FILE_CHUNK: TTL expired", "Index: ${chunk.packet.chunkIndex}")
+                return
+            }
+
+            val nextHop = router.lookup(h.destNodeId) ?: run {
+                MeshLogger.messageDropped("Receiver", "Discarded FILE_CHUNK: No route to ${h.destNodeId}")
+                return
+            }
+            val nextIp = peers.resolveIp(nextHop) ?: run {
+                MeshLogger.messageDropped("Receiver", "Discarded FILE_CHUNK: Peer $nextHop offline")
+                return
+            }
+            MeshLogger.packetSent("Receiver", "Forwarding FILE_CHUNK ${chunk.packet.chunkIndex}", "To: ${h.destNodeId} via $nextIp")
+            sender.forwardTcp(rebuildWithHop(packet, h.hopcount + 1), nextIp)
+        } catch (e: Exception) {
+            MeshLogger.error("Receiver", "Error handling FILE_CHUNK", e.toString())
         }
     }
 

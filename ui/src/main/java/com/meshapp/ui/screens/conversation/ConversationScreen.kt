@@ -1,13 +1,16 @@
 package com.meshapp.ui.screens.conversation
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -18,6 +21,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AttachFile
@@ -29,6 +34,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -45,20 +51,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.ImeAction
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.meshapp.messaging.MessageDeliveryStatus
 import com.meshapp.ui.state.ConversationMessageUiState
+import com.meshapp.ui.state.FileTransferUiState
 import com.meshapp.ui.theme.MeshGreen
 import com.meshapp.ui.theme.MeshMuted
 import com.meshapp.ui.viewmodel.ConversationViewModel
-import com.meshapp.messaging.MessageDeliveryStatus
 
 @Composable
 fun ConversationScreen(
@@ -69,6 +74,13 @@ fun ConversationScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     var draftMessage by remember { mutableStateOf("") }
+    val context = LocalContext.current
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { viewModel.attachFile(context, it) }
+    }
 
     LaunchedEffect(nodeId) {
         viewModel.initialize(nodeId)
@@ -98,7 +110,8 @@ fun ConversationScreen(
                 onSend = {
                     viewModel.sendMessage(draftMessage)
                     draftMessage = ""
-                }
+                },
+                onAttach = { filePickerLauncher.launch("*/*") }
             )
         }
     ) { paddingValues ->
@@ -135,7 +148,10 @@ fun ConversationScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(uiState.messages, key = { it.id }) { message ->
-                    ConversationBubble(message = message)
+                    ConversationBubble(
+                        message = message,
+                        onFileClick = { viewModel.openFile(context, it) }
+                    )
                 }
                 item { Spacer(modifier = Modifier.height(6.dp)) }
             }
@@ -234,7 +250,10 @@ private fun ConversationTopBar(
 }
 
 @Composable
-private fun ConversationBubble(message: ConversationMessageUiState) {
+private fun ConversationBubble(
+    message: ConversationMessageUiState,
+    onFileClick: (FileTransferUiState) -> Unit
+) {
     val alignment = if (message.isOutgoing) Alignment.End else Alignment.Start
     val bubbleColor = if (message.isOutgoing) OutboundBg else InboundBg
     val borderColor = if (message.isOutgoing) OutboundBorder else InboundBorder
@@ -265,13 +284,22 @@ private fun ConversationBubble(message: ConversationMessageUiState) {
                         bottomEnd = if (message.isOutgoing) 6.dp else 22.dp
                     )
                 )
+                .then(
+                    if (message.fileTransfer != null) {
+                        Modifier.clickable { onFileClick(message.fileTransfer) }
+                    } else Modifier
+                )
                 .padding(16.dp)
         ) {
-            Text(
-                text = message.text,
-                color = Color(0xFFE4E7E9),
-                style = MaterialTheme.typography.bodyLarge
-            )
+            if (message.fileTransfer != null) {
+                FileTransferContent(message.fileTransfer)
+            } else {
+                Text(
+                    text = message.text,
+                    color = Color(0xFFE4E7E9),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
         }
 
         Row(
@@ -307,10 +335,46 @@ private fun ConversationBubble(message: ConversationMessageUiState) {
 }
 
 @Composable
+private fun FileTransferContent(transfer: FileTransferUiState) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            imageVector = Icons.Filled.AttachFile,
+            contentDescription = null,
+            tint = MeshGreen,
+            modifier = Modifier.size(32.dp)
+        )
+        Spacer(modifier = Modifier.size(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = transfer.filename,
+                color = Color.White,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = transfer.status,
+                color = Color(0xFFB5BABE),
+                style = MaterialTheme.typography.labelMedium
+            )
+            if (transfer.status == "TRANSFERRING") {
+                Spacer(modifier = Modifier.height(8.dp))
+                LinearProgressIndicator(
+                    progress = { transfer.progress },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MeshGreen,
+                    trackColor = Color.DarkGray
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun ConversationInputBar(
     draftMessage: String,
     onDraftChange: (String) -> Unit,
-    onSend: () -> Unit
+    onSend: () -> Unit,
+    onAttach: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -319,7 +383,10 @@ private fun ConversationInputBar(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+        IconButton(
+            onClick = onAttach,
+            modifier = Modifier.size(40.dp)
+        ) {
             Icon(
                 imageVector = Icons.Filled.AttachFile,
                 contentDescription = "Attach",
@@ -368,10 +435,4 @@ private fun ConversationInputBar(
             )
         }
     }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun ConversationScreenPreview() {
-    ConversationScreen(nodeId = "node-alpha", onBack = {})
 }

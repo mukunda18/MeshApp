@@ -36,6 +36,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.material)
+    implementation(project(":filetransfer"))
     implementation(project(":meshControl"))
     implementation(project(":messaging"))
     implementation(project(":model"))

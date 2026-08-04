@@ -56,6 +56,11 @@ class MessagingService(
     )
     val callSignalsStream: SharedFlow<Pair<NodeId, CallSignal>> = _callSignalsStream.asSharedFlow()
 
+    private val _fileSignalsStream = MutableSharedFlow<Pair<NodeId, com.meshapp.model.FileSignal>>(
+        extraBufferCapacity = streamBufferCapacity
+    )
+    val fileSignalsStream: SharedFlow<Pair<NodeId, com.meshapp.model.FileSignal>> = _fileSignalsStream.asSharedFlow()
+
     private val _conversationsStream = MutableStateFlow<List<ConversationSummary>>(emptyList())
     val conversationsStream: StateFlow<List<ConversationSummary>> = _conversationsStream.asStateFlow()
 
@@ -143,11 +148,18 @@ class MessagingService(
         MeshLogger.info("MessagingService", "Call signal ${signal.type} queued for $destination")
     }
 
+    fun sendFileSignal(destination: NodeId, signal: com.meshapp.model.FileSignal) {
+        val timestamp = Timestamp(System.currentTimeMillis())
+        outboundChannel.trySend(OutboundRequest.FileSignalRequest(destination, signal, timestamp))
+        MeshLogger.info("MessagingService", "File signal ${signal.type} queued for $destination")
+    }
+
     private fun processOutbound(request: OutboundRequest) {
         val now = System.currentTimeMillis()
         val composeTime = when (request) {
             is OutboundRequest.Chat -> request.message.composeTimestamp.millis
             is OutboundRequest.Signal -> request.timestamp.millis
+            is OutboundRequest.FileSignalRequest -> request.timestamp.millis
         }
 
         // 1. Check for timeout (e.g., if the node is offline, and we can't find its key)
@@ -186,6 +198,11 @@ class MessagingService(
                     val size = CallSignalProtocol.callSignal.write(buf, request.signal, 0)
                     // Use random ID for transport to avoid deduplication, but callId remains inside.
                     Quad(buf.copyOfRange(0, size), ContentType.CALL_SIGNAL, randomMessageId(), request.timestamp)
+                }
+                is OutboundRequest.FileSignalRequest -> {
+                    val buf = ByteArray(2048) // File metadata might be larger
+                    val size = com.meshapp.model.FileSignalProtocol.write(buf, request.signal, 0)
+                    Quad(buf.copyOfRange(0, size), ContentType.FILE_SIGNAL, randomMessageId(), request.timestamp)
                 }
             }
 
@@ -280,6 +297,14 @@ class MessagingService(
                 } catch (e: Exception) {
                     Log.e("MessagingService", "Failed to parse call signal from $sourceNodeId", e)
                 }
+            } else if (decoded.contentType == ContentType.FILE_SIGNAL) {
+                try {
+                    val signalRead = com.meshapp.model.FileSignalProtocol.read(decoded.content, 0)
+                    _fileSignalsStream.tryEmit(sourceNodeId to signalRead.value)
+                    MeshLogger.info("MessagingService", "Received file signal ${signalRead.value.type} from $sourceNodeId")
+                } catch (e: Exception) {
+                    Log.e("MessagingService", "Failed to parse file signal from $sourceNodeId", e)
+                }
             }
         } catch (e: Exception) {
             // Possible exceptions:
@@ -363,6 +388,12 @@ private sealed class OutboundRequest {
     data class Signal(
         override val destinationNodeId: NodeId,
         val signal: CallSignal,
+        val timestamp: Timestamp
+    ) : OutboundRequest()
+
+    data class FileSignalRequest(
+        override val destinationNodeId: NodeId,
+        val signal: com.meshapp.model.FileSignal,
         val timestamp: Timestamp
     ) : OutboundRequest()
 }
