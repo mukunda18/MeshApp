@@ -16,7 +16,7 @@ class FileTransferService(
     private val ownNodeId: NodeId,
     private val meshService: MeshService,
     private val messagingService: MessagingService,
-    private val store: FileTransferStore = InMemoryFileTransferStore(),
+    val store: FileTransferStore = InMemoryFileTransferStore(),
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)

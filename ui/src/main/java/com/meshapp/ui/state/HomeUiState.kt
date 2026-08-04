@@ -55,6 +55,17 @@ data class ConversationMessageUiState(
     val text: String,
     val isOutgoing: Boolean,
     val timestamp: String,
+    val rawTimestamp: Long,
     val deliveryStatusLabel: String? = null,
-    val deliveryStatus: MessageDeliveryStatus? = null
+    val deliveryStatus: MessageDeliveryStatus? = null,
+    val fileTransfer: FileTransferUiState? = null
+)
+
+data class FileTransferUiState(
+    val transferId: String,
+    val filename: String,
+    val progress: Float,
+    val status: String,
+    val isIncoming: Boolean,
+    val localPath: String? = null
 )

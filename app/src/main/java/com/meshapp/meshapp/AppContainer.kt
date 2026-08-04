@@ -7,6 +7,7 @@ import com.meshapp.meshcontrol.MeshConfig
 import com.meshapp.meshcontrol.MeshService
 import com.meshapp.messaging.ConversationStore
 import com.meshapp.messaging.MessagingService
+import com.meshapp.filetransfer.FileTransferService
 import com.meshapp.voice.VoiceCallManager
 import com.meshapp.security.Identity
 import com.meshapp.security.IdentityManager
@@ -104,6 +105,13 @@ class AppContainer(context: Context) {
         meshService = meshService,
         config = meshConfig,
         ownNodeId = identity.nodeId
+    )
+
+    val fileTransferService: FileTransferService = FileTransferService(
+        context = appContext,
+        ownNodeId = identity.nodeId,
+        meshService = meshService,
+        messagingService = messagingService
     )
 
     // ── Port constants ────────────────────────────────────────────────────────

@@ -114,7 +114,8 @@ class MeshForegroundService : Service() {
                 val container = app.awaitContainer()
                 container.meshService.start()
                 container.messagingService.start()
-                MeshLogger.info("ForegroundService", "Mesh and Messaging services started")
+                container.fileTransferService.start()
+                MeshLogger.info("ForegroundService", "Mesh, Messaging, and FileTransfer services started")
             } catch (e: Exception) {
                 // Critical failure during background mesh startup.
                 // - IllegalStateException (MeshService already started)
