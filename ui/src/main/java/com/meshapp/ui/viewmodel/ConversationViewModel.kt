@@ -83,7 +83,10 @@ class ConversationViewModel(
         viewModelScope.launch {
             try {
                 val fileName = getFileName(context, uri) ?: "file_${System.currentTimeMillis()}"
-                val tempFile = File(context.cacheDir, fileName)
+                val outgoingDir = File(context.cacheDir, "file_transfer/outgoing").apply {
+                    if (!exists()) mkdirs()
+                }
+                val tempFile = File(outgoingDir, fileName)
                 withContext(Dispatchers.IO) {
                     context.contentResolver.openInputStream(uri)?.use { input ->
                         FileOutputStream(tempFile).use { output ->
