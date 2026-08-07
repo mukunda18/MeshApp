@@ -90,7 +90,9 @@ class MainActivity : ComponentActivity() {
                             messagingService = container.messagingService,
                             meshService = container.meshService,
                             voiceCallManager = container.voiceCallManager,
-                            fileTransferService = container.fileTransferService
+                            fileTransferService = container.fileTransferService,
+                            voiceMessageRecorder = container.voiceMessageRecorder,
+                            voiceMessagePlayer = container.voiceMessagePlayer
                         )
                     )
                 } catch (e: Exception) {

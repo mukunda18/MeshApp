@@ -21,7 +21,6 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-
 rootProject.name = "MeshApp"
 include(":app")
 include(":model")
@@ -35,3 +34,4 @@ include(":meshControl")
 include(":logger")
 include(":voice")
 include(":filetransfer")
+include(":voicemessage")

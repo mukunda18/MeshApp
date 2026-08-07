@@ -1,0 +1,14 @@
+[
+    {
+        "merged": "com.meshapp.voicemessage-release-65:/layout-land/material_timepicker.xml",
+        "source": "com.meshapp.voicemessage-material-1.12.0-44:/layout-land/material_timepicker.xml"
+    },
+    {
+        "merged": "com.meshapp.voicemessage-release-65:/layout-land/material_clock_period_toggle_land.xml",
+        "source": "com.meshapp.voicemessage-material-1.12.0-44:/layout-land/material_clock_period_toggle_land.xml"
+    },
+    {
+        "merged": "com.meshapp.voicemessage-release-65:/layout-land/mtrl_picker_header_dialog.xml",
+        "source": "com.meshapp.voicemessage-material-1.12.0-44:/layout-land/mtrl_picker_header_dialog.xml"
+    }
+]

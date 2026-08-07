@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,7 +31,10 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -51,6 +55,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -74,6 +79,7 @@ fun ConversationScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     var draftMessage by remember { mutableStateOf("") }
+    var playingTransferId by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
 
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -111,7 +117,10 @@ fun ConversationScreen(
                     viewModel.sendMessage(draftMessage)
                     draftMessage = ""
                 },
-                onAttach = { filePickerLauncher.launch("*/*") }
+                onAttach = { filePickerLauncher.launch("*/*") },
+                onRecordStart = { viewModel.startVoiceMessageRecording() },
+                onRecordStop = { viewModel.stopVoiceMessageRecording() },
+                onRecordCancel = { viewModel.cancelVoiceMessageRecording() }
             )
         }
     ) { paddingValues ->
@@ -150,7 +159,19 @@ fun ConversationScreen(
                 items(uiState.messages, key = { it.id }) { message ->
                     ConversationBubble(
                         message = message,
-                        onFileClick = { viewModel.openFile(context, it) }
+                        isVoiceMessagePlaying = message.fileTransfer?.transferId == playingTransferId,
+                        onFileClick = { viewModel.openFile(context, it) },
+                        onVoiceMessagePlayToggle = { transfer ->
+                            if (playingTransferId == transfer.transferId) {
+                                viewModel.stopVoiceMessagePlayback()
+                                playingTransferId = null
+                            } else {
+                                playingTransferId = transfer.transferId
+                                viewModel.playVoiceMessage(transfer) {
+                                    playingTransferId = null
+                                }
+                            }
+                        }
                     )
                 }
                 item { Spacer(modifier = Modifier.height(6.dp)) }
@@ -228,7 +249,7 @@ private fun ConversationTopBar(
             )
         }
         Spacer(modifier = Modifier.weight(1f))
-        
+
         if (isOnline) {
             IconButton(onClick = onCall) {
                 Icon(
@@ -252,11 +273,14 @@ private fun ConversationTopBar(
 @Composable
 private fun ConversationBubble(
     message: ConversationMessageUiState,
-    onFileClick: (FileTransferUiState) -> Unit
+    isVoiceMessagePlaying: Boolean,
+    onFileClick: (FileTransferUiState) -> Unit,
+    onVoiceMessagePlayToggle: (FileTransferUiState) -> Unit
 ) {
     val alignment = if (message.isOutgoing) Alignment.End else Alignment.Start
     val bubbleColor = if (message.isOutgoing) OutboundBg else InboundBg
     val borderColor = if (message.isOutgoing) OutboundBorder else InboundBorder
+    val isVoiceMessage = message.fileTransfer?.isVoiceMessage == true
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -285,14 +309,18 @@ private fun ConversationBubble(
                     )
                 )
                 .then(
-                    if (message.fileTransfer != null) {
+                    if (message.fileTransfer != null && !isVoiceMessage) {
                         Modifier.clickable { onFileClick(message.fileTransfer) }
                     } else Modifier
                 )
                 .padding(16.dp)
         ) {
             if (message.fileTransfer != null) {
-                FileTransferContent(message.fileTransfer)
+                FileTransferContent(
+                    transfer = message.fileTransfer,
+                    isPlaying = isVoiceMessagePlaying,
+                    onPlayToggle = { onVoiceMessagePlayToggle(message.fileTransfer) }
+                )
             } else {
                 Text(
                     text = message.text,
@@ -335,7 +363,30 @@ private fun ConversationBubble(
 }
 
 @Composable
-private fun FileTransferContent(transfer: FileTransferUiState) {
+private fun FileTransferContent(
+    transfer: FileTransferUiState,
+    isPlaying: Boolean,
+    onPlayToggle: () -> Unit
+) {
+    if (transfer.isVoiceMessage) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onPlayToggle, modifier = Modifier.size(40.dp)) {
+                Icon(
+                    imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    contentDescription = if (isPlaying) "Pause" else "Play",
+                    tint = MeshGreen
+                )
+            }
+            Spacer(modifier = Modifier.size(8.dp))
+            Text(
+                text = "%.0fs".format(transfer.durationMs / 1000f),
+                color = Color(0xFFB5BABE),
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+        return
+    }
+
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(
             imageVector = Icons.Filled.AttachFile,
@@ -374,7 +425,10 @@ private fun ConversationInputBar(
     draftMessage: String,
     onDraftChange: (String) -> Unit,
     onSend: () -> Unit,
-    onAttach: () -> Unit
+    onAttach: () -> Unit,
+    onRecordStart: () -> Boolean,
+    onRecordStop: () -> Unit,
+    onRecordCancel: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -419,20 +473,47 @@ private fun ConversationInputBar(
             keyboardActions = KeyboardActions(onSend = { onSend() })
         )
 
-        Box(
-            modifier = Modifier
-                .padding(start = 12.dp)
-                .size(56.dp)
-                .clip(CircleShape)
-                .background(MeshGreen)
-                .clickable(onClick = onSend),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Send,
-                contentDescription = "Send",
-                tint = Color(0xFF052A12)
-            )
+        if (draftMessage.isBlank()) {
+            Box(
+                modifier = Modifier
+                    .padding(start = 12.dp)
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(MeshGreen)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onPress = {
+                                if (onRecordStart()) {
+                                    val released = tryAwaitRelease()
+                                    if (released) onRecordStop() else onRecordCancel()
+                                }
+                            }
+                        )
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Mic,
+                    contentDescription = "Record voice message",
+                    tint = Color(0xFF052A12)
+                )
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .padding(start = 12.dp)
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(MeshGreen)
+                    .clickable(onClick = onSend),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Send,
+                    contentDescription = "Send",
+                    tint = Color(0xFF052A12)
+                )
+            }
         }
     }
 }

@@ -2,21 +2,17 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
 }
-
 android {
     namespace = "com.meshapp.meshapp"
     compileSdk = 37
-
     defaultConfig {
         applicationId = "com.minor.meshapp"
         minSdk = 30
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
-
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
-
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -35,7 +31,6 @@ android {
         compose = true
     }
 }
-
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
@@ -49,6 +44,7 @@ dependencies {
     implementation(project(":filetransfer"))
     implementation(project(":ui"))
     implementation(project(":voice"))
+    implementation(project(":voicemessage"))
     implementation(project(":transport"))
     implementation(project(":meshControl"))
     implementation(project(":messaging"))

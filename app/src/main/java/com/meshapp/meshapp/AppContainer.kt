@@ -9,6 +9,8 @@ import com.meshapp.messaging.ConversationStore
 import com.meshapp.messaging.MessagingService
 import com.meshapp.filetransfer.FileTransferService
 import com.meshapp.voice.VoiceCallManager
+import com.meshapp.voicemessage.VoiceMessagePlayer
+import com.meshapp.voicemessage.VoiceMessageRecorder
 import com.meshapp.security.Identity
 import com.meshapp.security.IdentityManager
 import com.meshapp.security.PersistentIdentityStore
@@ -113,6 +115,14 @@ class AppContainer(context: Context) {
         meshService = meshService,
         messagingService = messagingService
     )
+
+    // ── Voice messaging ───────────────────────────────────────────────────────
+
+    val voiceMessageRecorder: VoiceMessageRecorder = VoiceMessageRecorder(
+        context = appContext
+    )
+
+    val voiceMessagePlayer: VoiceMessagePlayer = VoiceMessagePlayer()
 
     // ── Port constants ────────────────────────────────────────────────────────
 

@@ -41,6 +41,7 @@ dependencies {
     implementation(project(":messaging"))
     implementation(project(":model"))
     implementation(project(":voice"))
+    implementation(project(":voicemessage"))
     implementation(project(":routing"))
     implementation(project(":transport"))
     implementation(project(":logger"))

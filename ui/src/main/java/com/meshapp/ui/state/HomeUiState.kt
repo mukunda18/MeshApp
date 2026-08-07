@@ -67,5 +67,7 @@ data class FileTransferUiState(
     val progress: Float,
     val status: String,
     val isIncoming: Boolean,
-    val localPath: String? = null
+    val localPath: String? = null,
+    val isVoiceMessage: Boolean = false,
+    val durationMs: Long = 0L
 )

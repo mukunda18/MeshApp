@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "com.meshapp.voicemessage-release-65:/layout-v26/mtrl_calendar_month.xml",
+        "source": "com.meshapp.voicemessage-material-1.12.0-44:/layout-v26/mtrl_calendar_month.xml"
+    },
+    {
+        "merged": "com.meshapp.voicemessage-release-65:/layout-v26/abc_screen_toolbar.xml",
+        "source": "com.meshapp.voicemessage-appcompat-1.7.0-17:/layout-v26/abc_screen_toolbar.xml"
+    }
+]

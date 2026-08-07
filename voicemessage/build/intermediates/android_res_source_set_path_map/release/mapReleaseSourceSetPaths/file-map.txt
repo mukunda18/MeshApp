@@ -1,0 +1,9 @@
+com.meshapp.voicemessage-pngs-0 /mnt/01DCEB297FD38F70/Programs/Good Projects/MeshApp/voicemessage/build/generated/res/pngs/release
+com.meshapp.voicemessage-updated_navigation_xml-1 /mnt/01DCEB297FD38F70/Programs/Good Projects/MeshApp/voicemessage/build/generated/updated_navigation_xml/release
+com.meshapp.voicemessage-mergeReleaseResources-2 /mnt/01DCEB297FD38F70/Programs/Good Projects/MeshApp/voicemessage/build/intermediates/incremental/release/mergeReleaseResources/merged.dir
+com.meshapp.voicemessage-mergeReleaseResources-3 /mnt/01DCEB297FD38F70/Programs/Good Projects/MeshApp/voicemessage/build/intermediates/incremental/release/mergeReleaseResources/stripped.dir
+com.meshapp.voicemessage-release-4 /mnt/01DCEB297FD38F70/Programs/Good Projects/MeshApp/voicemessage/build/intermediates/merged_res/release/mergeReleaseResources
+com.meshapp.voicemessage-release-5 /mnt/01DCEB297FD38F70/Programs/Good Projects/MeshApp/voicemessage/build/intermediates/packaged_res/release/packageReleaseResources
+com.meshapp.voicemessage-main-6 /mnt/01DCEB297FD38F70/Programs/Good Projects/MeshApp/voicemessage/src/main/res
+com.meshapp.voicemessage-release-7 /mnt/01DCEB297FD38F70/Programs/Good Projects/MeshApp/voicemessage/src/release/res
+gradleHome-0 /home/prasant-bhattarai/.gradle
