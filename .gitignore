@@ -1,18 +1,32 @@
 *.iml
-.gradle
+.gradle/
+
+# IDE
 /.idea/
-/local.properties
 /.idea/caches
 /.idea/libraries
 /.idea/modules.xml
 /.idea/workspace.xml
 /.idea/navEditor.xml
 /.idea/assetWizardSettings.xml
-.DS_Store
 .idea/*
-.vscode
-/build
-/captures
-.externalNativeBuild
-.cxx
+.vscode/
+
+# OS files
+.DS_Store
+
+# Android/Gradle local state
 local.properties
+keystore.properties
+signing.properties
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+
+# Build outputs
+build/
+captures/
+.externalNativeBuild/
+.cxx/
