@@ -180,7 +180,13 @@ fun MeshAppNavHost(
                 if (isRootTab && uiState.voiceCallState is CallState.Idle) {
                     BottomNavigationBar(
                         currentRoute = currentRoute,
-                        onNavigate = { route -> navController.navigateToTab(route) }
+                        onNavigate = { route ->
+                            if (route == MeshRoutes.HOME) {
+                                navController.navigateToHomeRoot()
+                            } else {
+                                navController.navigateToTab(route)
+                            }
+                        }
                     )
                 }
             }
@@ -305,6 +311,15 @@ private fun NavController.navigateToTab(route: String) {
         }
         launchSingleTop = true
         restoreState = true
+    }
+}
+
+private fun NavController.navigateToHomeRoot() {
+    navigate(MeshRoutes.HOME) {
+        popUpTo(MeshRoutes.HOME) {
+            inclusive = true
+        }
+        launchSingleTop = true
     }
 }
 
