@@ -1,14 +1,22 @@
 package com.meshapp.ui.screens.conversation
 
+import android.graphics.Bitmap
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -39,10 +47,13 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Stop
@@ -68,6 +79,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -117,10 +129,22 @@ fun ConversationScreen(
     var showScrollToBottom by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
-    val filePickerLauncher = rememberLauncherForActivityResult(
+    val documentPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let { viewModel.attachFile(context, it) }
+    }
+
+    val galleryPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        uri?.let { viewModel.attachFile(context, it) }
+    }
+
+    val cameraPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview()
+    ) { bitmap: Bitmap? ->
+        bitmap?.let { viewModel.attachCapturedImage(context, it) }
     }
 
     LaunchedEffect(nodeId) {
@@ -171,7 +195,13 @@ fun ConversationScreen(
                         draftMessage = ""
                     }
                 },
-                onAttach = { filePickerLauncher.launch("*/*") },
+                onAttachDocument = { documentPickerLauncher.launch("*/*") },
+                onAttachGallery = {
+                    galleryPickerLauncher.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
+                    )
+                },
+                onAttachCamera = { cameraPickerLauncher.launch(null) },
                 onRecordStart = { viewModel.startVoiceMessageRecording() },
                 onRecordStop = { viewModel.stopVoiceMessageRecording() },
                 onRecordCancel = { viewModel.cancelVoiceMessageRecording() }
@@ -541,17 +571,27 @@ private fun FileTransferContent(
     }
 }
 
+/**
+ * The three mutually exclusive states the bottom input bar can be in.
+ * NORMAL   -> text field, attach icon on the left, mic/send on the right
+ * RECORDING -> pulsing recording indicator, replaces text field + attach icon
+ * ATTACHING -> inline row of attachment type chips, replaces text field + mic/send
+ */
+private enum class InputBarMode { NORMAL, RECORDING, ATTACHING }
+
 @Composable
 private fun ConversationInputBar(
     draftMessage: String,
     onDraftChange: (String) -> Unit,
     onSend: () -> Unit,
-    onAttach: () -> Unit,
+    onAttachDocument: () -> Unit,
+    onAttachGallery: () -> Unit,
+    onAttachCamera: () -> Unit,
     onRecordStart: () -> Boolean,
     onRecordStop: () -> Unit,
     onRecordCancel: () -> Unit
 ) {
-    var isRecording by remember { mutableStateOf(false) }
+    var mode by remember { mutableStateOf(InputBarMode.NORMAL) }
     var recordingTimeSeconds by remember { mutableLongStateOf(0L) }
 
     val infiniteTransition = rememberInfiniteTransition(label = "recordingPulse")
@@ -574,8 +614,8 @@ private fun ConversationInputBar(
         label = "dotAlpha"
     )
 
-    LaunchedEffect(isRecording) {
-        if (isRecording) {
+    LaunchedEffect(mode) {
+        if (mode == InputBarMode.RECORDING) {
             recordingTimeSeconds = 0L
             while (true) {
                 delay(1000L)
@@ -591,74 +631,58 @@ private fun ConversationInputBar(
             .padding(horizontal = MeshSpacing.md, vertical = MeshSpacing.sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (!isRecording) {
+        // Leading icon: attach <-> close. Hidden while recording, same as before.
+        if (mode != InputBarMode.RECORDING) {
             IconButton(
-                onClick = onAttach,
+                onClick = {
+                    mode = if (mode == InputBarMode.ATTACHING) InputBarMode.NORMAL else InputBarMode.ATTACHING
+                },
                 modifier = Modifier.size(40.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Filled.AttachFile,
-                    contentDescription = "Attach",
-                    tint = MeshMuted
+                    imageVector = if (mode == InputBarMode.ATTACHING) Icons.Filled.Close else Icons.Filled.AttachFile,
+                    contentDescription = if (mode == InputBarMode.ATTACHING) "Close attachment options" else "Attach",
+                    tint = if (mode == InputBarMode.ATTACHING) MeshTextPrimary else MeshMuted
                 )
             }
         }
 
-        if (isRecording) {
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = MeshSpacing.sm),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(10.dp)
-                        .graphicsLayer { alpha = dotAlpha }
-                        .clip(CircleShape)
-                        .background(MeshDanger)
+        AnimatedContent(
+            targetState = mode,
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = if (mode == InputBarMode.RECORDING) MeshSpacing.sm else 0.dp),
+            transitionSpec = {
+                (fadeIn(tween(180)) + slideInVertically(tween(180)) { height -> height / 3 }) togetherWith
+                        (fadeOut(tween(120)) + slideOutVertically(tween(120)) { height -> -height / 3 })
+            },
+            label = "inputBarContent"
+        ) { targetMode ->
+            when (targetMode) {
+                InputBarMode.RECORDING -> RecordingIndicator(
+                    recordingTimeSeconds = recordingTimeSeconds,
+                    dotAlpha = dotAlpha
                 )
-                Spacer(modifier = Modifier.width(MeshSpacing.xs))
-                Text(
-                    text = "Recording  %02d:%02d".format(recordingTimeSeconds / 60, recordingTimeSeconds % 60),
-                    color = MeshTextPrimary,
-                    style = MaterialTheme.typography.bodyLarge
+                InputBarMode.ATTACHING -> AttachmentChipRow(
+                    onDocument = { onAttachDocument(); mode = InputBarMode.NORMAL },
+                    onGallery = { onAttachGallery(); mode = InputBarMode.NORMAL },
+                    onCamera = { onAttachCamera(); mode = InputBarMode.NORMAL }
+                )
+                InputBarMode.NORMAL -> MessageTextField(
+                    draftMessage = draftMessage,
+                    onDraftChange = onDraftChange,
+                    onSend = onSend
                 )
             }
-        } else {
-            OutlinedTextField(
-                value = draftMessage,
-                onValueChange = onDraftChange,
-                modifier = Modifier.weight(1f),
-                shape = MeshShapes.input,
-                placeholder = {
-                    Text(
-                        text = "Type a message...",
-                        color = MeshMuted,
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                },
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = MeshBg2,
-                    unfocusedContainerColor = MeshBg2,
-                    focusedBorderColor = MeshGreen.copy(alpha = 0.5f),
-                    unfocusedBorderColor = MeshBg3,
-                    focusedTextColor = MeshTextPrimary,
-                    unfocusedTextColor = MeshTextPrimary
-                ),
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = { onSend() })
-            )
         }
 
         Spacer(modifier = Modifier.size(MeshSpacing.sm))
 
-        if (isRecording) {
+        if (mode == InputBarMode.RECORDING) {
             IconButton(
                 onClick = {
                     onRecordCancel()
-                    isRecording = false
+                    mode = InputBarMode.NORMAL
                 },
                 modifier = Modifier.size(40.dp)
             ) {
@@ -671,47 +695,172 @@ private fun ConversationInputBar(
             Spacer(modifier = Modifier.size(MeshSpacing.xs))
         }
 
-        val micIcon = when {
-            isRecording -> Icons.Filled.Stop
-            draftMessage.isBlank() -> Icons.Filled.Mic
-            else -> Icons.Filled.Send
-        }
-        val micDescription = when {
-            isRecording -> "Stop and send recording"
-            draftMessage.isBlank() -> "Record voice message"
-            else -> "Send"
-        }
+        // Mic/send circle is hidden while the attachment chips are shown -
+        // there's nothing to send and no draft to hold.
+        if (mode != InputBarMode.ATTACHING) {
+            val isRecording = mode == InputBarMode.RECORDING
+            val micIcon = when {
+                isRecording -> Icons.Filled.Stop
+                draftMessage.isBlank() -> Icons.Filled.Mic
+                else -> Icons.Filled.Send
+            }
+            val micDescription = when {
+                isRecording -> "Stop and send recording"
+                draftMessage.isBlank() -> "Record voice message"
+                else -> "Send"
+            }
 
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .graphicsLayer {
+                        if (isRecording) {
+                            scaleX = pulseScale
+                            scaleY = pulseScale
+                        }
+                    }
+                    .clip(CircleShape)
+                    .background(if (isRecording) MeshDanger else MeshGreen)
+                    .clickable {
+                        when {
+                            isRecording -> {
+                                onRecordStop()
+                                mode = InputBarMode.NORMAL
+                            }
+                            draftMessage.isBlank() -> {
+                                if (onRecordStart()) mode = InputBarMode.RECORDING
+                            }
+                            else -> onSend()
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = micIcon,
+                    contentDescription = micDescription,
+                    tint = MeshGreenOnAccent
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessageTextField(
+    draftMessage: String,
+    onDraftChange: (String) -> Unit,
+    onSend: () -> Unit
+) {
+    OutlinedTextField(
+        value = draftMessage,
+        onValueChange = onDraftChange,
+        modifier = Modifier.fillMaxWidth(),
+        shape = MeshShapes.input,
+        placeholder = {
+            Text(
+                text = "Type a message...",
+                color = MeshMuted,
+                style = MaterialTheme.typography.bodyLarge
+            )
+        },
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = MeshBg2,
+            unfocusedContainerColor = MeshBg2,
+            focusedBorderColor = MeshGreen.copy(alpha = 0.5f),
+            unfocusedBorderColor = MeshBg3,
+            focusedTextColor = MeshTextPrimary,
+            unfocusedTextColor = MeshTextPrimary
+        ),
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+        keyboardActions = KeyboardActions(onSend = { onSend() })
+    )
+}
+
+@Composable
+private fun RecordingIndicator(
+    recordingTimeSeconds: Long,
+    dotAlpha: Float
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Box(
             modifier = Modifier
-                .size(48.dp)
-                .graphicsLayer {
-                    if (isRecording) {
-                        scaleX = pulseScale
-                        scaleY = pulseScale
-                    }
-                }
+                .size(10.dp)
+                .graphicsLayer { alpha = dotAlpha }
                 .clip(CircleShape)
-                .background(if (isRecording) MeshDanger else MeshGreen)
-                .clickable {
-                    when {
-                        isRecording -> {
-                            onRecordStop()
-                            isRecording = false
-                        }
-                        draftMessage.isBlank() -> {
-                            if (onRecordStart()) isRecording = true
-                        }
-                        else -> onSend()
-                    }
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = micIcon,
-                contentDescription = micDescription,
-                tint = MeshGreenOnAccent
-            )
-        }
+                .background(MeshDanger)
+        )
+        Spacer(modifier = Modifier.width(MeshSpacing.xs))
+        Text(
+            text = "Recording  %02d:%02d".format(recordingTimeSeconds / 60, recordingTimeSeconds % 60),
+            color = MeshTextPrimary,
+            style = MaterialTheme.typography.bodyLarge
+        )
+    }
+}
+
+@Composable
+private fun AttachmentChipRow(
+    onDocument: () -> Unit,
+    onGallery: () -> Unit,
+    onCamera: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(MeshSpacing.xs)
+    ) {
+        AttachmentChip(
+            icon = Icons.Filled.InsertDriveFile,
+            label = "Document",
+            modifier = Modifier.weight(1f),
+            onClick = onDocument
+        )
+        AttachmentChip(
+            icon = Icons.Filled.Image,
+            label = "Gallery",
+            modifier = Modifier.weight(1f),
+            onClick = onGallery
+        )
+        AttachmentChip(
+            icon = Icons.Filled.PhotoCamera,
+            label = "Camera",
+            modifier = Modifier.weight(1f),
+            onClick = onCamera
+        )
+    }
+}
+
+@Composable
+private fun AttachmentChip(
+    icon: ImageVector,
+    label: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = modifier
+            .clip(MeshShapes.input)
+            .background(MeshBg2)
+            .border(1.dp, MeshBg3, MeshShapes.input)
+            .clickable(onClick = onClick)
+            .padding(vertical = MeshSpacing.xs),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MeshGreen,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = label,
+            color = MeshTextPrimary,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1
+        )
     }
 }

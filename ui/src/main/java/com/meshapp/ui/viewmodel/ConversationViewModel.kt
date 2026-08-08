@@ -1,5 +1,6 @@
 package com.meshapp.ui.viewmodel
 
+import android.graphics.Bitmap
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -102,6 +103,29 @@ class ConversationViewModel(
                 fileTransferService.sendFile(destination, tempFile)
             } catch (e: Exception) {
                 android.util.Log.e("ConversationViewModel", "Failed to attach file", e)
+            }
+        }
+    }
+
+    fun attachCapturedImage(context: Context, bitmap: Bitmap) {
+        val destination = activeNodeId ?: return
+        viewModelScope.launch {
+            try {
+                val outgoingDir = File(context.cacheDir, "file_transfer/outgoing").apply {
+                    if (!exists()) mkdirs()
+                }
+                val fileName = "IMG_${System.currentTimeMillis()}.jpg"
+                val tempFile = File(outgoingDir, fileName)
+                withContext(Dispatchers.IO) {
+                    FileOutputStream(tempFile).use { output ->
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, 90, output)
+                    }
+                }
+                fileTransferService.sendFile(destination, tempFile)
+            } catch (e: Exception) {
+                android.util.Log.e("ConversationViewModel", "Failed to attach captured image", e)
+            } finally {
+                bitmap.recycle()
             }
         }
     }
