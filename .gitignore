@@ -1,21 +1,6 @@
-*.iml
-.gradle/
-
-# IDE
-/.idea/
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.idea/*
-.vscode/
-
-# OS files
-.DS_Store
-
-# Android/Gradle local state
+# ==========================================
+# Built-in / Environment / Secrets
+# ==========================================
 local.properties
 keystore.properties
 signing.properties
@@ -24,9 +9,42 @@ signing.properties
 *.p12
 *.pem
 *.key
+*.bks
 
-# Build outputs
+# ==========================================
+# Build Outputs & Caches
+# ==========================================
+.gradle/
 build/
+**/build/
 captures/
 .externalNativeBuild/
 .cxx/
+.kotlin/
+
+# Android Studio / Gradle profiling
+*.hprof
+*.log
+
+# ==========================================
+# IDE Configuration Files
+# ==========================================
+*.iml
+.vscode/
+
+# Ignore all of .idea EXCEPT essential team settings
+.idea/
+!.idea/codeStyles/
+!.idea/copyright/
+!.idea/inspectionProfiles/
+
+# ==========================================
+# OS Specific Files
+# ==========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
