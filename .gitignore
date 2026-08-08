@@ -1,18 +1,50 @@
-*.iml
-.gradle
-/.idea/
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
-.idea/*
-.vscode
-/build
-/captures
-.externalNativeBuild
-.cxx
+# ==========================================
+# Built-in / Environment / Secrets
+# ==========================================
 local.properties
+keystore.properties
+signing.properties
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+*.bks
+
+# ==========================================
+# Build Outputs & Caches
+# ==========================================
+.gradle/
+build/
+**/build/
+captures/
+.externalNativeBuild/
+.cxx/
+.kotlin/
+
+# Android Studio / Gradle profiling
+*.hprof
+*.log
+
+# ==========================================
+# IDE Configuration Files
+# ==========================================
+*.iml
+.vscode/
+
+# Ignore all of .idea EXCEPT essential team settings
+.idea/
+!.idea/codeStyles/
+!.idea/copyright/
+!.idea/inspectionProfiles/
+
+# ==========================================
+# OS Specific Files
+# ==========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

@@ -41,7 +41,18 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.meshapp.ui.components.MeshFooterNavigation
+import com.meshapp.ui.components.StatusDot
+import com.meshapp.ui.theme.MeshBg0
+import com.meshapp.ui.theme.MeshBg1
+import com.meshapp.ui.theme.MeshBg2
+import com.meshapp.ui.theme.MeshBg3
+import com.meshapp.ui.theme.MeshBorder
 import com.meshapp.ui.theme.MeshGreen
+import com.meshapp.ui.theme.MeshGreenOnAccent
+import com.meshapp.ui.theme.MeshMuted
+import com.meshapp.ui.theme.MeshShapes
+import com.meshapp.ui.theme.MeshSpacing
+import com.meshapp.ui.theme.MeshTextPrimary
 import com.meshapp.ui.viewmodel.HomeViewModel
 
 @Composable
@@ -57,27 +68,27 @@ fun ProfileScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     Scaffold(
-        containerColor = ProfileBg,
+        containerColor = MeshBg0,
         topBar = {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFF111316))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .background(MeshBg2)
+                    .padding(horizontal = MeshSpacing.sm, vertical = MeshSpacing.xs),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onBack) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back",
-                        tint = Color(0xFFE4E7E9)
+                        tint = MeshTextPrimary
                     )
                 }
                 Text(
                     text = "Profile",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFFE7EAEC),
+                    color = MeshTextPrimary,
                     modifier = Modifier.weight(1f)
                 )
                 Box {
@@ -85,7 +96,7 @@ fun ProfileScreen(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF0F1418))
+                            .background(MeshBg3)
                             .border(1.5.dp, MeshGreen, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
@@ -96,14 +107,9 @@ fun ProfileScreen(
                             fontWeight = FontWeight.Bold
                         )
                     }
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .size(12.dp)
-                            .clip(CircleShape)
-                            .background(MeshGreen)
-                            .border(2.dp, Color(0xFF111316), CircleShape)
-                    )
+                    Box(modifier = Modifier.align(Alignment.BottomEnd)) {
+                        StatusDot(isOnline = true, size = 12.dp)
+                    }
                 }
             }
         },
@@ -120,14 +126,14 @@ fun ProfileScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(horizontal = MeshSpacing.md),
+            verticalArrangement = Arrangement.spacedBy(MeshSpacing.sm)
         ) {
             item {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 12.dp),
+                        .padding(top = MeshSpacing.sm),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Box(
@@ -139,22 +145,22 @@ fun ProfileScreen(
                     ) {
                         Text(
                             text = uiState.profile.avatarInitials,
-                            color = Color(0xFF053114),
+                            color = MeshGreenOnAccent,
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold
                         )
                     }
                     Text(
                         text = uiState.profile.name,
-                        color = Color(0xFFE7EAEC),
+                        color = MeshTextPrimary,
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(top = 10.dp)
+                        modifier = Modifier.padding(top = MeshSpacing.xs + 2.dp)
                     )
                     Row(modifier = Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = "NODE ID:",
-                            color = Color(0xFFAAB1A8),
+                            color = MeshMuted,
                             style = MaterialTheme.typography.labelSmall,
                             letterSpacing = 0.5.sp
                         )
@@ -175,11 +181,11 @@ fun ProfileScreen(
 
             item {
                 Surface(
-                    shape = RoundedCornerShape(18.dp),
-                    color = Color(0xFF0E1012),
+                    shape = MeshShapes.card,
+                    color = MeshBg1,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, Color(0xFF1D2B3F), RoundedCornerShape(18.dp))
+                        .border(1.dp, MeshBorder, MeshShapes.card)
                 ) {
                     Column {
                         InfoRow("Device Name", uiState.profile.name, Icons.Filled.DeviceHub)
@@ -189,28 +195,23 @@ fun ProfileScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(12.dp),
+                                .padding(MeshSpacing.sm),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.SettingsEthernet,
                                 contentDescription = null,
-                                tint = Color(0xFFA9B0A8),
+                                tint = MeshMuted,
                                 modifier = Modifier.size(20.dp)
                             )
                             Text(
                                 text = "Status",
-                                color = Color(0xFFE4E8E9),
+                                color = MeshTextPrimary,
                                 style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier.padding(start = 12.dp)
+                                modifier = Modifier.padding(start = MeshSpacing.sm)
                             )
                             Spacer(modifier = Modifier.weight(1f))
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(MeshGreen)
-                            )
+                            StatusDot(isOnline = true, size = 8.dp)
                             Text(
                                 text = " Online",
                                 color = MeshGreen,
@@ -228,11 +229,12 @@ fun ProfileScreen(
 
             item {
                 Surface(
-                    shape = RoundedCornerShape(18.dp),
-                    color = Color(0xFF0E1012),
+                    shape = MeshShapes.card,
+                    color = MeshBg1,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, Color(0xFF1D2B3F), RoundedCornerShape(18.dp))
+                        .border(1.dp, MeshBorder, MeshShapes.card)
+                        .padding(bottom = MeshSpacing.sm)
                 ) {
                     Column {
                         OptionRow("View Nearby Nodes", Icons.Filled.DeviceHub, onNavigateNearbyNodes)
@@ -255,7 +257,7 @@ private fun SectionTitle(value: String) {
         style = MaterialTheme.typography.labelLarge,
         letterSpacing = 1.2.sp,
         fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(top = 8.dp, start = 4.dp)
+        modifier = Modifier.padding(top = MeshSpacing.xs, start = 4.dp)
     )
 }
 
@@ -264,25 +266,25 @@ private fun InfoRow(title: String, value: String, icon: androidx.compose.ui.grap
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(12.dp),
+            .padding(MeshSpacing.sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = Color(0xFFA9B0A8),
+            tint = MeshMuted,
             modifier = Modifier.size(20.dp)
         )
         Text(
             text = title,
-            color = Color(0xFFE4E8E9),
+            color = MeshTextPrimary,
             style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.padding(start = 12.dp)
+            modifier = Modifier.padding(start = MeshSpacing.sm)
         )
         Spacer(modifier = Modifier.weight(1f))
         Text(
             text = value,
-            color = Color(0xFFBEC4BE),
+            color = MeshMuted,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Medium
         )
@@ -295,26 +297,26 @@ private fun OptionRow(title: String, icon: androidx.compose.ui.graphics.vector.I
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(12.dp),
+            .padding(MeshSpacing.sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
                 .size(40.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color(0xFF22262A)),
+                .clip(MeshShapes.cardSmall)
+                .background(MeshBg3),
             contentAlignment = Alignment.Center
         ) {
-            Icon(icon, contentDescription = null, tint = Color(0xFFB9C1B7), modifier = Modifier.size(20.dp))
+            Icon(icon, contentDescription = null, tint = MeshMuted, modifier = Modifier.size(20.dp))
         }
         Text(
             text = title,
-            color = Color(0xFFE6E9EB),
+            color = MeshTextPrimary,
             style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.padding(start = 14.dp)
+            modifier = Modifier.padding(start = MeshSpacing.sm + 2.dp)
         )
         Spacer(modifier = Modifier.weight(1f))
-        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = Color(0xFF8B948B), modifier = Modifier.size(22.dp))
+        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = MeshMuted, modifier = Modifier.size(22.dp))
     }
 }
 
@@ -324,9 +326,7 @@ private fun DividerLine() {
         modifier = Modifier
             .fillMaxWidth()
             .height(1.dp)
-            .padding(horizontal = 14.dp)
-            .background(Color(0xFF1F272D))
+            .padding(horizontal = MeshSpacing.sm + 2.dp)
+            .background(MeshBorder)
     )
 }
-
-private val ProfileBg = Color(0xFF090B0D)

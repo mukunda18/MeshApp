@@ -1,369 +1,159 @@
 package com.meshapp.ui.screens.chats
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.meshapp.ui.components.ProfileAvatar
+import com.meshapp.ui.components.EmptyState
+import com.meshapp.ui.components.NodeCard
 import com.meshapp.ui.state.NodeCardState
+import com.meshapp.ui.theme.MeshBg2
+import com.meshapp.ui.theme.MeshBg3
 import com.meshapp.ui.theme.MeshGreen
 import com.meshapp.ui.theme.MeshMuted
+import com.meshapp.ui.theme.MeshShapes
+import com.meshapp.ui.theme.MeshSpacing
+import com.meshapp.ui.theme.MeshTextPrimary
 import com.meshapp.ui.viewmodel.ChatsViewModel
 
 @Composable
-fun ChatsScreen(viewModel: ChatsViewModel = viewModel(), onNodeClick: (NodeCardState) -> Unit) {
+fun ChatsScreen(
+    viewModel: ChatsViewModel,
+    onNodeClick: (NodeCardState) -> Unit,
+    modifier: Modifier = Modifier
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(ChatsBackground)
-    ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            ChatsTopBar()
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Chats",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = Color(0xFFF2F3F4),
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.weight(1f))
-                Text(
-                    text = "NETWORK SECURE",
-                    color = MeshGreen,
-                    style = MaterialTheme.typography.labelMedium,
-                    letterSpacing = 1.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+    var searchQuery by remember { mutableStateOf("") }
 
-            if (uiState.nodes.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "No conversations yet",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MeshMuted
+    val filteredNodes = if (searchQuery.isBlank()) {
+        uiState.nodes
+    } else {
+        uiState.nodes.filter { it.name.contains(searchQuery, ignoreCase = true) }
+    }
+
+    val onlineNodes = filteredNodes.filter { it.isOnline }
+    val offlineNodes = filteredNodes.filter { !it.isOnline }
+    val showSections = onlineNodes.isNotEmpty() && offlineNodes.isNotEmpty()
+
+    Column(modifier = modifier.fillMaxSize()) {
+        ChatsSearchField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = MeshSpacing.md, vertical = MeshSpacing.sm)
+        )
+
+        if (filteredNodes.isEmpty()) {
+            EmptyState(
+                title = if (searchQuery.isBlank()) "No conversations yet" else "No matches",
+                subtitle = if (searchQuery.isBlank())
+                    "Start chatting once nodes are nearby."
+                else
+                    "No nodes match \"$searchQuery\".",
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(MeshSpacing.md)
+            )
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = MeshSpacing.md, vertical = MeshSpacing.xs)
+            ) {
+                if (showSections) {
+                    item(key = "section_online") {
+                        SectionLabel(text = "ONLINE — ${onlineNodes.size}")
+                    }
+                }
+                items(items = onlineNodes, key = { it.id }) { node ->
+                    NodeCard(
+                        node = node,
+                        onClick = { onNodeClick(node) },
+                        modifier = Modifier.padding(bottom = MeshSpacing.sm)
                     )
                 }
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .padding(horizontal = 16.dp)
-                        .padding(top = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(uiState.nodes) { node ->
-                        ChatListItem(
-                            node = node,
-                            onClick = { onNodeClick(node) },
-                            onCall = { viewModel.dial(node.id) }
-                        )
-                    }
 
-                    item {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 24.dp, bottom = 24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Spacer(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(1.dp)
-                                    .background(
-                                        androidx.compose.ui.graphics.Brush.horizontalGradient(
-                                            listOf(
-                                                Color.Transparent,
-                                                MeshGreen.copy(alpha = 0.22f),
-                                                Color.Transparent
-                                            )
-                                        )
-                                    )
-                            )
-                            Text(
-                                text = "END TO END ENCRYPTED MESH",
-                                color = Color(0xFF51575B),
-                                style = MaterialTheme.typography.labelMedium,
-                                letterSpacing = 1.sp,
-                                modifier = Modifier.padding(top = 16.dp)
-                            )
-                        }
+                if (showSections) {
+                    item(key = "section_offline") {
+                        SectionLabel(text = "OFFLINE — ${offlineNodes.size}")
                     }
+                }
+                items(items = offlineNodes, key = { it.id }) { node ->
+                    NodeCard(
+                        node = node,
+                        onClick = { onNodeClick(node) },
+                        modifier = Modifier.padding(bottom = MeshSpacing.sm)
+                    )
                 }
             }
         }
     }
 }
 
-private val ChatsBackground = Color(0xFF090B0C)
-private val ChatsTopBarColor = Color(0xFF111314)
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MeshGreen,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 1.sp,
+        modifier = Modifier.padding(top = MeshSpacing.sm, bottom = MeshSpacing.xs)
+    )
+}
 
 @Composable
-private fun ChatsTopBar() {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(64.dp)
-            .background(ChatsTopBarColor)
-            .padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        MeshGlyph(modifier = Modifier.size(30.dp))
-        Spacer(modifier = Modifier.width(12.dp))
-        Text(
-            text = "MeshApp",
-            style = MaterialTheme.typography.titleLarge,
-            color = Color(0xFFF2F3F4),
-            fontWeight = FontWeight.ExtraBold
+private fun ChatsSearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier,
+        placeholder = { Text("Search conversations...", color = MeshMuted) },
+        singleLine = true,
+        shape = MeshShapes.input,
+        leadingIcon = {
+            Icon(Icons.Filled.Search, contentDescription = null, tint = MeshMuted)
+        },
+        trailingIcon = {
+            if (value.isNotEmpty()) {
+                IconButton(onClick = { onValueChange("") }) {
+                    Icon(Icons.Filled.Close, contentDescription = "Clear search", tint = MeshMuted)
+                }
+            }
+        },
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = MeshBg2,
+            unfocusedContainerColor = MeshBg2,
+            focusedBorderColor = MeshGreen.copy(alpha = 0.5f),
+            unfocusedBorderColor = MeshBg3,
+            focusedTextColor = MeshTextPrimary,
+            unfocusedTextColor = MeshTextPrimary,
+            cursorColor = MeshGreen
         )
-        Spacer(modifier = Modifier.weight(1f))
-        Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = Icons.Outlined.Search,
-                contentDescription = "Search",
-                tint = Color(0xFFC7CCCF)
-            )
-        }
-        Box {
-            ProfileAvatar(initials = "P", size = 36.dp)
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .size(10.dp)
-                    .clip(CircleShape)
-                    .background(MeshGreen)
-                    .border(1.5.dp, ChatsTopBarColor, CircleShape)
-            )
-        }
-    }
-}
-
-@Composable
-private fun ChatListItem(node: NodeCardState, onClick: () -> Unit, onCall: () -> Unit) {
-    val transition = rememberInfiniteTransition(label = "unread-glow")
-    val glowPulse by transition.animateFloat(
-        initialValue = 0.25f,
-        targetValue = 0.7f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "badge-pulse"
     )
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(Color(0xFF0E1012))
-            .border(1.dp, Color(0xFF1A2940), RoundedCornerShape(18.dp))
-            .clickable(onClick = onClick)
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(56.dp)
-                .clip(CircleShape)
-                .background(Color(0xFF23262A)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = node.avatarInitials.take(1),
-                color = avatarColorForName(node.name),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
-            
-            if (node.isOnline) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .size(12.dp)
-                        .clip(CircleShape)
-                        .background(MeshGreen)
-                        .border(2.dp, Color(0xFF0E1012), CircleShape)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = node.name,
-                    style = MaterialTheme.typography.titleLarge,
-                    color = Color(0xFFF2F3F4),
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                Text(
-                    text = node.lastMessageTimestamp ?: "",
-                    color = Color(0xFF8A9196),
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = node.lastMessagePreview ?: "No messages yet",
-                    color = Color(0xFFB0B6BA),
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-
-                if (node.unreadCount > 0) {
-                    Box(
-                        modifier = Modifier
-                            .padding(start = 10.dp)
-                            .size(28.dp)
-                            .drawBehind {
-                                drawCircle(
-                                    color = MeshGreen.copy(alpha = glowPulse),
-                                    radius = size.minDimension / 1.25f,
-                                    style = Stroke(width = 0f)
-                                )
-                            }
-                            .clip(CircleShape)
-                            .background(MeshGreen),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = node.unreadCount.toString(),
-                            color = Color(0xFF052A12),
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-        }
-
-        if (node.isOnline) {
-            IconButton(
-                onClick = onCall,
-                modifier = Modifier
-                    .padding(start = 8.dp)
-                    .size(44.dp)
-                    .background(Color(0xFF1E2123), CircleShape)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Call,
-                    contentDescription = "Call",
-                    tint = MeshGreen,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-        }
-    }
-}
-
-private fun avatarColorForName(name: String): Color {
-    val palette = listOf(
-        Color(0xFF4BE277),
-        Color(0xFF58DCC5),
-        Color(0xFFA7E39B),
-        Color(0xFF7BE4DE)
-    )
-    return palette[(name.hashCode().ushr(1)) % palette.size]
-}
-
-@Composable
-private fun MeshGlyph(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier.drawBehind {
-            val lineColor = MeshGreen
-            val dotColor = MeshGreen
-            val r = 2.4.dp.toPx()
-            val x1 = size.width * 0.22f
-            val x2 = size.width * 0.5f
-            val x3 = size.width * 0.78f
-            val y1 = size.height * 0.24f
-            val y2 = size.height * 0.5f
-            val y3 = size.height * 0.76f
-
-            drawLine(lineColor, start = androidx.compose.ui.geometry.Offset(x1, y1), end = androidx.compose.ui.geometry.Offset(x2, y2), strokeWidth = 1.8.dp.toPx())
-            drawLine(lineColor, start = androidx.compose.ui.geometry.Offset(x2, y2), end = androidx.compose.ui.geometry.Offset(x3, y1), strokeWidth = 1.8.dp.toPx())
-            drawLine(lineColor, start = androidx.compose.ui.geometry.Offset(x1, y3), end = androidx.compose.ui.geometry.Offset(x2, y2), strokeWidth = 1.8.dp.toPx())
-            drawLine(lineColor, start = androidx.compose.ui.geometry.Offset(x2, y2), end = androidx.compose.ui.geometry.Offset(x3, y3), strokeWidth = 1.8.dp.toPx())
-            drawCircle(dotColor, r, center = androidx.compose.ui.geometry.Offset(x1, y1))
-            drawCircle(dotColor, r, center = androidx.compose.ui.geometry.Offset(x3, y1))
-            drawCircle(dotColor, r, center = androidx.compose.ui.geometry.Offset(x2, y2))
-            drawCircle(dotColor, r, center = androidx.compose.ui.geometry.Offset(x1, y3))
-            drawCircle(dotColor, r, center = androidx.compose.ui.geometry.Offset(x3, y3))
-        }
-    )
-}
-
-@Preview(showBackground = true)
-@Composable
-fun ChatsScreenPreview() {
-    ChatsScreen(viewModel = viewModel(), onNodeClick = {})
 }

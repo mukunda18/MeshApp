@@ -23,6 +23,7 @@ android {
 
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.compose.animation)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.compose.material3)
@@ -41,6 +42,7 @@ dependencies {
     implementation(project(":messaging"))
     implementation(project(":model"))
     implementation(project(":voice"))
+    implementation(project(":voicemessage"))
     implementation(project(":routing"))
     implementation(project(":transport"))
     implementation(project(":logger"))

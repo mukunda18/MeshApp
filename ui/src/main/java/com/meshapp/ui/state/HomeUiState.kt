@@ -47,7 +47,8 @@ data class NodeCardState(
 
 data class ConversationUiState(
     val node: NodeCardState,
-    val messages: List<ConversationMessageUiState> = emptyList()
+    val messages: List<ConversationMessageUiState> = emptyList(),
+    val playingTransferId: String? = null
 )
 
 data class ConversationMessageUiState(
@@ -67,5 +68,7 @@ data class FileTransferUiState(
     val progress: Float,
     val status: String,
     val isIncoming: Boolean,
-    val localPath: String? = null
+    val localPath: String? = null,
+    val isVoiceMessage: Boolean = false,
+    val durationMs: Long = 0L
 )

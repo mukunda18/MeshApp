@@ -3,7 +3,6 @@ package com.meshapp.ui.screens.networkinterfaces
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,6 +22,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.SignalWifi4Bar
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -34,55 +34,63 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.meshapp.ui.theme.MeshBg0
+import com.meshapp.ui.theme.MeshBg1
+import com.meshapp.ui.theme.MeshBg2
+import com.meshapp.ui.theme.MeshBorder
+import com.meshapp.ui.theme.MeshGreen
+import com.meshapp.ui.theme.MeshMuted
+import com.meshapp.ui.theme.MeshShapes
+import com.meshapp.ui.theme.MeshSpacing
+import com.meshapp.ui.theme.MeshTextPrimary
 import com.meshapp.ui.viewmodel.NetworkInterfacesViewModel
 
 @Composable
 fun NetworkInterfacesScreen(
     viewModel: NetworkInterfacesViewModel = viewModel(),
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onRefresh: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val staInterface = uiState.interfaces.firstOrNull { isStaInterface(it.interfaceName) }
     val apInterface = uiState.interfaces.firstOrNull { isApInterface(it.interfaceName) }
 
     Scaffold(
-        containerColor = ScreenBg,
+        containerColor = MeshBg0,
         topBar = {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(ScreenBg)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .background(MeshBg0)
+                    .padding(horizontal = MeshSpacing.xs, vertical = MeshSpacing.xs),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onBack) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = Color(0xFFE3E5E7)
+                        contentDescription = "Navigate back",
+                        tint = MeshTextPrimary
                     )
                 }
                 Text(
                     text = "Network Interfaces",
                     style = MaterialTheme.typography.titleLarge,
-                    color = Color(0xFFE7E8EA),
+                    color = MeshTextPrimary,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f)
                 )
-                Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                IconButton(onClick = onRefresh) {
                     Icon(
                         imageVector = Icons.Filled.Refresh,
-                        contentDescription = "Refresh",
-                        tint = MeshAccent
+                        contentDescription = "Refresh interface status",
+                        tint = MeshGreen
                     )
                 }
             }
@@ -92,153 +100,148 @@ fun NetworkInterfacesScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .padding(horizontal = MeshSpacing.md),
+            verticalArrangement = Arrangement.spacedBy(MeshSpacing.md)
         ) {
+            // Status Summary Header
             item {
-                Box(
+                Surface(
+                    shape = MeshShapes.cardSmall,
+                    color = MeshBg1,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 16.dp),
-                    contentAlignment = Alignment.Center
+                        .padding(top = MeshSpacing.xs)
+                        .border(1.dp, MeshBorder, MeshShapes.cardSmall)
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = HeroBg,
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.dp, CardBorder, RoundedCornerShape(16.dp))
+                            .padding(MeshSpacing.md),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Surface(
+                            shape = MeshShapes.cardSmall,
+                            color = MeshGreen.copy(alpha = 0.12f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MeshGreen.copy(alpha = 0.24f)),
+                            modifier = Modifier.size(48.dp)
                         ) {
-                            Box(
+                            Icon(
+                                imageVector = Icons.Filled.Wifi,
+                                contentDescription = null,
+                                tint = MeshGreen,
                                 modifier = Modifier
-                                    .size(56.dp)
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .background(MeshAccent.copy(alpha = 0.2f))
-                                    .border(1.dp, MeshAccent.copy(alpha = 0.35f), RoundedCornerShape(16.dp)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Wifi,
-                                    contentDescription = null,
-                                    tint = MeshAccent,
-                                    modifier = Modifier.size(28.dp)
-                                )
-                            }
-                            Column(modifier = Modifier.padding(start = 14.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = "Wi-Fi",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = Color(0xFFE4E6E7),
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = " Active",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = MeshAccent,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
+                                    .padding(MeshSpacing.xs)
+                                    .fillMaxSize()
+                            )
+                        }
+                        Column(
+                            modifier = Modifier
+                                .padding(start = MeshSpacing.md)
+                                .weight(1f)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = "Connected to local mesh infrastructure.",
-                                    color = Color(0xFFB6BCBF),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    modifier = Modifier.padding(top = 2.dp)
+                                    text = "Wi-Fi Mesh Status: ",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MeshTextPrimary,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    text = "Active",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MeshGreen,
+                                    fontWeight = FontWeight.Bold
                                 )
                             }
+                            Text(
+                                text = "Connected to local mesh infrastructure.",
+                                color = MeshMuted,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
                         }
                     }
                 }
             }
 
+            // Section Header
             item {
                 Text(
-                    text = "INTERFACES",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MeshAccent,
-                    letterSpacing = 1.2.sp,
+                    text = "ACTIVE INTERFACES",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MeshGreen,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                    modifier = Modifier.padding(top = MeshSpacing.xs)
                 )
             }
 
+            // Station Interface Card
             item {
                 InterfaceDetailCard(
                     title = "Wi-Fi (STA)",
                     badgeText = "Active",
-                    badgeColor = MeshAccent,
+                    badgeColor = MeshGreen,
                     icon = Icons.Filled.Router,
-                    ip = staInterface?.localIp ?: uiState.interfaces.firstOrNull()?.localIp.orEmpty().ifBlank { "--" },
+                    ip = staInterface?.localIp?.ifBlank { "--" } ?: "--",
                     statusText = "Connected",
-                    statusColor = MeshAccent,
-                    thirdLabel = "SIGNAL  STRENGTH",
-                    thirdValue = {
-                        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Box(Modifier.width(4.dp).height(14.dp).background(MeshAccent, RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp)))
-                            Box(Modifier.width(4.dp).height(18.dp).background(MeshAccent, RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp)))
-                            Box(Modifier.width(4.dp).height(22.dp).background(MeshAccent, RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp)))
-                            Box(Modifier.width(4.dp).height(26.dp).background(Color(0xFF6D7A74), RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp)))
-                        }
-                    }
+                    statusColor = MeshGreen,
+                    thirdLabel = "SIGNAL STRENGTH",
+                    thirdValue = { SignalBarsVisualizer() }
                 )
             }
 
+            // Access Point Interface Card
             item {
                 InterfaceDetailCard(
                     title = "Wi-Fi (AP)",
                     badgeText = "Idle",
-                    badgeColor = Color(0xFF8AD8C3),
+                    badgeColor = MeshMuted,
                     icon = Icons.Filled.SignalWifi4Bar,
-                    ip = apInterface?.localIp ?: uiState.interfaces.getOrNull(1)?.localIp.orEmpty().ifBlank { "--" },
+                    ip = apInterface?.localIp?.ifBlank { "--" } ?: "--",
                     statusText = "Active",
-                    statusColor = Color(0xFF8AD8C3),
+                    statusColor = MeshGreen,
                     thirdLabel = "CLIENTS",
                     thirdValue = {
                         Text(
                             text = "0 Connected",
-                            color = Color(0xFFD8DCDD),
-                            style = MaterialTheme.typography.titleMedium,
+                            color = MeshTextPrimary,
+                            style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold
                         )
                     }
                 )
             }
 
+            // Capability Indicator Card
             item {
                 Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = Color(0xFF102119),
+                    shape = MeshShapes.cardSmall,
+                    color = MeshGreen.copy(alpha = 0.08f),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 4.dp, bottom = 24.dp)
-                        .border(1.dp, MeshAccent.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+                        .padding(bottom = MeshSpacing.lg)
+                        .border(1.dp, MeshGreen.copy(alpha = 0.25f), MeshShapes.cardSmall)
                 ) {
                     Row(
-                        modifier = Modifier.padding(12.dp),
+                        modifier = Modifier.padding(MeshSpacing.md),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
                             imageVector = Icons.Filled.CheckCircle,
                             contentDescription = null,
-                            tint = MeshAccent,
+                            tint = MeshGreen,
                             modifier = Modifier.size(24.dp)
                         )
-                        Column(modifier = Modifier.padding(start = 12.dp)) {
+                        Column(modifier = Modifier.padding(start = MeshSpacing.md)) {
                             Text(
                                 text = "STA + AP Supported",
-                                color = Color(0xFFE2E6E4),
+                                color = MeshTextPrimary,
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
                                 text = capabilitySubtitle(uiState.isStaApSupported, uiState.isLikelySupported),
-                                color = Color(0xFFB7C1BB),
+                                color = MeshMuted,
                                 style = MaterialTheme.typography.bodySmall,
                                 modifier = Modifier.padding(top = 2.dp)
                             )
@@ -263,72 +266,72 @@ private fun InterfaceDetailCard(
     thirdValue: @Composable () -> Unit
 ) {
     Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = CardBg,
+        shape = MeshShapes.cardSmall,
+        color = MeshBg1,
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, CardBorder, RoundedCornerShape(16.dp))
+            .border(1.dp, MeshBorder, MeshShapes.cardSmall)
     ) {
         Column {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(HeaderBg)
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                    .background(MeshBg2)
+                    .padding(horizontal = MeshSpacing.md, vertical = MeshSpacing.sm),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(icon, contentDescription = null, tint = badgeColor, modifier = Modifier.size(18.dp))
                 Text(
                     text = title,
-                    color = Color(0xFFE4E7E9),
+                    color = MeshTextPrimary,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(start = 10.dp)
+                    modifier = Modifier.padding(start = MeshSpacing.xs)
                 )
                 Spacer(modifier = Modifier.weight(1f))
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(badgeColor.copy(alpha = 0.18f))
-                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                Surface(
+                    shape = MeshShapes.chip,
+                    color = badgeColor.copy(alpha = 0.15f)
                 ) {
                     Text(
                         text = badgeText,
                         color = badgeColor,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = MeshSpacing.sm, vertical = 4.dp)
                     )
                 }
             }
 
-            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Column(modifier = Modifier.padding(horizontal = MeshSpacing.md, vertical = MeshSpacing.xs)) {
                 InterfaceRow(label = "IP ADDRESS") {
                     Text(
                         text = ip,
-                        color = Color(0xFFE4E7E9),
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.4.sp
+                        color = MeshTextPrimary,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold
                     )
                 }
-                DividerLine()
+                HorizontalDivider(color = MeshBorder.copy(alpha = 0.5f), thickness = 1.dp)
                 InterfaceRow(label = "STATUS") {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(statusColor)
-                        )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(MeshSpacing.xs)
+                    ) {
+                        Surface(
+                            modifier = Modifier.size(8.dp),
+                            shape = CircleShape,
+                            color = statusColor
+                        ) {}
                         Text(
-                            text = " $statusText",
+                            text = statusText,
                             color = statusColor,
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold
                         )
                     }
                 }
-                DividerLine()
+                HorizontalDivider(color = MeshBorder.copy(alpha = 0.5f), thickness = 1.dp)
                 InterfaceRow(label = thirdLabel, value = thirdValue)
             }
         }
@@ -340,14 +343,13 @@ private fun InterfaceRow(label: String, value: @Composable () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
+            .padding(vertical = MeshSpacing.sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = label,
-            color = Color(0xFFA9B0AF),
+            color = MeshMuted,
             style = MaterialTheme.typography.labelSmall,
-            letterSpacing = 0.6.sp,
             fontWeight = FontWeight.Medium,
             modifier = Modifier.weight(1f)
         )
@@ -356,17 +358,23 @@ private fun InterfaceRow(label: String, value: @Composable () -> Unit) {
 }
 
 @Composable
-private fun DividerLine() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(1.dp)
-            .background(
-                Brush.horizontalGradient(
-                    listOf(Color.Transparent, Color(0xFF2A353A), Color.Transparent)
-                )
-            )
-    )
+private fun SignalBarsVisualizer() {
+    Row(
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        val heights = listOf(10.dp, 14.dp, 18.dp, 22.dp)
+        heights.forEachIndexed { index, height ->
+            val color = if (index < 3) MeshGreen else MeshBorder
+            Surface(
+                modifier = Modifier
+                    .width(4.dp)
+                    .height(height),
+                shape = RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp),
+                color = color
+            ) {}
+        }
+    }
 }
 
 private fun isStaInterface(name: String): Boolean {
@@ -386,13 +394,6 @@ private fun capabilitySubtitle(isStaApSupported: Boolean, isLikelySupported: Boo
         else -> "This device currently reports no simultaneous station and access-point support."
     }
 }
-
-private val ScreenBg = Color(0xFF090B0D)
-private val MeshAccent = Color(0xFF44E67B)
-private val CardBg = Color(0xFF0C0E10)
-private val CardBorder = Color(0xFF1E2E43)
-private val HeroBg = Color(0xFF0E1113)
-private val HeaderBg = Color(0xFF1A1A1F)
 
 @Preview(showBackground = true)
 @Composable

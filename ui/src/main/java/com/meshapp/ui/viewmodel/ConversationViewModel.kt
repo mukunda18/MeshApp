@@ -1,5 +1,6 @@
 package com.meshapp.ui.viewmodel
 
+import android.graphics.Bitmap
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -18,6 +19,9 @@ import com.meshapp.messaging.MessageDeliveryStatus
 import com.meshapp.messaging.MessagingService
 import com.meshapp.model.NodeId
 import com.meshapp.voice.VoiceCallManager
+import com.meshapp.voicemessage.VoiceMessageFile
+import com.meshapp.voicemessage.VoiceMessagePlayer
+import com.meshapp.voicemessage.VoiceMessageRecorder
 import com.meshapp.routing.PeerEvent
 import com.meshapp.ui.state.ConversationMessageUiState
 import com.meshapp.ui.state.ConversationUiState
@@ -43,7 +47,9 @@ class ConversationViewModel(
     private val messagingService: MessagingService,
     private val meshService: MeshService,
     private val voiceCallManager: VoiceCallManager,
-    private val fileTransferService: FileTransferService
+    private val fileTransferService: FileTransferService,
+    private val voiceMessageRecorder: VoiceMessageRecorder,
+    private val voiceMessagePlayer: VoiceMessagePlayer
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(ConversationUiState(node = NodeCardState("", "", false, "")))
     private val _peerMap = MutableStateFlow<Map<String, PeerState>>(emptyMap())
@@ -101,6 +107,29 @@ class ConversationViewModel(
         }
     }
 
+    fun attachCapturedImage(context: Context, bitmap: Bitmap) {
+        val destination = activeNodeId ?: return
+        viewModelScope.launch {
+            try {
+                val outgoingDir = File(context.cacheDir, "file_transfer/outgoing").apply {
+                    if (!exists()) mkdirs()
+                }
+                val fileName = "IMG_${System.currentTimeMillis()}.jpg"
+                val tempFile = File(outgoingDir, fileName)
+                withContext(Dispatchers.IO) {
+                    FileOutputStream(tempFile).use { output ->
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, 90, output)
+                    }
+                }
+                fileTransferService.sendFile(destination, tempFile)
+            } catch (e: Exception) {
+                android.util.Log.e("ConversationViewModel", "Failed to attach captured image", e)
+            } finally {
+                bitmap.recycle()
+            }
+        }
+    }
+
     fun openFile(context: Context, fileUiState: FileTransferUiState) {
         val path = fileUiState.localPath ?: return
         val file = File(path)
@@ -117,6 +146,30 @@ class ConversationViewModel(
         } catch (e: Exception) {
             android.util.Log.e("ConversationViewModel", "Failed to open file", e)
         }
+    }
+
+    /** Starts recording; call on mic-button press. Returns false if permission is missing. */
+    fun startVoiceMessageRecording(): Boolean = voiceMessageRecorder.start()
+
+    /** Stops recording and hands the resulting file to FileTransferService, unchanged. */
+    fun stopVoiceMessageRecording() {
+        val destination = activeNodeId ?: return
+        val recorded = voiceMessageRecorder.stop() ?: return
+        fileTransferService.sendFile(destination, recorded.file)
+    }
+
+    /** Discards an in-progress recording, e.g. on swipe-to-cancel. */
+    fun cancelVoiceMessageRecording() {
+        voiceMessageRecorder.cancel()
+    }
+
+    fun playVoiceMessage(fileUiState: FileTransferUiState, onComplete: () -> Unit = {}) {
+        val path = fileUiState.localPath ?: return
+        voiceMessagePlayer.play(File(path), onComplete)
+    }
+
+    fun stopVoiceMessagePlayback() {
+        voiceMessagePlayer.stop()
     }
 
     private fun getFileName(context: Context, uri: Uri): String? {
@@ -143,10 +196,10 @@ class ConversationViewModel(
                     is FileTransferEvent.Failed -> event.record
                     is FileTransferEvent.Cancelled -> event.record
                 }
-                
+
                 val destination = activeNodeId ?: return@collect
                 if (transferRecord.peerNodeId.toString() != destination.toString()) return@collect
-                
+
                 refreshUI(destination)
             }
         }
@@ -173,17 +226,17 @@ class ConversationViewModel(
         val isInRouteTable = destination.toString() in _routeNodeIds.value
         val currentNode = _uiState.value.node
         val displayName = peer?.name?.takeIf { it.isNotBlank() } ?: shortId(destination.toString())
-        
+
         val textMessages = messagingService.getHistory(destination)
-        val fileTransfers = fileTransferService.store.list().filter { 
-            it.peerNodeId.toString() == destination.toString() 
+        val fileTransfers = fileTransferService.store.list().filter {
+            it.peerNodeId.toString() == destination.toString()
         }
 
         // Merge and sort
         val allMessages = (textMessages.map { it.toUiMessage(it.senderNodeId.toString() == ownNodeId.toString()) } +
-            fileTransfers.map { it.toUiMessage() })
+                fileTransfers.map { it.toUiMessage() })
             .sortedBy { it.rawTimestamp } // Corrected sorting
-        
+
         _uiState.update { state ->
             state.copy(
                 node = currentNode.copy(
@@ -210,6 +263,7 @@ class ConversationViewModel(
     }
 
     private fun FileTransferRecord.toUiMessage(): ConversationMessageUiState {
+        val isVoiceMessage = VoiceMessageFile.isVoiceMessage(metadata.filename)
         return ConversationMessageUiState(
             id = transferId.toString(),
             text = if (isIncoming) "Incoming File: ${metadata.filename}" else "Sending File: ${metadata.filename}",
@@ -223,7 +277,9 @@ class ConversationViewModel(
                 progress = progress,
                 status = status.name,
                 isIncoming = isIncoming,
-                localPath = if (isIncoming) outputPath else sourcePath
+                localPath = if (isIncoming) outputPath else sourcePath,
+                isVoiceMessage = isVoiceMessage,
+                durationMs = VoiceMessageFile.durationMsOrNull(metadata.filename) ?: 0L
             )
         )
     }
@@ -263,12 +319,12 @@ class ConversationViewModel(
                     val next = when (event) {
                         is PeerEvent.Added -> {
                             current + (event.peer.nodeId.toString() to
-                                PeerState(event.peer.nodeId, event.peer.ip, null, null, PeerStatus.ACTIVE, event.peer.lastSeen))
+                                    PeerState(event.peer.nodeId, event.peer.ip, null, null, PeerStatus.ACTIVE, event.peer.lastSeen))
                         }
                         is PeerEvent.Updated -> {
                             val existing = current[event.peer.nodeId.toString()]
                             current + (event.peer.nodeId.toString() to
-                                PeerState(event.peer.nodeId, event.peer.ip, existing?.name, existing?.publicKey, PeerStatus.ACTIVE, event.peer.lastSeen))
+                                    PeerState(event.peer.nodeId, event.peer.ip, existing?.name, existing?.publicKey, PeerStatus.ACTIVE, event.peer.lastSeen))
                         }
                         is PeerEvent.Removed -> current - event.nodeId.toString()
                     }
@@ -298,5 +354,26 @@ class ConversationViewModel(
             val bytes = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
             NodeId(bytes)
         }.getOrNull()
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        voiceMessageRecorder.release()
+        voiceMessagePlayer.release()
+    }
+
+    fun toggleVoicePlayback(transfer: FileTransferUiState) {
+        val currentlyPlaying = _uiState.value.playingTransferId
+        if (currentlyPlaying == transfer.transferId) {
+            voiceMessagePlayer.stop()
+            _uiState.update { it.copy(playingTransferId = null) }
+        } else {
+            playVoiceMessage(transfer) {
+                _uiState.update { state ->
+                    if (state.playingTransferId == transfer.transferId) state.copy(playingTransferId = null) else state
+                }
+            }
+            _uiState.update { it.copy(playingTransferId = transfer.transferId) }
+        }
     }
 }
