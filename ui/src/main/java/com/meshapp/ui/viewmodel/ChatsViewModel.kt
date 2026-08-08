@@ -168,14 +168,18 @@ class ChatsViewModel(
     private fun parseNodeId(value: String): NodeId? {
         if (value.length != 64) return null
         return runCatching {
-            val bytes = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-            NodeId(bytes)
+            NodeId(value.hexToByteArray())
         }.getOrNull()
     }
 
     private fun refreshFromRouting() {
-        _knownNodes.value = nodesStore.listNodes()
-        _routeNodeIds.value = meshService.getRoutes().map { it.destinationNodeId.toString() }.toSet()
+        val updatedNodes = nodesStore.listNodes()
+        val updatedRoutes = meshService.getRoutes()
+            .map { it.destinationNodeId.toString() }
+            .toSet()
+
+        _knownNodes.update { updatedNodes }
+        _routeNodeIds.update { updatedRoutes }
     }
 
     private fun initialsFrom(value: String): String {

@@ -47,7 +47,8 @@ data class NodeCardState(
 
 data class ConversationUiState(
     val node: NodeCardState,
-    val messages: List<ConversationMessageUiState> = emptyList()
+    val messages: List<ConversationMessageUiState> = emptyList(),
+    val playingTransferId: String? = null
 )
 
 data class ConversationMessageUiState(

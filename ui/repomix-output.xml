@@ -1,0 +1,4673 @@
+
+<directory_structure>
+src/
+  androidTest/
+    java/
+      com/
+        meshapp/
+          ui/
+            ExampleInstrumentedTest.kt
+  main/
+    java/
+      com/
+        meshapp/
+          ui/
+            components/
+              CommonComponents.kt
+            navigation/
+              MeshAppNavHost.kt
+              MeshRoutes.kt
+            screens/
+              about/
+                AboutScreen.kt
+              chats/
+                ChatsScreen.kt
+              conversation/
+                ConversationScreen.kt
+              home/
+                HomeScreen.kt
+              nearbynodes/
+                NearbyNodesScreen.kt
+              networkinterfaces/
+                NetworkInterfacesScreen.kt
+              profile/
+                ProfileScreen.kt
+              voice/
+                VoiceCallOverlay.kt
+            state/
+              HomeUiState.kt
+              NetworkInterfacesUiState.kt
+            theme/
+              Color.kt
+              Spacing.kt
+              Theme.kt
+              Type.kt
+            viewmodel/
+              ChatsViewModel.kt
+              ChatsViewModelFactory.kt
+              ConversationViewModel.kt
+              ConversationViewModelFactory.kt
+              HomeViewModel.kt
+              HomeViewModelFactory.kt
+              MeshController.kt
+              NetworkInterfacesViewModel.kt
+    keepRules/
+      rules.keep
+    AndroidManifest.xml
+  test/
+    java/
+      com/
+        meshapp/
+          ui/
+            ExampleUnitTest.kt
+.gitignore
+build.gradle.kts
+consumer-rules.keep
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="src/androidTest/java/com/meshapp/ui/ExampleInstrumentedTest.kt">
+package com.meshapp.ui
+
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.ext.junit.runners.AndroidJUnit4
+
+import org.junit.Test
+import org.junit.runner.RunWith
+
+import org.junit.Assert.*
+
+/**
+ * Instrumented test, which will execute on an Android device.
+ *
+ * See [testing documentation](http://d.android.com/tools/testing).
+ */
+@RunWith(AndroidJUnit4::class)
+class ExampleInstrumentedTest {
+    @Test
+    fun useAppContext() {
+        // Context of the app under test.
+        val appContext = InstrumentationRegistry.getInstrumentation().targetContext
+        assertEquals("com.minor.ui.test", appContext.packageName)
+    }
+}
+</file>
+
+<file path="src/main/java/com/meshapp/ui/components/CommonComponents.kt">
+package com.meshapp.ui.components
+
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.SignalWifiStatusbarConnectedNoInternet4
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import com.meshapp.ui.state.ConversationMessageUiState
+import com.meshapp.ui.state.NodeCardState
+import com.meshapp.ui.theme.MeshBg2
+import com.meshapp.ui.theme.MeshBg3
+import com.meshapp.ui.theme.MeshBorder
+import com.meshapp.ui.theme.MeshBubbleInbound
+import com.meshapp.ui.theme.MeshBubbleInboundBorder
+import com.meshapp.ui.theme.MeshBubbleOutbound
+import com.meshapp.ui.theme.MeshBubbleOutboundBorder
+import com.meshapp.ui.theme.MeshGreen
+import com.meshapp.ui.theme.MeshGreenOnAccent
+import com.meshapp.ui.theme.MeshMuted
+import com.meshapp.ui.theme.MeshOffline
+import com.meshapp.ui.theme.MeshRadius
+import com.meshapp.ui.theme.MeshShapes
+import com.meshapp.ui.theme.MeshSpacing
+import com.meshapp.ui.theme.MeshTextPrimary
+
+/**
+ * A circular initials avatar, used for both self and peer identities across the app.
+ */
+@Composable
+fun ProfileAvatar(
+    initials: String,
+    modifier: Modifier = Modifier,
+    size: androidx.compose.ui.unit.Dp = 40.dp,
+    containerColor: Color = MeshGreen
+) {
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(containerColor),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(initials, color = MeshGreenOnAccent, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+    }
+}
+
+/**
+ * Small dot + label used to show a peer's live connection state. A soft pulse on the
+ * dot communicates "actively broadcasting" without being distracting.
+ */
+@Composable
+fun OnlineIndicator(isOnline: Boolean, modifier: Modifier = Modifier) {
+    val color by animateColorAsState(if (isOnline) MeshGreen else MeshOffline, label = "status-color")
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier) {
+        StatusDot(isOnline = isOnline)
+        Spacer(modifier = Modifier.size(6.dp))
+        Text(if (isOnline) "Online" else "Offline", style = MaterialTheme.typography.labelMedium, color = color)
+    }
+}
+
+/**
+ * The animated presence dot on its own, reused by avatars, list rows, and headers
+ * so every "is this peer reachable right now" signal looks identical.
+ */
+@Composable
+fun StatusDot(
+    isOnline: Boolean,
+    modifier: Modifier = Modifier,
+    size: Dp = 10.dp
+) {
+    val color by animateColorAsState(
+        targetValue = if (isOnline) MeshGreen else MeshOffline,
+        label = "dot-color"
+    )
+
+    if (isOnline) {
+        val transition = rememberInfiniteTransition(label = "presence-pulse")
+        val pulse by transition.animateFloat(
+            initialValue = 0.9f,
+            targetValue = 1.6f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1600, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "presence-pulse-scale"
+        )
+
+        Box(modifier = modifier.size(size), contentAlignment = Alignment.Center) {
+            // Pulse outer halo using graphicsLayer for zero layout invalidation
+            Box(
+                modifier = Modifier
+                    .size(size)
+                    .graphicsLayer {
+                        scaleX = pulse
+                        scaleY = pulse
+                        alpha = 0.22f
+                    }
+                    .clip(CircleShape)
+                    .background(color)
+            )
+            // Solid center dot
+            Box(
+                modifier = Modifier
+                    .size(size)
+                    .clip(CircleShape)
+                    .background(color)
+            )
+        }
+    } else {
+        Box(
+            modifier = modifier
+                .size(size)
+                .clip(CircleShape)
+                .background(color)
+        )
+    }
+}
+
+/**
+ * A small pill-shaped status/label chip, e.g. "MESH ONLINE", "NETWORK SECURE",
+ * or per-node signal labels. Consolidates what used to be one-off Surface+Text blocks.
+ */
+@Composable
+fun MeshStatusChip(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = MeshGreen,
+    filled: Boolean = false
+) {
+    Surface(
+        shape = MeshShapes.chip,
+        color = if (filled) color else color.copy(alpha = 0.14f),
+        modifier = modifier
+    ) {
+        Text(
+            text = text,
+            color = if (filled) MeshGreenOnAccent else color,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MeshTopBar(title: String, subtitle: String? = null, onBack: (() -> Unit)? = null, trailing: @Composable () -> Unit = {}) {
+    TopAppBar(
+        title = {
+            Column {
+                Text(title, style = MaterialTheme.typography.titleLarge, color = MeshTextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (!subtitle.isNullOrBlank()) {
+                    Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MeshMuted)
+                }
+            }
+        },
+        navigationIcon = {
+            if (onBack != null) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = MeshTextPrimary)
+                }
+            }
+        },
+        actions = { trailing() },
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+    )
+}
+
+/**
+ * Shared bottom navigation chrome. [MeshFooterNavigation] and [BottomNavigationBar] both
+ * delegate here so every screen's nav bar matches pixel-for-pixel; only the item set differs.
+ */
+@Composable
+private fun MeshNavigationBar(
+    currentRoute: String,
+    onHome: () -> Unit,
+    onChats: () -> Unit,
+    onProfile: (() -> Unit)? = null
+) {
+    NavigationBar(
+        containerColor = MeshBg2,
+        tonalElevation = 0.dp
+    ) {
+        val colors = NavigationBarItemDefaults.colors(
+            selectedIconColor = MeshGreen,
+            selectedTextColor = MeshGreen,
+            indicatorColor = MeshGreen.copy(alpha = 0.14f),
+            unselectedIconColor = MeshMuted,
+            unselectedTextColor = MeshMuted
+        )
+        NavigationBarItem(
+            selected = currentRoute == "home",
+            onClick = onHome,
+            icon = { Icon(Icons.Filled.Home, contentDescription = null) },
+            label = { Text("Home") },
+            colors = colors
+        )
+        NavigationBarItem(
+            selected = currentRoute == "chats",
+            onClick = onChats,
+            icon = { Icon(Icons.Filled.ChatBubble, contentDescription = null) },
+            label = { Text("Chats") },
+            colors = colors
+        )
+        if (onProfile != null) {
+            NavigationBarItem(
+                selected = currentRoute == "profile",
+                onClick = onProfile,
+                icon = { Icon(Icons.Filled.Person, contentDescription = null) },
+                label = { Text("Profile") },
+                colors = colors
+            )
+        }
+    }
+}
+
+@Composable
+fun BottomNavigationBar(currentRoute: String, onNavigate: (String) -> Unit) {
+    MeshNavigationBar(
+        currentRoute = currentRoute,
+        onHome = { onNavigate("home") },
+        onChats = { onNavigate("chats") }
+    )
+}
+
+@Composable
+fun MeshFooterNavigation(
+    currentRoute: String,
+    onHome: () -> Unit,
+    onChats: () -> Unit,
+    onProfile: (() -> Unit)? = null
+) {
+    MeshNavigationBar(
+        currentRoute = currentRoute,
+        onHome = onHome,
+        onChats = onChats,
+        onProfile = onProfile
+    )
+}
+
+@Composable
+fun NodeCard(node: NodeCardState, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = MeshShapes.card,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MeshBorder),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(MeshSpacing.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ProfileAvatar(initials = node.avatarInitials, size = 48.dp)
+            Spacer(modifier = Modifier.size(MeshSpacing.sm))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(node.name, style = MaterialTheme.typography.titleMedium, color = MeshTextPrimary, fontWeight = FontWeight.SemiBold)
+                Text(node.id, style = MaterialTheme.typography.bodySmall, color = MeshMuted)
+                if (!node.lastMessagePreview.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        node.lastMessagePreview,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MeshMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (!node.lastMessageTimestamp.isNullOrBlank()) {
+                        Text(
+                            node.lastMessageTimestamp,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MeshMuted
+                        )
+                    }
+                    if (node.unreadCount > 0) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        MeshStatusChip(text = node.unreadCount.toString(), color = MeshGreen)
+                    }
+                }
+            }
+            OnlineIndicator(isOnline = node.isOnline)
+        }
+    }
+}
+
+@Composable
+fun ChatBubble(message: ConversationMessageUiState, modifier: Modifier = Modifier) {
+    val alignment = if (message.isOutgoing) Alignment.End else Alignment.Start
+    val bubbleColor = if (message.isOutgoing) MeshBubbleOutbound else MeshBubbleInbound
+    val borderColor = if (message.isOutgoing) MeshBubbleOutboundBorder else MeshBubbleInboundBorder
+    Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = alignment) {
+        Box(
+            modifier = Modifier
+                .padding(vertical = 4.dp)
+                .background(bubbleColor, RoundedCornerShape(MeshRadius.md))
+                .border(1.dp, borderColor, RoundedCornerShape(MeshRadius.md))
+                .padding(horizontal = 14.dp, vertical = 10.dp)
+        ) {
+            Column(horizontalAlignment = Alignment.Start) {
+                Text(message.text, color = MeshTextPrimary)
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(message.timestamp, style = MaterialTheme.typography.labelSmall, color = MeshMuted)
+                    if (!message.deliveryStatusLabel.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(message.deliveryStatusLabel, style = MaterialTheme.typography.labelSmall, color = MeshMuted)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Generic "nothing here yet" placeholder shared by empty chat lists, peer lists, etc.
+ * Uses a muted, low-emphasis wifi icon so it doubles as a subtle P2P visual cue.
+ */
+@Composable
+fun EmptyState(title: String, subtitle: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(64.dp)
+                .clip(CircleShape)
+                .background(MeshBg3),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Filled.SignalWifiStatusbarConnectedNoInternet4,
+                contentDescription = null,
+                tint = MeshMuted,
+                modifier = Modifier.size(28.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(MeshSpacing.md))
+        Text(title, style = MaterialTheme.typography.titleMedium, color = MeshTextPrimary, fontWeight = FontWeight.SemiBold)
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MeshMuted)
+    }
+}
+</file>
+
+<file path="src/main/java/com/meshapp/ui/navigation/MeshAppNavHost.kt">
+package com.meshapp.ui.navigation
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import com.meshapp.logger.LogScreen
+import com.meshapp.ui.components.BottomNavigationBar
+import com.meshapp.ui.screens.about.AboutScreen
+import com.meshapp.ui.screens.chats.ChatsScreen
+import com.meshapp.ui.screens.conversation.ConversationScreen
+import com.meshapp.ui.screens.home.HomeScreen
+import com.meshapp.ui.screens.nearbynodes.NearbyNodesScreen
+import com.meshapp.ui.screens.networkinterfaces.NetworkInterfacesScreen
+import com.meshapp.ui.screens.profile.ProfileScreen
+import com.meshapp.ui.screens.voice.VoiceCallOverlay
+import com.meshapp.ui.theme.MeshAppTheme
+import com.meshapp.ui.theme.MeshBg0
+import com.meshapp.ui.theme.MeshGreen
+import com.meshapp.ui.theme.MeshGreenOnAccent
+import com.meshapp.ui.theme.MeshShapes
+import com.meshapp.ui.theme.MeshSpacing
+import com.meshapp.ui.theme.MeshTextPrimary
+import com.meshapp.ui.viewmodel.ChatsViewModel
+import com.meshapp.ui.viewmodel.ConversationViewModel
+import com.meshapp.ui.viewmodel.HomeViewModel
+import com.meshapp.model.MeshNode
+import com.meshapp.voice.CallState
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MeshAppNavHost(
+    homeViewModelFactory: ViewModelProvider.Factory? = null,
+    chatsViewModelFactory: ViewModelProvider.Factory? = null,
+    conversationViewModelFactory: ViewModelProvider.Factory? = null
+) {
+    MeshAppTheme {
+        val navController = rememberNavController()
+        val backStackEntry by navController.currentBackStackEntryAsState()
+
+        val currentRoute = backStackEntry?.destination?.route?.substringBefore("/") ?: MeshRoutes.HOME
+
+        val homeViewModel: HomeViewModel = if (homeViewModelFactory != null) {
+            viewModel(factory = homeViewModelFactory)
+        } else {
+            viewModel()
+        }
+        val uiState by homeViewModel.uiState.collectAsStateWithLifecycle()
+
+        val isRootTab = currentRoute in listOf(MeshRoutes.HOME, MeshRoutes.CHATS)
+
+        Scaffold(
+            containerColor = MeshBg0,
+            topBar = {
+                // Unified TopAppBar across the app
+                CenterAlignedTopAppBar(
+                    title = {
+                        Text(
+                            text = getTopBarTitle(currentRoute),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MeshTextPrimary
+                        )
+                    },
+                    navigationIcon = {
+                        if (!isRootTab) {
+                            IconButton(onClick = { navController.popBackStack() }) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Navigate Back",
+                                    tint = MeshTextPrimary
+                                )
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                        containerColor = MeshBg0
+                    )
+                )
+            },
+            bottomBar = {
+                if (isRootTab && uiState.voiceCallState is CallState.Idle) {
+                    BottomNavigationBar(
+                        currentRoute = currentRoute,
+                        onNavigate = { route -> navController.navigateToTab(route) }
+                    )
+                }
+            }
+        ) { paddingValues ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+            ) {
+                NavHost(
+                    navController = navController,
+                    startDestination = MeshRoutes.HOME,
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    composable(MeshRoutes.HOME) {
+                        HomeScreen(
+                            viewModel = homeViewModel,
+                            onNavigateToNearbyNodes = { navController.navigate(MeshRoutes.NEARBY_NODES) },
+                            onNavigateToNetworkInterfaces = { navController.navigate(MeshRoutes.NETWORK_INTERFACES) },
+                            onNavigateToProfile = { navController.navigate(MeshRoutes.PROFILE) },
+                            onNavigateToAbout = { navController.navigate(MeshRoutes.ABOUT) },
+                            onNavigateToLogs = { navController.navigate(MeshRoutes.LOGS) }
+                        )
+                    }
+                    composable(MeshRoutes.LOGS) {
+                        LogScreen(onBack = { navController.popBackStack() })
+                    }
+                    composable(MeshRoutes.PROFILE) {
+                        ProfileScreen(
+                            viewModel = homeViewModel,
+                            onBack = { navController.popBackStack() },
+                            onNavigateHome = { navController.navigateToTab(MeshRoutes.HOME) },
+                            onNavigateChats = { navController.navigateToTab(MeshRoutes.CHATS) },
+                            onNavigateNearbyNodes = { navController.navigate(MeshRoutes.NEARBY_NODES) },
+                            onNavigateNetworkInterfaces = { navController.navigate(MeshRoutes.NETWORK_INTERFACES) },
+                            onNavigateAbout = { navController.navigate(MeshRoutes.ABOUT) }
+                        )
+                    }
+                    composable(MeshRoutes.NEARBY_NODES) {
+                        NearbyNodesScreen(
+                            viewModel = homeViewModel,
+                            onBack = { navController.popBackStack() },
+                            onNavigateHome = { navController.navigateToTab(MeshRoutes.HOME) },
+                            onNavigateChats = { navController.navigateToTab(MeshRoutes.CHATS) },
+                            onNodeClick = { nodeId -> navController.navigate(MeshRoutes.conversation(nodeId)) }
+                        )
+                    }
+                    composable(MeshRoutes.CHATS) {
+                        val chatsViewModel: ChatsViewModel = if (chatsViewModelFactory != null) {
+                            viewModel(factory = chatsViewModelFactory)
+                        } else {
+                            viewModel()
+                        }
+                        ChatsScreen(
+                            viewModel = chatsViewModel,
+                            onNodeClick = { node -> navController.navigate(MeshRoutes.conversation(node.id)) }
+                        )
+                    }
+                    composable(MeshRoutes.NETWORK_INTERFACES) {
+                        NetworkInterfacesScreen(
+                            viewModel = viewModel(),
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
+                    composable(MeshRoutes.ABOUT) {
+                        AboutScreen(onBack = { navController.popBackStack() })
+                    }
+                    composable(
+                        route = MeshRoutes.CONVERSATION,
+                        arguments = listOf(navArgument("nodeId") { type = NavType.StringType })
+                    ) { backStackEntry ->
+                        val nodeId = backStackEntry.arguments?.getString("nodeId") ?: ""
+                        val conversationViewModel: ConversationViewModel = if (conversationViewModelFactory != null) {
+                            viewModel(factory = conversationViewModelFactory)
+                        } else {
+                            viewModel()
+                        }
+                        ConversationScreen(
+                            viewModel = conversationViewModel,
+                            nodeId = nodeId,
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
+                }
+
+                // Active Voice Call Overlay
+                VoiceCallOverlay(
+                    state = uiState.voiceCallState,
+                    isMinimized = uiState.isCallMinimized,
+                    onAccept = { homeViewModel.acceptCall() },
+                    onReject = { homeViewModel.rejectCall() },
+                    onCancel = { homeViewModel.cancelCall() },
+                    onHangup = { homeViewModel.hangupCall() },
+                    onMinimize = { homeViewModel.minimizeCall() }
+                )
+
+                // Minimized Call Return Pill
+                if (uiState.isCallMinimized && uiState.voiceCallState !is CallState.Idle) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .statusBarsPadding()
+                            .padding(top = MeshSpacing.xs)
+                            .clip(MeshShapes.chip)
+                            .background(MeshGreen)
+                            .clickable { homeViewModel.maximizeCall() }
+                            .padding(horizontal = MeshSpacing.md, vertical = MeshSpacing.xs)
+                    ) {
+                        Text(
+                            text = "Back to Call",
+                            color = MeshGreenOnAccent,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun NavController.navigateToTab(route: String) {
+    navigate(route) {
+        popUpTo(graph.findStartDestination().id) {
+            saveState = true
+        }
+        launchSingleTop = true
+        restoreState = true
+    }
+}
+
+private fun getTopBarTitle(route: String): String {
+    return when (route) {
+        MeshRoutes.HOME -> "Mesh Network"
+        MeshRoutes.CHATS -> "Conversations"
+        MeshRoutes.NEARBY_NODES -> "Nearby Nodes"
+        MeshRoutes.NETWORK_INTERFACES -> "Network Interfaces"
+        MeshRoutes.PROFILE -> "Node Profile"
+        MeshRoutes.ABOUT -> "About Mesh"
+        MeshRoutes.LOGS -> "System Logs"
+        MeshRoutes.CONVERSATION -> "Chat"
+        else -> "Mesh"
+    }
+}
+</file>
+
+<file path="src/main/java/com/meshapp/ui/navigation/MeshRoutes.kt">
+package com.meshapp.ui.navigation
+
+object MeshRoutes {
+    const val HOME = "home"
+    const val CHATS = "chats"
+    const val PROFILE = "profile"
+    const val NEARBY_NODES = "nearby_nodes"
+    const val ABOUT = "about"
+    const val LOGS = "logs"
+    const val CONVERSATION = "conversation/{nodeId}"
+    const val NETWORK_INTERFACES = "NetworkInterfaces"
+
+    fun conversation(nodeId: String): String = "conversation/$nodeId"
+}
+</file>
+
+<file path="src/main/java/com/meshapp/ui/screens/about/AboutScreen.kt">
+package com.meshapp.ui.screens.about
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.meshapp.ui.theme.MeshBg0
+import com.meshapp.ui.theme.MeshBg1
+import com.meshapp.ui.theme.MeshBg2
+import com.meshapp.ui.theme.MeshBorder
+import com.meshapp.ui.theme.MeshGreen
+import com.meshapp.ui.theme.MeshMuted
+import com.meshapp.ui.theme.MeshShapes
+import com.meshapp.ui.theme.MeshSpacing
+import com.meshapp.ui.theme.MeshTextPrimary
+
+@Composable
+fun AboutScreen(onBack: () -> Unit) {
+    Scaffold(
+        containerColor = MeshBg0,
+        topBar = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MeshBg2)
+                    .padding(horizontal = MeshSpacing.xs + 2.dp, vertical = MeshSpacing.xs),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = MeshTextPrimary
+                    )
+                }
+                Text(
+                    text = "About",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MeshTextPrimary,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(horizontal = MeshSpacing.md),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .padding(top = MeshSpacing.lg)
+                    .size(160.dp)
+                    .drawBehind {
+                        drawCircle(color = MeshGreen.copy(alpha = 0.16f), radius = size.minDimension / 2.1f)
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    shape = MeshShapes.card,
+                    color = MeshBg1,
+                    modifier = Modifier
+                        .size(120.dp)
+                        .border(1.dp, MeshBorder, MeshShapes.card)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        MeshIconGlyph(modifier = Modifier.size(64.dp))
+                    }
+                }
+            }
+
+            Text(
+                text = "MeshApp",
+                color = MeshTextPrimary,
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Surface(
+                shape = MeshShapes.chip,
+                color = MeshGreen.copy(alpha = 0.14f),
+                modifier = Modifier.padding(top = MeshSpacing.xs)
+            ) {
+                Text(
+                    text = "Version 1.0.0",
+                    color = MeshGreen,
+                    style = MaterialTheme.typography.labelMedium,
+                    letterSpacing = 0.8.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = MeshSpacing.md, vertical = MeshSpacing.xs)
+                )
+            }
+
+            Surface(
+                shape = MeshShapes.card,
+                color = MeshBg1,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = MeshSpacing.lg)
+                    .border(1.dp, MeshBorder, MeshShapes.card)
+            ) {
+                Text(
+                    text = "A decentralized messaging application designed for absolute resilience. MeshApp operates over local Wi-Fi mesh networks, ensuring your communication remains private and functional even when the global internet is inaccessible.",
+                    color = MeshMuted,
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(MeshSpacing.md)
+                )
+            }
+
+            Surface(
+                shape = MeshShapes.card,
+                color = MeshBg1,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = MeshSpacing.sm)
+                    .border(1.dp, MeshBorder, MeshShapes.card)
+            ) {
+                Column(modifier = Modifier.padding(MeshSpacing.md), verticalArrangement = Arrangement.spacedBy(MeshSpacing.sm)) {
+                    Text(
+                        text = "CONNECTIVITY",
+                        color = MeshGreen,
+                        style = MaterialTheme.typography.titleLarge,
+                        letterSpacing = 1.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Wifi, contentDescription = null, tint = MeshMuted)
+                        Text(
+                            text = " Wi-Fi Direct / Ad-hoc",
+                            color = MeshTextPrimary,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Lock, contentDescription = null, tint = MeshMuted)
+                        Text(
+                            text = " End-to-End Encrypted",
+                            color = MeshTextPrimary,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            Text(
+                text = "\u00A9 2025 All rights reserved.",
+                color = MeshMuted,
+                style = MaterialTheme.typography.bodyLarge,
+                letterSpacing = 1.sp,
+                modifier = Modifier.padding(bottom = MeshSpacing.lg)
+            )
+        }
+    }
+}
+
+@Composable
+private fun MeshIconGlyph(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.drawBehind {
+            val lineColor = MeshGreen
+            val dotColor = MeshGreen
+            val r = 4.dp.toPx()
+            val x1 = size.width * 0.2f
+            val x2 = size.width * 0.5f
+            val x3 = size.width * 0.8f
+            val y1 = size.height * 0.2f
+            val y2 = size.height * 0.5f
+            val y3 = size.height * 0.8f
+
+            drawLine(lineColor, start = androidx.compose.ui.geometry.Offset(x1, y1), end = androidx.compose.ui.geometry.Offset(x2, y2), strokeWidth = 3.dp.toPx())
+            drawLine(lineColor, start = androidx.compose.ui.geometry.Offset(x2, y2), end = androidx.compose.ui.geometry.Offset(x3, y1), strokeWidth = 3.dp.toPx())
+            drawLine(lineColor, start = androidx.compose.ui.geometry.Offset(x1, y3), end = androidx.compose.ui.geometry.Offset(x2, y2), strokeWidth = 3.dp.toPx())
+            drawLine(lineColor, start = androidx.compose.ui.geometry.Offset(x2, y2), end = androidx.compose.ui.geometry.Offset(x3, y3), strokeWidth = 3.dp.toPx())
+            drawCircle(dotColor, r, center = androidx.compose.ui.geometry.Offset(x1, y1))
+            drawCircle(dotColor, r, center = androidx.compose.ui.geometry.Offset(x3, y1))
+            drawCircle(dotColor, r, center = androidx.compose.ui.geometry.Offset(x2, y2))
+            drawCircle(dotColor, r, center = androidx.compose.ui.geometry.Offset(x1, y3))
+            drawCircle(dotColor, r, center = androidx.compose.ui.geometry.Offset(x3, y3))
+        }
+    )
+}
+</file>
+
+<file path="src/main/java/com/meshapp/ui/screens/chats/ChatsScreen.kt">
+package com.meshapp.ui.screens.chats
+
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.meshapp.model.MeshNode
+import com.meshapp.ui.components.ChatItemRow
+import com.meshapp.ui.theme.MeshBorder
+import com.meshapp.ui.theme.MeshSpacing
+import com.meshapp.ui.theme.MeshTextSecondary
+import com.meshapp.ui.viewmodel.ChatsViewModel
+
+@Composable
+fun ChatsScreen(
+    viewModel: ChatsViewModel,
+    onNodeClick: (MeshNode) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    Column(
+        modifier = modifier.fillMaxSize()
+    ) {
+        // Optional Search Bar inside content body
+        OutlinedTextField(
+            value = uiState.searchQuery,
+            onValueChange = { viewModel.onSearchQueryChanged(it) },
+            placeholder = { Text("Search conversations...", color = MeshTextSecondary) },
+            singleLine = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = MeshSpacing.md, vertical = MeshSpacing.xs)
+        )
+
+        if (uiState.conversations.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "No active conversations",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MeshTextSecondary
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(
+                    items = uiState.conversations,
+                    key = { it.node.id }
+                ) { conversation ->
+                    ChatItemRow(
+                        conversation = conversation,
+                        onClick = { onNodeClick(conversation.node) }
+                    )
+                    HorizontalDivider(color = MeshBorder)
+                }
+            }
+        }
+    }
+}
+</file>
+
+<file path="src/main/java/com/meshapp/ui/screens/conversation/ConversationScreen.kt">
+package com.meshapp.ui.screens.conversation
+
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.meshapp.messaging.MessageDeliveryStatus
+import com.meshapp.ui.components.StatusDot
+import com.meshapp.ui.state.ConversationMessageUiState
+import com.meshapp.ui.state.FileTransferUiState
+import com.meshapp.ui.theme.MeshBg0
+import com.meshapp.ui.theme.MeshBg2
+import com.meshapp.ui.theme.MeshBg3
+import com.meshapp.ui.theme.MeshBubbleInbound
+import com.meshapp.ui.theme.MeshBubbleInboundBorder
+import com.meshapp.ui.theme.MeshBubbleOutbound
+import com.meshapp.ui.theme.MeshBubbleOutboundBorder
+import com.meshapp.ui.theme.MeshDanger
+import com.meshapp.ui.theme.MeshGreen
+import com.meshapp.ui.theme.MeshGreenOnAccent
+import com.meshapp.ui.theme.MeshMuted
+import com.meshapp.ui.theme.MeshOffline
+import com.meshapp.ui.theme.MeshRadius
+import com.meshapp.ui.theme.MeshShapes
+import com.meshapp.ui.theme.MeshSpacing
+import com.meshapp.ui.theme.MeshTextPrimary
+import com.meshapp.ui.viewmodel.ConversationViewModel
+import kotlinx.coroutines.delay
+
+@Composable
+fun ConversationScreen(
+    nodeId: String,
+    onBack: () -> Unit,
+    viewModel: ConversationViewModel = viewModel()
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val listState = rememberLazyListState()
+    var draftMessage by remember { mutableStateOf("") }
+    val context = LocalContext.current
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { viewModel.attachFile(context, it) }
+    }
+
+    LaunchedEffect(nodeId) {
+        viewModel.initialize(nodeId)
+    }
+
+    // Auto-scroll to bottom when new messages arrive
+    LaunchedEffect(uiState.messages.size) {
+        if (uiState.messages.isNotEmpty()) {
+            listState.animateScrollToItem(uiState.messages.lastIndex)
+        }
+    }
+
+    Scaffold(
+        modifier = Modifier.imePadding(),
+        containerColor = MeshBg0,
+        topBar = {
+            ConversationTopBar(
+                title = uiState.node.name.ifBlank { "Conversation" },
+                initials = uiState.node.avatarInitials.ifBlank { "?" }.take(1),
+                isOnline = uiState.node.isOnline,
+                onBack = onBack,
+                onCall = { viewModel.dial() }
+            )
+        },
+        bottomBar = {
+            ConversationInputBar(
+                draftMessage = draftMessage,
+                onDraftChange = { draftMessage = it },
+                onSend = {
+                    if (draftMessage.isNotBlank()) {
+                        viewModel.sendMessage(draftMessage.trim())
+                        draftMessage = ""
+                    }
+                },
+                onAttach = { filePickerLauncher.launch("*/*") },
+                onRecordStart = { viewModel.startVoiceMessageRecording() },
+                onRecordStop = { viewModel.stopVoiceMessageRecording() },
+                onRecordCancel = { viewModel.cancelVoiceMessageRecording() }
+            )
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            DateDivider(label = "Today")
+
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = MeshSpacing.md),
+                state = listState,
+                verticalArrangement = Arrangement.spacedBy(MeshSpacing.sm)
+            ) {
+                items(
+                    items = uiState.messages,
+                    key = { it.id }
+                ) { message ->
+                    ConversationBubble(
+                        message = message,
+                        isPlaying = uiState.playingTransferId == message.fileTransfer?.transferId,
+                        onFileClick = { viewModel.openFile(context, it) },
+                        onVoiceMessagePlayToggle = { transfer ->
+                            viewModel.toggleVoicePlayback(transfer)
+                        }
+                    )
+                }
+                item { Spacer(modifier = Modifier.height(6.dp)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DateDivider(label: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = MeshSpacing.md, bottom = MeshSpacing.xs),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            shape = MeshShapes.chip,
+            color = MeshBg3
+        ) {
+            Text(
+                text = label,
+                color = MeshMuted,
+                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.padding(horizontal = MeshSpacing.md, vertical = MeshSpacing.xs)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ConversationTopBar(
+    title: String,
+    initials: String,
+    isOnline: Boolean,
+    onBack: () -> Unit,
+    onCall: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MeshBg0)
+            .padding(horizontal = MeshSpacing.sm, vertical = MeshSpacing.xs),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = onBack) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "Back",
+                tint = MeshGreen
+            )
+        }
+        Box(modifier = Modifier.padding(start = 4.dp)) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(MeshGreen),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = initials,
+                    color = MeshGreenOnAccent,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            StatusDot(
+                isOnline = isOnline,
+                size = 12.dp,
+                modifier = Modifier.align(Alignment.BottomEnd)
+            )
+        }
+        Column(modifier = Modifier.padding(start = MeshSpacing.sm)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = MeshTextPrimary,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = if (isOnline) "ONLINE" else "OFFLINE",
+                color = if (isOnline) MeshGreen else MeshOffline,
+                style = MaterialTheme.typography.labelMedium,
+                letterSpacing = 1.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
+        Spacer(modifier = Modifier.weight(1f))
+
+        if (isOnline) {
+            IconButton(onClick = onCall) {
+                Icon(
+                    imageVector = Icons.Default.Call,
+                    contentDescription = "Call",
+                    tint = MeshGreen
+                )
+            }
+        }
+
+        IconButton(onClick = { /* Menu Action */ }) {
+            Icon(
+                imageVector = Icons.Filled.MoreVert,
+                contentDescription = "More",
+                tint = MeshMuted
+            )
+        }
+    }
+}
+
+@Composable
+private fun ConversationBubble(
+    message: ConversationMessageUiState,
+    isPlaying: Boolean,
+    onFileClick: (FileTransferUiState) -> Unit,
+    onVoiceMessagePlayToggle: (FileTransferUiState) -> Unit
+) {
+    val alignment = if (message.isOutgoing) Alignment.End else Alignment.Start
+    val bubbleColor = if (message.isOutgoing) MeshBubbleOutbound else MeshBubbleInbound
+    val borderColor = if (message.isOutgoing) MeshBubbleOutboundBorder else MeshBubbleInboundBorder
+    val isVoiceMessage = message.fileTransfer?.isVoiceMessage == true
+
+    val bubbleShape = RoundedCornerShape(
+        topStart = MeshRadius.lg,
+        topEnd = MeshRadius.lg,
+        bottomStart = if (message.isOutgoing) MeshRadius.lg else 6.dp,
+        bottomEnd = if (message.isOutgoing) 6.dp else MeshRadius.lg
+    )
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = alignment
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.85f)
+                .clip(bubbleShape)
+                .background(bubbleColor)
+                .border(1.dp, borderColor, bubbleShape)
+                .then(
+                    if (message.fileTransfer != null && !isVoiceMessage) {
+                        Modifier.clickable { onFileClick(message.fileTransfer) }
+                    } else Modifier
+                )
+                .padding(MeshSpacing.md)
+        ) {
+            if (message.fileTransfer != null) {
+                FileTransferContent(
+                    transfer = message.fileTransfer,
+                    isPlaying = isPlaying,
+                    onPlayToggle = { onVoiceMessagePlayToggle(message.fileTransfer) }
+                )
+            } else {
+                Text(
+                    text = message.text,
+                    color = MeshTextPrimary,
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier.padding(top = 4.dp, start = MeshSpacing.xs, end = MeshSpacing.xs),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = message.timestamp,
+                color = MeshMuted,
+                style = MaterialTheme.typography.bodySmall,
+                letterSpacing = 0.6.sp,
+                fontWeight = FontWeight.Medium
+            )
+            if (message.isOutgoing) {
+                Spacer(modifier = Modifier.size(MeshSpacing.xs))
+                DeliveryStatusIcon(status = message.deliveryStatus)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DeliveryStatusIcon(status: MessageDeliveryStatus) {
+    val (icon, iconColor) = when (status) {
+        MessageDeliveryStatus.QUEUED, MessageDeliveryStatus.SENT -> Icons.Filled.Done to MeshGreen
+        MessageDeliveryStatus.DELIVERED, MessageDeliveryStatus.READ -> Icons.Filled.DoneAll to MeshGreen
+        MessageDeliveryStatus.FAILED -> Icons.Filled.Close to MeshDanger
+        else -> Icons.Filled.Done to MeshGreen
+    }
+
+    Icon(
+        imageVector = icon,
+        contentDescription = null,
+        tint = iconColor,
+        modifier = Modifier.size(16.dp)
+    )
+}
+
+@Composable
+private fun FileTransferContent(
+    transfer: FileTransferUiState,
+    isPlaying: Boolean,
+    onPlayToggle: () -> Unit
+) {
+    if (transfer.isVoiceMessage) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onPlayToggle, modifier = Modifier.size(40.dp)) {
+                Icon(
+                    imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    contentDescription = if (isPlaying) "Pause" else "Play",
+                    tint = MeshGreen
+                )
+            }
+            Spacer(modifier = Modifier.size(MeshSpacing.xs))
+            Text(
+                text = "%.0fs".format(transfer.durationMs / 1000f),
+                color = MeshMuted,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+    } else {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Filled.AttachFile,
+                contentDescription = null,
+                tint = MeshGreen,
+                modifier = Modifier.size(30.dp)
+            )
+            Spacer(modifier = Modifier.size(MeshSpacing.sm))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = transfer.filename,
+                    color = MeshTextPrimary,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = transfer.status,
+                    color = MeshMuted,
+                    style = MaterialTheme.typography.labelMedium
+                )
+                if (transfer.status == "TRANSFERRING") {
+                    Spacer(modifier = Modifier.height(MeshSpacing.xs))
+                    LinearProgressIndicator(
+                        progress = { transfer.progress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(4.dp)),
+                        color = MeshGreen,
+                        trackColor = MeshBg3
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConversationInputBar(
+    draftMessage: String,
+    onDraftChange: (String) -> Unit,
+    onSend: () -> Unit,
+    onAttach: () -> Unit,
+    onRecordStart: () -> Boolean,
+    onRecordStop: () -> Unit,
+    onRecordCancel: () -> Unit
+) {
+    var isRecording by remember { mutableStateOf(false) }
+    var recordingTimeSeconds by rememberLongStateOf(0L)
+
+    // Pulsing animation for mic button while recording
+    val infiniteTransition = rememberInfiniteTransition(label = "recordingPulse")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1.0f,
+        targetValue = 1.25f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 700, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseScale"
+    )
+
+    // Self-contained recording timer UI counter
+    LaunchedEffect(isRecording) {
+        if (isRecording) {
+            recordingTimeSeconds = 0L
+            while (true) {
+                delay(1000L)
+                recordingTimeSeconds++
+            }
+        }
+    }
+
+    val displayMessage = if (isRecording) {
+        val minutes = recordingTimeSeconds / 60
+        val seconds = recordingTimeSeconds % 60
+        "Recording voice... %02d:%02d".format(minutes, seconds)
+    } else {
+        draftMessage
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MeshBg0)
+            .padding(horizontal = MeshSpacing.md, vertical = MeshSpacing.sm),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(
+            onClick = onAttach,
+            modifier = Modifier.size(40.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.AttachFile,
+                contentDescription = "Attach",
+                tint = MeshMuted
+            )
+        }
+
+        OutlinedTextField(
+            value = displayMessage,
+            onValueChange = onDraftChange,
+            enabled = !isRecording,
+            modifier = Modifier.weight(1f),
+            shape = MeshShapes.input,
+            placeholder = {
+                Text(
+                    text = "Type a message...",
+                    color = MeshMuted,
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = MeshBg2,
+                unfocusedContainerColor = MeshBg2,
+                disabledContainerColor = MeshBg2,
+                focusedBorderColor = MeshGreen.copy(alpha = 0.5f),
+                unfocusedBorderColor = MeshBg3,
+                disabledBorderColor = MeshDanger.copy(alpha = 0.5f),
+                focusedTextColor = MeshTextPrimary,
+                unfocusedTextColor = MeshTextPrimary,
+                disabledTextColor = MeshDanger
+            ),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+            keyboardActions = KeyboardActions(onSend = { onSend() })
+        )
+
+        Spacer(modifier = Modifier.size(MeshSpacing.sm))
+
+        if (draftMessage.isBlank()) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .graphicsLayer {
+                        if (isRecording) {
+                            scaleX = pulseScale
+                            scaleY = pulseScale
+                        }
+                    }
+                    .clip(CircleShape)
+                    .background(if (isRecording) MeshDanger else MeshGreen)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onPress = {
+                                if (onRecordStart()) {
+                                    isRecording = true
+                                    val released = try {
+                                        tryAwaitRelease()
+                                    } finally {
+                                        isRecording = false
+                                    }
+
+                                    if (released) {
+                                        onRecordStop()
+                                    } else {
+                                        onRecordCancel()
+                                    }
+                                }
+                            }
+                        )
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Mic,
+                    contentDescription = "Record voice message",
+                    tint = MeshGreenOnAccent
+                )
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(MeshGreen)
+                    .clickable(onClick = onSend),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Send,
+                    contentDescription = "Send",
+                    tint = MeshGreenOnAccent
+                )
+            }
+        }
+    }
+}
+</file>
+
+<file path="src/main/java/com/meshapp/ui/screens/home/HomeScreen.kt">
+package com.meshapp.ui.screens.home
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.List
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Router
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.meshapp.ui.theme.MeshBg1
+import com.meshapp.ui.theme.MeshGreen
+import com.meshapp.ui.theme.MeshSpacing
+import com.meshapp.ui.theme.MeshTextPrimary
+import com.meshapp.ui.theme.MeshTextSecondary
+import com.meshapp.ui.viewmodel.HomeViewModel
+
+@Composable
+fun HomeScreen(
+    viewModel: HomeViewModel,
+    onNavigateToNearbyNodes: () -> Unit,
+    onNavigateToNetworkInterfaces: () -> Unit,
+    onNavigateToProfile: () -> Unit,
+    onNavigateToAbout: () -> Unit,
+    onNavigateToLogs: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val scrollState = rememberScrollState()
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState)
+            .padding(MeshSpacing.md),
+        verticalArrangement = Arrangement.spacedBy(MeshSpacing.md)
+    ) {
+        // Network Status Overview
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MeshBg1)
+        ) {
+            Column(modifier = Modifier.padding(MeshSpacing.md)) {
+                Text(
+                    text = "Node Status",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MeshTextSecondary
+                )
+                Spacer(modifier = Modifier.height(MeshSpacing.xs))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(MeshSpacing.xs)
+                ) {
+                    Text(
+                        text = if (uiState.isNodeActive) "Active & Mesh-Connected" else "Offline",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (uiState.isNodeActive) MeshGreen else MaterialTheme.colorScheme.error
+                    )
+                }
+                Spacer(modifier = Modifier.height(MeshSpacing.xs))
+                Text(
+                    text = "Connected Peers: ${uiState.connectedPeersCount}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MeshTextPrimary
+                )
+            }
+        }
+
+        // Action Menu Options
+        Text(
+            text = "Quick Actions",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MeshTextPrimary,
+            modifier = Modifier.padding(top = MeshSpacing.xs)
+        )
+
+        Button(
+            onClick = onNavigateToNearbyNodes,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(imageVector = Icons.Outlined.Share, contentDescription = null)
+            Spacer(modifier = Modifier.padding(start = MeshSpacing.xs))
+            Text("Discover Nearby Nodes")
+        }
+
+        OutlinedButton(
+            onClick = onNavigateToNetworkInterfaces,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(imageVector = Icons.Outlined.Router, contentDescription = null)
+            Spacer(modifier = Modifier.padding(start = MeshSpacing.xs))
+            Text("Network Interfaces")
+        }
+
+        OutlinedButton(
+            onClick = onNavigateToProfile,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(imageVector = Icons.Outlined.Person, contentDescription = null)
+            Spacer(modifier = Modifier.padding(start = MeshSpacing.xs))
+            Text("My Node Profile")
+        }
+
+        OutlinedButton(
+            onClick = onNavigateToLogs,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(imageVector = Icons.Outlined.List, contentDescription = null)
+            Spacer(modifier = Modifier.padding(start = MeshSpacing.xs))
+            Text("System Logs")
+        }
+
+        OutlinedButton(
+            onClick = onNavigateToAbout,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(imageVector = Icons.Outlined.Info, contentDescription = null)
+            Spacer(modifier = Modifier.padding(start = MeshSpacing.xs))
+            Text("About Mesh Network")
+        }
+    }
+}
+</file>
+
+<file path="src/main/java/com/meshapp/ui/screens/nearbynodes/NearbyNodesScreen.kt">
+package com.meshapp.ui.screens.nearbynodes
+
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.meshapp.ui.components.EmptyState
+import com.meshapp.ui.components.MeshFooterNavigation
+import com.meshapp.ui.components.StatusDot
+import com.meshapp.ui.state.HomeNodeUiState
+import com.meshapp.ui.theme.MeshBg0
+import com.meshapp.ui.theme.MeshBg1
+import com.meshapp.ui.theme.MeshBg3
+import com.meshapp.ui.theme.MeshBorder
+import com.meshapp.ui.theme.MeshGreen
+import com.meshapp.ui.theme.MeshMuted
+import com.meshapp.ui.theme.MeshOffline
+import com.meshapp.ui.theme.MeshShapes
+import com.meshapp.ui.theme.MeshSpacing
+import com.meshapp.ui.theme.MeshTextPrimary
+import com.meshapp.ui.viewmodel.HomeViewModel
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun NearbyNodesScreen(
+    viewModel: HomeViewModel = viewModel(),
+    onBack: () -> Unit,
+    onNavigateHome: () -> Unit,
+    onNavigateChats: () -> Unit,
+    onNodeClick: (String) -> Unit
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    // Smooth continuous rotation animation for scanning indication
+    val infiniteTransition = rememberInfiniteTransition(label = "scan-transition")
+    val rotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(3000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "radar-spin"
+    )
+
+    Scaffold(
+        containerColor = MeshBg0,
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = {
+                    Text(
+                        text = "Nearby Nodes",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MeshTextPrimary
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = MeshTextPrimary
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { viewModel.refreshNetworkInterfaces() }) {
+                        Icon(
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = "Refresh Nodes",
+                            tint = MeshGreen,
+                            modifier = Modifier.rotate(rotation)
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = MeshBg0)
+            )
+        },
+        bottomBar = {
+            MeshFooterNavigation(
+                currentRoute = "nearby",
+                onHome = onNavigateHome,
+                onChats = onNavigateChats
+            )
+        }
+    ) { paddingValues ->
+        if (uiState.connectedNodes.isEmpty()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .padding(horizontal = MeshSpacing.md),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "0 nodes found",
+                    color = MeshMuted,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+
+                Spacer(modifier = Modifier.height(MeshSpacing.md))
+
+                EmptyState(
+                    title = "Scanning for peers",
+                    subtitle = "Keep mesh running while we search for nearby nodes in your physical range.",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(MeshShapes.card)
+                        .background(MeshBg1)
+                        .border(1.dp, MeshBorder, MeshShapes.card)
+                        .padding(vertical = MeshSpacing.xl, horizontal = MeshSpacing.md)
+                )
+
+                Spacer(modifier = Modifier.height(MeshSpacing.lg))
+
+                ScanningFooterBadge()
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .padding(horizontal = MeshSpacing.md),
+                verticalArrangement = Arrangement.spacedBy(MeshSpacing.sm)
+            ) {
+                item {
+                    Text(
+                        text = "${uiState.connectedNodes.size} nodes found",
+                        color = MeshMuted,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(top = MeshSpacing.sm, bottom = MeshSpacing.xs)
+                    )
+                }
+
+                items(uiState.connectedNodes, key = { it.nodeId }) { node ->
+                    NearbyNodeCard(
+                        node = node,
+                        onClick = { onNodeClick(node.nodeId) },
+                        onCall = { viewModel.dial(node.nodeId) }
+                    )
+                }
+
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = MeshSpacing.xl),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        ScanningFooterBadge()
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NearbyNodeCard(
+    node: HomeNodeUiState,
+    onClick: () -> Unit,
+    onCall: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = MeshShapes.card,
+        colors = CardDefaults.cardColors(containerColor = MeshBg1),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MeshBorder)
+    ) {
+        Row(
+            modifier = Modifier.padding(MeshSpacing.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Profile Avatar with dynamic hash styling
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(CircleShape)
+                    .background(avatarBg(node.name))
+                    .border(2.dp, avatarBorder(node.name), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = node.avatarInitials.take(1).uppercase(),
+                    color = MeshGreen,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            // Node Details
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = MeshSpacing.md)
+            ) {
+                Text(
+                    text = node.name,
+                    color = MeshTextPrimary,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = node.ip ?: "Unknown address",
+                    color = MeshMuted,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
+            // Status, Call, and Signal Metrics
+            Column(horizontalAlignment = Alignment.End) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (node.isOnline) {
+                        IconButton(
+                            onClick = onCall,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(MeshBg3, CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Call,
+                                contentDescription = "Call Node",
+                                tint = MeshGreen,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(MeshSpacing.xs))
+                    }
+
+                    StatusDot(isOnline = node.isOnline, size = 8.dp)
+                    Text(
+                        text = if (node.isOnline) " Online" else " Offline",
+                        color = if (node.isOnline) MeshGreen else MeshOffline,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(start = 2.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(MeshSpacing.xs))
+                SignalBars(level = signalLevel(node))
+            }
+        }
+    }
+}
+
+@Composable
+private fun SignalBars(level: Int, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        repeat(4) { index ->
+            val height = (index + 1) * 5
+            Box(
+                modifier = Modifier
+                    .width(4.dp)
+                    .height(height.dp)
+                    .clip(RoundedCornerShape(topStart = 1.dp, topEnd = 1.dp))
+                    .background(if (index < level) MeshGreen else MeshBg3)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ScanningFooterBadge() {
+    val transition = rememberInfiniteTransition(label = "pulse")
+    val alpha by transition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse-alpha"
+    )
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = "SCANNING FOR NEW PEERS...",
+            color = MeshGreen,
+            style = MaterialTheme.typography.labelMedium,
+            letterSpacing = 1.2.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.graphicsLayer { this.alpha = alpha }
+        )
+        Text(
+            text = "MESH",
+            color = MeshGreen.copy(alpha = 0.15f),
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Black,
+            modifier = Modifier.padding(top = 2.dp)
+        )
+    }
+}
+
+private fun signalLevel(node: HomeNodeUiState): Int {
+    val hop = node.hopCount ?: return if (node.isOnline) 4 else 1
+    return when {
+        hop <= 1 -> 4
+        hop == 2 -> 3
+        hop == 3 -> 2
+        else -> 1
+    }
+}
+
+private fun avatarBg(name: String): Color {
+    val colors = listOf(
+        Color(0xFF16302A),
+        Color(0xFF163531),
+        Color(0xFF1E2E2D),
+        Color(0xFF262B2A)
+    )
+    return colors[(name.hashCode().ushr(1)) % colors.size]
+}
+
+private fun avatarBorder(name: String): Color {
+    val colors = listOf(
+        Color(0xFF3ECF8E),
+        Color(0xFF39B3A6),
+        Color(0xFF74AFA3),
+        Color(0xFF7B877F)
+    )
+    return colors[(name.hashCode().ushr(1)) % colors.size]
+}
+</file>
+
+<file path="src/main/java/com/meshapp/ui/screens/networkinterfaces/NetworkInterfacesScreen.kt">
+package com.meshapp.ui.screens.networkinterfaces
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Router
+import androidx.compose.material.icons.filled.SignalWifi4Bar
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.meshapp.ui.theme.MeshBg0
+import com.meshapp.ui.theme.MeshBg1
+import com.meshapp.ui.theme.MeshBg2
+import com.meshapp.ui.theme.MeshBorder
+import com.meshapp.ui.theme.MeshGreen
+import com.meshapp.ui.theme.MeshMuted
+import com.meshapp.ui.theme.MeshShapes
+import com.meshapp.ui.theme.MeshSpacing
+import com.meshapp.ui.theme.MeshTextPrimary
+import com.meshapp.ui.viewmodel.NetworkInterfacesViewModel
+
+@Composable
+fun NetworkInterfacesScreen(
+    viewModel: NetworkInterfacesViewModel = viewModel(),
+    onBack: () -> Unit,
+    onRefresh: () -> Unit = {}
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val staInterface = uiState.interfaces.firstOrNull { isStaInterface(it.interfaceName) }
+    val apInterface = uiState.interfaces.firstOrNull { isApInterface(it.interfaceName) }
+
+    Scaffold(
+        containerColor = MeshBg0,
+        topBar = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MeshBg0)
+                    .padding(horizontal = MeshSpacing.xs, vertical = MeshSpacing.xs),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Navigate back",
+                        tint = MeshTextPrimary
+                    )
+                }
+                Text(
+                    text = "Network Interfaces",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MeshTextPrimary,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = onRefresh) {
+                    Icon(
+                        imageVector = Icons.Filled.Refresh,
+                        contentDescription = "Refresh interface status",
+                        tint = MeshGreen
+                    )
+                }
+            }
+        }
+    ) { paddingValues ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(horizontal = MeshSpacing.md),
+            verticalArrangement = Arrangement.spacedBy(MeshSpacing.md)
+        ) {
+            // Status Summary Header
+            item {
+                Surface(
+                    shape = MeshShapes.cardSmall,
+                    color = MeshBg1,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = MeshSpacing.xs)
+                        .border(1.dp, MeshBorder, MeshShapes.cardSmall)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(MeshSpacing.md),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = MeshShapes.cardSmall,
+                            color = MeshGreen.copy(alpha = 0.12f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MeshGreen.copy(alpha = 0.24f)),
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Wifi,
+                                contentDescription = null,
+                                tint = MeshGreen,
+                                modifier = Modifier
+                                    .padding(MeshSpacing.xs)
+                                    .fillMaxSize()
+                            )
+                        }
+                        Column(
+                            modifier = Modifier
+                                .padding(start = MeshSpacing.md)
+                                .weight(1f)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "Wi-Fi Mesh Status: ",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MeshTextPrimary,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    text = "Active",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MeshGreen,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Text(
+                                text = "Connected to local mesh infrastructure.",
+                                color = MeshMuted,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Section Header
+            item {
+                Text(
+                    text = "ACTIVE INTERFACES",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MeshGreen,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = MeshSpacing.xs)
+                )
+            }
+
+            // Station Interface Card
+            item {
+                InterfaceDetailCard(
+                    title = "Wi-Fi (STA)",
+                    badgeText = "Active",
+                    badgeColor = MeshGreen,
+                    icon = Icons.Filled.Router,
+                    ip = staInterface?.localIp?.ifBlank { "--" } ?: "--",
+                    statusText = "Connected",
+                    statusColor = MeshGreen,
+                    thirdLabel = "SIGNAL STRENGTH",
+                    thirdValue = { SignalBarsVisualizer() }
+                )
+            }
+
+            // Access Point Interface Card
+            item {
+                InterfaceDetailCard(
+                    title = "Wi-Fi (AP)",
+                    badgeText = "Idle",
+                    badgeColor = MeshMuted,
+                    icon = Icons.Filled.SignalWifi4Bar,
+                    ip = apInterface?.localIp?.ifBlank { "--" } ?: "--",
+                    statusText = "Active",
+                    statusColor = MeshGreen,
+                    thirdLabel = "CLIENTS",
+                    thirdValue = {
+                        Text(
+                            text = "0 Connected",
+                            color = MeshTextPrimary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                )
+            }
+
+            // Capability Indicator Card
+            item {
+                Surface(
+                    shape = MeshShapes.cardSmall,
+                    color = MeshGreen.copy(alpha = 0.08f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = MeshSpacing.lg)
+                        .border(1.dp, MeshGreen.copy(alpha = 0.25f), MeshShapes.cardSmall)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(MeshSpacing.md),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.CheckCircle,
+                            contentDescription = null,
+                            tint = MeshGreen,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Column(modifier = Modifier.padding(start = MeshSpacing.md)) {
+                            Text(
+                                text = "STA + AP Supported",
+                                color = MeshTextPrimary,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = capabilitySubtitle(uiState.isStaApSupported, uiState.isLikelySupported),
+                                color = MeshMuted,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InterfaceDetailCard(
+    title: String,
+    badgeText: String,
+    badgeColor: Color,
+    icon: ImageVector,
+    ip: String,
+    statusText: String,
+    statusColor: Color,
+    thirdLabel: String,
+    thirdValue: @Composable () -> Unit
+) {
+    Surface(
+        shape = MeshShapes.cardSmall,
+        color = MeshBg1,
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, MeshBorder, MeshShapes.cardSmall)
+    ) {
+        Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MeshBg2)
+                    .padding(horizontal = MeshSpacing.md, vertical = MeshSpacing.sm),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(icon, contentDescription = null, tint = badgeColor, modifier = Modifier.size(18.dp))
+                Text(
+                    text = title,
+                    color = MeshTextPrimary,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(start = MeshSpacing.xs)
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Surface(
+                    shape = MeshShapes.chip,
+                    color = badgeColor.copy(alpha = 0.15f)
+                ) {
+                    Text(
+                        text = badgeText,
+                        color = badgeColor,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = MeshSpacing.sm, vertical = 4.dp)
+                    )
+                }
+            }
+
+            Column(modifier = Modifier.padding(horizontal = MeshSpacing.md, vertical = MeshSpacing.xs)) {
+                InterfaceRow(label = "IP ADDRESS") {
+                    Text(
+                        text = ip,
+                        color = MeshTextPrimary,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                HorizontalDivider(color = MeshBorder.copy(alpha = 0.5f), thickness = 1.dp)
+                InterfaceRow(label = "STATUS") {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(MeshSpacing.xs)
+                    ) {
+                        Surface(
+                            modifier = Modifier.size(8.dp),
+                            shape = CircleShape,
+                            color = statusColor
+                        ) {}
+                        Text(
+                            text = statusText,
+                            color = statusColor,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                HorizontalDivider(color = MeshBorder.copy(alpha = 0.5f), thickness = 1.dp)
+                InterfaceRow(label = thirdLabel, value = thirdValue)
+            }
+        }
+    }
+}
+
+@Composable
+private fun InterfaceRow(label: String, value: @Composable () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = MeshSpacing.sm),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            color = MeshMuted,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.weight(1f)
+        )
+        value()
+    }
+}
+
+@Composable
+private fun SignalBarsVisualizer() {
+    Row(
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        val heights = listOf(10.dp, 14.dp, 18.dp, 22.dp)
+        heights.forEachIndexed { index, height ->
+            val color = if (index < 3) MeshGreen else MeshBorder
+            Surface(
+                modifier = Modifier
+                    .width(4.dp)
+                    .height(height),
+                shape = RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp),
+                color = color
+            ) {}
+        }
+    }
+}
+
+private fun isStaInterface(name: String): Boolean {
+    val value = name.lowercase()
+    return value.contains("wlan") || value.contains("wifi") || value.contains("sta")
+}
+
+private fun isApInterface(name: String): Boolean {
+    val value = name.lowercase()
+    return value.contains("ap") || value.contains("softap") || value.contains("p2p")
+}
+
+private fun capabilitySubtitle(isStaApSupported: Boolean, isLikelySupported: Boolean): String {
+    return when {
+        isStaApSupported -> "Your device supports simultaneous mesh hosting and station connection modes."
+        isLikelySupported -> "Your hardware likely supports concurrent modes, but official support is not exposed."
+        else -> "This device currently reports no simultaneous station and access-point support."
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun NetworkInterfacesScreenPreview() {
+    NetworkInterfacesScreen(onBack = {})
+}
+</file>
+
+<file path="src/main/java/com/meshapp/ui/screens/profile/ProfileScreen.kt">
+package com.meshapp.ui.screens.profile
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.DeviceHub
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Router
+import androidx.compose.material.icons.filled.SettingsEthernet
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.meshapp.ui.components.MeshFooterNavigation
+import com.meshapp.ui.components.StatusDot
+import com.meshapp.ui.theme.MeshBg0
+import com.meshapp.ui.theme.MeshBg1
+import com.meshapp.ui.theme.MeshBg2
+import com.meshapp.ui.theme.MeshBg3
+import com.meshapp.ui.theme.MeshBorder
+import com.meshapp.ui.theme.MeshGreen
+import com.meshapp.ui.theme.MeshGreenOnAccent
+import com.meshapp.ui.theme.MeshMuted
+import com.meshapp.ui.theme.MeshShapes
+import com.meshapp.ui.theme.MeshSpacing
+import com.meshapp.ui.theme.MeshTextPrimary
+import com.meshapp.ui.viewmodel.HomeViewModel
+
+@Composable
+fun ProfileScreen(
+    viewModel: HomeViewModel = viewModel(),
+    onBack: () -> Unit,
+    onNavigateHome: () -> Unit,
+    onNavigateChats: () -> Unit,
+    onNavigateNearbyNodes: () -> Unit,
+    onNavigateNetworkInterfaces: () -> Unit,
+    onNavigateAbout: () -> Unit
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    Scaffold(
+        containerColor = MeshBg0,
+        topBar = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MeshBg2)
+                    .padding(horizontal = MeshSpacing.sm, vertical = MeshSpacing.xs),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = MeshTextPrimary
+                    )
+                }
+                Text(
+                    text = "Profile",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MeshTextPrimary,
+                    modifier = Modifier.weight(1f)
+                )
+                Box {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(MeshBg3)
+                            .border(1.5.dp, MeshGreen, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = uiState.profile.avatarInitials,
+                            color = MeshGreen,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Box(modifier = Modifier.align(Alignment.BottomEnd)) {
+                        StatusDot(isOnline = true, size = 12.dp)
+                    }
+                }
+            }
+        },
+        bottomBar = {
+            MeshFooterNavigation(
+                currentRoute = "profile",
+                onHome = onNavigateHome,
+                onChats = onNavigateChats,
+                onProfile = {}
+            )
+        }
+    ) { paddingValues ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(horizontal = MeshSpacing.md),
+            verticalArrangement = Arrangement.spacedBy(MeshSpacing.sm)
+        ) {
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = MeshSpacing.sm),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(80.dp)
+                            .clip(CircleShape)
+                            .background(MeshGreen),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = uiState.profile.avatarInitials,
+                            color = MeshGreenOnAccent,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Text(
+                        text = uiState.profile.name,
+                        color = MeshTextPrimary,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = MeshSpacing.xs + 2.dp)
+                    )
+                    Row(modifier = Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "NODE ID:",
+                            color = MeshMuted,
+                            style = MaterialTheme.typography.labelSmall,
+                            letterSpacing = 0.5.sp
+                        )
+                        Text(
+                            text = " ${uiState.profile.nodeId}",
+                            color = MeshGreen,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+
+            item {
+                SectionTitle("DEVICE INFO")
+            }
+
+            item {
+                Surface(
+                    shape = MeshShapes.card,
+                    color = MeshBg1,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, MeshBorder, MeshShapes.card)
+                ) {
+                    Column {
+                        InfoRow("Device Name", uiState.profile.name, Icons.Filled.DeviceHub)
+                        DividerLine()
+                        InfoRow("Node ID", uiState.profile.nodeId, Icons.Filled.SettingsEthernet)
+                        DividerLine()
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(MeshSpacing.sm),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.SettingsEthernet,
+                                contentDescription = null,
+                                tint = MeshMuted,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = "Status",
+                                color = MeshTextPrimary,
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.padding(start = MeshSpacing.sm)
+                            )
+                            Spacer(modifier = Modifier.weight(1f))
+                            StatusDot(isOnline = true, size = 8.dp)
+                            Text(
+                                text = " Online",
+                                color = MeshGreen,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+                SectionTitle("OPTIONS")
+            }
+
+            item {
+                Surface(
+                    shape = MeshShapes.card,
+                    color = MeshBg1,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, MeshBorder, MeshShapes.card)
+                        .padding(bottom = MeshSpacing.sm)
+                ) {
+                    Column {
+                        OptionRow("View Nearby Nodes", Icons.Filled.DeviceHub, onNavigateNearbyNodes)
+                        DividerLine()
+                        OptionRow("Network Interfaces", Icons.Filled.Router, onNavigateNetworkInterfaces)
+                        DividerLine()
+                        OptionRow("About", Icons.Filled.Info, onNavigateAbout)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionTitle(value: String) {
+    Text(
+        text = value,
+        color = MeshGreen,
+        style = MaterialTheme.typography.labelLarge,
+        letterSpacing = 1.2.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(top = MeshSpacing.xs, start = 4.dp)
+    )
+}
+
+@Composable
+private fun InfoRow(title: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(MeshSpacing.sm),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MeshMuted,
+            modifier = Modifier.size(20.dp)
+        )
+        Text(
+            text = title,
+            color = MeshTextPrimary,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(start = MeshSpacing.sm)
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        Text(
+            text = value,
+            color = MeshMuted,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+private fun OptionRow(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(MeshSpacing.sm),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(MeshShapes.cardSmall)
+                .background(MeshBg3),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = MeshMuted, modifier = Modifier.size(20.dp))
+        }
+        Text(
+            text = title,
+            color = MeshTextPrimary,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(start = MeshSpacing.sm + 2.dp)
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = MeshMuted, modifier = Modifier.size(22.dp))
+    }
+}
+
+@Composable
+private fun DividerLine() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .padding(horizontal = MeshSpacing.sm + 2.dp)
+            .background(MeshBorder)
+    )
+}
+</file>
+
+<file path="src/main/java/com/meshapp/ui/screens/voice/VoiceCallOverlay.kt">
+package com.meshapp.ui.screens.voice
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.CallEnd
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.meshapp.ui.theme.MeshBg0
+import com.meshapp.ui.theme.MeshBg2
+import com.meshapp.ui.theme.MeshBg3
+import com.meshapp.ui.theme.MeshDanger
+import com.meshapp.ui.theme.MeshGreen
+import com.meshapp.ui.theme.MeshGreenOnAccent
+import com.meshapp.ui.theme.MeshMuted
+import com.meshapp.ui.theme.MeshShapes
+import com.meshapp.ui.theme.MeshTextPrimary
+import com.meshapp.voice.CallState
+import kotlinx.coroutines.delay
+
+@Composable
+fun VoiceCallOverlay(
+    state: CallState,
+    isMinimized: Boolean,
+    onAccept: () -> Unit,
+    onReject: () -> Unit,
+    onCancel: () -> Unit,
+    onHangup: () -> Unit,
+    onMinimize: () -> Unit
+) {
+    if (state is CallState.Idle || isMinimized) return
+
+    BackHandler {
+        onMinimize()
+    }
+
+    val peerLabel = when (state) {
+        is CallState.Dialing -> state.peerNodeId.toString().take(8)
+        is CallState.Ringing -> state.peerNodeId.toString().take(8)
+        is CallState.Active -> state.peerNodeId.toString().take(8)
+        is CallState.Ended -> state.peerNodeId.toString().take(8)
+        else -> ""
+    }
+
+    val isLive = state is CallState.Active || state is CallState.Ringing || state is CallState.Dialing
+
+    // Live call duration timer
+    var activeCallDurationSeconds by rememberLongStateOf(0L)
+    LaunchedEffect(state) {
+        if (state is CallState.Active) {
+            activeCallDurationSeconds = 0L
+            while (true) {
+                delay(1000L)
+                activeCallDurationSeconds++
+            }
+        }
+    }
+
+    val statusText = when (state) {
+        is CallState.Dialing -> "Calling..."
+        is CallState.Ringing -> "Incoming Call"
+        is CallState.Active -> {
+            val mins = activeCallDurationSeconds / 60
+            val secs = activeCallDurationSeconds % 60
+            "%02d:%02d".format(mins, secs)
+        }
+        is CallState.Ended -> "Call Ended"
+        else -> ""
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MeshBg0.copy(alpha = 0.98f))
+            .statusBarsPadding()
+            .padding(24.dp)
+    ) {
+        // Top Minimize Bar Action
+        IconButton(
+            onClick = onMinimize,
+            modifier = Modifier.align(Alignment.TopStart)
+        ) {
+            Icon(
+                imageVector = Icons.Default.ExpandMore,
+                contentDescription = "Minimize Call",
+                tint = MeshMuted,
+                modifier = Modifier.size(32.dp)
+            )
+        }
+
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            // Pulse Avatar Container
+            Box(contentAlignment = Alignment.Center) {
+                if (isLive) {
+                    val transition = rememberInfiniteTransition(label = "call-pulse")
+                    val pulseScale by transition.animateFloat(
+                        initialValue = 1.0f,
+                        targetValue = 1.25f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(1600, easing = FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "pulseScale"
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .size(160.dp)
+                            .drawBehind {
+                                // Outer Ring
+                                drawCircle(
+                                    color = MeshGreen.copy(alpha = 0.10f),
+                                    radius = (size.minDimension / 2f) * pulseScale * 1.12f,
+                                    style = Stroke(width = 1.5.dp.toPx())
+                                )
+                                // Inner Ring
+                                drawCircle(
+                                    color = MeshGreen.copy(alpha = 0.22f),
+                                    radius = (size.minDimension / 2f) * pulseScale,
+                                    style = Stroke(width = 2.dp.toPx())
+                                )
+                            }
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(128.dp)
+                        .clip(CircleShape)
+                        .background(MeshBg2),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = peerLabel.take(1).uppercase(),
+                        color = MeshGreen,
+                        style = MaterialTheme.typography.displayMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            Text(
+                text = peerLabel,
+                color = MeshTextPrimary,
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Surface(
+                shape = MeshShapes.chip,
+                color = if (state is CallState.Active) MeshGreen.copy(alpha = 0.15f) else MeshBg3
+            ) {
+                Text(
+                    text = statusText,
+                    color = if (state is CallState.Active) MeshGreen else MeshMuted,
+                    style = MaterialTheme.typography.bodyLarge,
+                    letterSpacing = 1.2.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(64.dp))
+
+            // Action Controls
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                when (state) {
+                    is CallState.Dialing -> {
+                        CallActionButton(
+                            icon = Icons.Default.CallEnd,
+                            label = "Cancel",
+                            color = MeshDanger,
+                            onClick = onCancel
+                        )
+                    }
+                    is CallState.Ringing -> {
+                        CallActionButton(
+                            icon = Icons.Default.CallEnd,
+                            label = "Decline",
+                            color = MeshDanger,
+                            onClick = onReject
+                        )
+                        CallActionButton(
+                            icon = Icons.Default.Call,
+                            label = "Answer",
+                            color = MeshGreen,
+                            onClick = onAccept
+                        )
+                    }
+                    is CallState.Active -> {
+                        CallActionButton(
+                            icon = Icons.Default.CallEnd,
+                            label = "End Call",
+                            color = MeshDanger,
+                            onClick = onHangup
+                        )
+                    }
+                    is CallState.Ended -> {
+                        // Auto-dismiss state
+                    }
+                    else -> {}
+                }
+            }
+
+            Spacer(modifier = Modifier.height(40.dp))
+
+            TextButton(
+                onClick = onMinimize,
+                modifier = Modifier.padding(8.dp)
+            ) {
+                Text(
+                    text = "Minimize Overlay",
+                    color = MeshMuted,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CallActionButton(
+    icon: ImageVector,
+    label: String,
+    color: Color,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable(onClick = onClick)
+    ) {
+        FilledIconButton(
+            onClick = onClick,
+            modifier = Modifier.size(72.dp),
+            colors = IconButtonDefaults.filledIconButtonColors(
+                containerColor = color,
+                contentColor = MeshGreenOnAccent
+            )
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                modifier = Modifier.size(34.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = label,
+            color = MeshTextPrimary,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
+</file>
+
+<file path="src/main/java/com/meshapp/ui/state/HomeUiState.kt">
+package com.meshapp.ui.state
+
+import com.meshapp.messaging.MessageDeliveryStatus
+import com.meshapp.voice.CallState
+
+data class HomeUiState(
+    val isMeshOn: Boolean = false,
+    val profile: ProfileUiState = ProfileUiState(),
+    val appName: String = "Mesh App",
+    val meshStatusLabel: String = "STOPPED",
+    val connectionStatus: String = "No nearby nodes",
+    val isVoiceSimActive: Boolean = false,
+    val voiceCallState: CallState = CallState.Idle,
+    val isCallMinimized: Boolean = false,
+    val isStaApSupported: Boolean = false,
+    val isStaApLikelySupported: Boolean = false,
+    val networkInterfaceCount: Int = 0,
+    val connectedNodes: List<HomeNodeUiState> = emptyList()
+)
+
+data class HomeNodeUiState(
+    val nodeId: String,
+    val name: String,
+    val avatarInitials: String,
+    val isOnline: Boolean,
+    val status: String,
+    val ip: String?,
+    val hopCount: Int?
+)
+
+data class ProfileUiState(
+    val name: String = "Guest",
+    val nodeId: String = "Unavailable",
+    val avatarInitials: String = "G"
+)
+
+data class NodeCardState(
+    val id: String,
+    val name: String,
+    val isOnline: Boolean,
+    val avatarInitials: String,
+    val lastMessagePreview: String? = null,
+    val lastMessageTimestamp: String? = null,
+    val unreadCount: Int = 0,
+    val isPinned: Boolean = false
+)
+
+data class ConversationUiState(
+    val node: NodeCardState,
+    val messages: List<ConversationMessageUiState> = emptyList()
+)
+
+data class ConversationMessageUiState(
+    val id: String,
+    val text: String,
+    val isOutgoing: Boolean,
+    val timestamp: String,
+    val rawTimestamp: Long,
+    val deliveryStatusLabel: String? = null,
+    val deliveryStatus: MessageDeliveryStatus? = null,
+    val fileTransfer: FileTransferUiState? = null
+)
+
+data class FileTransferUiState(
+    val transferId: String,
+    val filename: String,
+    val progress: Float,
+    val status: String,
+    val isIncoming: Boolean,
+    val localPath: String? = null,
+    val isVoiceMessage: Boolean = false,
+    val durationMs: Long = 0L
+)
+</file>
+
+<file path="src/main/java/com/meshapp/ui/state/NetworkInterfacesUiState.kt">
+package com.meshapp.ui.state
+
+data class NetworkInterfacesUiState(
+    val isStaApSupported: Boolean = false,
+    val isLikelySupported: Boolean = false,
+    val interfaces: List<NetworkInterfaceUiState> = emptyList()
+)
+
+data class NetworkInterfaceUiState(
+    val interfaceName: String,
+    val localIp: String,
+    val broadcastIp: String
+)
+</file>
+
+<file path="src/main/java/com/meshapp/ui/theme/Color.kt">
+package com.meshapp.ui.theme
+
+import androidx.compose.ui.graphics.Color
+
+/**
+ * Core palette for MeshApp.
+ *
+ * Design direction: dark, calm, "premium hardware" feel rather than a neon/hacker
+ * look. Backgrounds are layered near-blacks with a slight cool tint; the mesh green
+ * is desaturated so it reads as a signal color, not a highlighter.
+ */
+
+// --- Surfaces (layered from deepest to most elevated) ---
+val MeshBg0 = Color(0xFF0B0D10)          // App / screen background
+val MeshBg1 = Color(0xFF121519)          // Base surface (cards, list rows)
+val MeshBg2 = Color(0xFF191D22)          // Elevated surface (headers, sheets)
+val MeshBg3 = Color(0xFF20252B)          // Top-most chrome (top bars, inputs)
+
+// --- Borders / separators ---
+val MeshBorder = Color(0xFF262B32)
+val MeshBorderStrong = Color(0xFF343B44)
+val MeshDivider = Color(0xFF1E2329)
+
+// --- Text ---
+val MeshTextPrimary = Color(0xFFE9ECEF)
+val MeshTextSecondary = Color(0xFFA1A9B2)
+val MeshTextTertiary = Color(0xFF6E7680)
+
+// --- Brand accent: a softened, slightly teal-leaning green ---
+val MeshGreen = Color(0xFF3ECF8E)        // Primary accent (buttons, active states)
+val MeshGreenDark = Color(0xFF23A06A)    // Pressed / darker variant
+val MeshGreenMuted = Color(0xFF1C3A2D)   // Low-opacity fill / chips background
+val MeshGreenOnAccent = Color(0xFF08221A) // Text/icon color drawn ON a green fill
+
+// --- Legacy alias kept for compatibility with existing references ---
+val MeshSurface = MeshBg1
+val MeshMuted = MeshTextSecondary
+
+// --- Status / semantic colors ---
+val MeshOnline = MeshGreen
+val MeshOffline = Color(0xFF5B636C)
+val MeshDanger = Color(0xFFE0636B)
+val MeshDangerMuted = Color(0xFF3A2226)
+val MeshWarning = Color(0xFFE3B45B)
+val MeshWarningMuted = Color(0xFF3B3222)
+
+// --- Chat bubbles ---
+val MeshBubbleInbound = Color(0xFF1B2029)
+val MeshBubbleInboundBorder = Color(0xFF2A313C)
+val MeshBubbleOutbound = Color(0xFF17332A)
+val MeshBubbleOutboundBorder = Color(0xFF285240)
+
+// --- Light theme (secondary support, same accent family) ---
+val MeshLightBg0 = Color(0xFFF6F8F7)
+val MeshLightBg1 = Color(0xFFFFFFFF)
+val MeshLightBorder = Color(0xFFE1E6E3)
+val MeshLightTextPrimary = Color(0xFF14201B)
+val MeshLightTextSecondary = Color(0xFF5B6A63)
+</file>
+
+<file path="src/main/java/com/meshapp/ui/theme/Spacing.kt">
+package com.meshapp.ui.theme
+
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.dp
+
+/**
+ * Shared spacing scale so padding/margins stay consistent across screens
+ * instead of ad-hoc dp values scattered through each Composable.
+ */
+object MeshSpacing {
+    val xxs = 4.dp
+    val xs = 8.dp
+    val sm = 12.dp
+    val md = 16.dp
+    val lg = 24.dp
+    val xl = 32.dp
+    val xxl = 48.dp
+}
+
+/**
+ * Shared corner-radius scale. MeshApp favors soft, rounded surfaces
+ * (cards, bubbles, inputs) over sharp edges.
+ */
+object MeshRadius {
+    val sm = 12.dp
+    val md = 16.dp
+    val lg = 20.dp
+    val xl = 28.dp
+    val pill = 999.dp
+}
+
+object MeshShapes {
+    val card = RoundedCornerShape(MeshRadius.lg)
+    val cardSmall = RoundedCornerShape(MeshRadius.md)
+    val chip = RoundedCornerShape(MeshRadius.pill)
+    val input = RoundedCornerShape(MeshRadius.xl)
+}
+</file>
+
+<file path="src/main/java/com/meshapp/ui/theme/Theme.kt">
+package com.meshapp.ui.theme
+
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
+
+private val DarkColorScheme = darkColorScheme(
+    primary = MeshGreen,
+    onPrimary = MeshGreenOnAccent,
+    primaryContainer = MeshGreenMuted,
+    onPrimaryContainer = MeshGreen,
+    secondary = MeshGreenDark,
+    onSecondary = Color.White,
+    background = MeshBg0,
+    onBackground = MeshTextPrimary,
+    surface = MeshBg1,
+    onSurface = MeshTextPrimary,
+    surfaceVariant = MeshBg2,
+    onSurfaceVariant = MeshTextSecondary,
+    outline = MeshBorder,
+    outlineVariant = MeshDivider,
+    error = MeshDanger,
+    onError = Color.White,
+    errorContainer = MeshDangerMuted,
+    onErrorContainer = MeshDanger
+)
+
+private val LightColorScheme = lightColorScheme(
+    primary = MeshGreenDark,
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFD8F3E6),
+    onPrimaryContainer = MeshGreenDark,
+    secondary = MeshGreenDark,
+    background = MeshLightBg0,
+    onBackground = MeshLightTextPrimary,
+    surface = MeshLightBg1,
+    onSurface = MeshLightTextPrimary,
+    surfaceVariant = Color(0xFFEFF3F1),
+    onSurfaceVariant = MeshLightTextSecondary,
+    outline = MeshLightBorder,
+    error = MeshDanger,
+    onError = Color.White
+)
+
+@Composable
+fun MeshAppTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    content: @Composable () -> Unit
+) {
+    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
+    MaterialTheme(
+        colorScheme = colorScheme,
+        typography = Typography,
+        content = content
+    )
+}
+</file>
+
+<file path="src/main/java/com/meshapp/ui/theme/Type.kt">
+package com.meshapp.ui.theme
+
+import androidx.compose.material3.Typography
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+
+val Typography = Typography(
+    displaySmall = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Bold,
+        fontSize = 34.sp,
+        lineHeight = 40.sp,
+        letterSpacing = (-0.2).sp
+    ),
+    headlineMedium = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Bold,
+        fontSize = 26.sp,
+        lineHeight = 32.sp,
+        letterSpacing = (-0.1).sp
+    ),
+    headlineSmall = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 20.sp,
+        lineHeight = 26.sp
+    ),
+    titleLarge = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 20.sp,
+        lineHeight = 26.sp
+    ),
+    titleMedium = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 17.sp,
+        lineHeight = 23.sp
+    ),
+    titleSmall = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Medium,
+        fontSize = 15.sp,
+        lineHeight = 20.sp
+    ),
+    bodyLarge = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Normal,
+        fontSize = 16.sp,
+        lineHeight = 23.sp,
+        letterSpacing = 0.15.sp
+    ),
+    bodyMedium = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Normal,
+        fontSize = 14.sp,
+        lineHeight = 20.sp,
+        letterSpacing = 0.15.sp
+    ),
+    bodySmall = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Normal,
+        fontSize = 12.sp,
+        lineHeight = 16.sp
+    ),
+    labelLarge = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 14.sp,
+        lineHeight = 18.sp,
+        letterSpacing = 0.3.sp
+    ),
+    labelMedium = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Medium,
+        fontSize = 12.sp,
+        lineHeight = 16.sp,
+        letterSpacing = 0.4.sp
+    ),
+    labelSmall = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Medium,
+        fontSize = 11.sp,
+        lineHeight = 14.sp,
+        letterSpacing = 0.4.sp
+    )
+)
+</file>
+
+<file path="src/main/java/com/meshapp/ui/viewmodel/ChatsViewModel.kt">
+package com.meshapp.ui.viewmodel
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.meshapp.meshcontrol.MeshService
+import com.meshapp.meshcontrol.PeerState
+import com.meshapp.meshcontrol.PeerStatus
+import com.meshapp.messaging.Message
+import com.meshapp.messaging.MessagingService
+import com.meshapp.security.KnownNode
+import com.meshapp.security.NodesStore
+import com.meshapp.routing.PeerEvent
+import com.meshapp.model.NodeId
+import com.meshapp.voice.VoiceCallManager
+import com.meshapp.ui.state.NodeCardState
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
+
+class ChatsViewModel(
+    private val messagingService: MessagingService,
+    private val meshService: MeshService,
+    private val nodesStore: NodesStore,
+    private val voiceCallManager: VoiceCallManager,
+    private val ownNodeId: NodeId
+) : ViewModel() {
+    private val _peerMap = MutableStateFlow<Map<String, PeerState>>(emptyMap())
+
+    // Known nodes from NodesStore (have name + publicKey from HELLO/routing)
+    private val _knownNodes = MutableStateFlow<List<KnownNode>>(emptyList())
+
+    // Node IDs that have a valid route (includes nodes NOT in NodesStore)
+    private val _routeNodeIds = MutableStateFlow<Set<String>>(emptySet())
+
+    private val _uiState = MutableStateFlow(ChatsUiState(nodes = emptyList()))
+    val uiState: StateFlow<ChatsUiState> = _uiState.asStateFlow()
+
+    init {
+        refreshFromRouting()
+
+        // React to peer events + refresh routing tables
+        viewModelScope.launch {
+            meshService.peerEventsStream.collect { event ->
+                _peerMap.update { current ->
+                    when (event) {
+                        is PeerEvent.Added -> {
+                            refreshFromRouting()
+                            current + (event.peer.nodeId.toString() to
+                                PeerState(event.peer.nodeId, event.peer.ip, null, null, PeerStatus.ACTIVE, event.peer.lastSeen))
+                        }
+                        is PeerEvent.Updated -> {
+                            val existing = current[event.peer.nodeId.toString()]
+                            current + (event.peer.nodeId.toString() to
+                                PeerState(event.peer.nodeId, event.peer.ip, existing?.name, existing?.publicKey, PeerStatus.ACTIVE, event.peer.lastSeen))
+                        }
+                        is PeerEvent.Removed -> {
+                            refreshFromRouting()
+                            current - event.nodeId.toString()
+                        }
+                    }
+                }
+            }
+        }
+
+        // Periodic route refresh (routes change without peer events, e.g. RREP received)
+        viewModelScope.launch {
+            while (true) {
+                delay(5_000.milliseconds)
+                refreshFromRouting()
+            }
+        }
+
+        // Build the UI list from all sources
+        viewModelScope.launch {
+            combine(
+                _knownNodes,
+                _peerMap,
+                _routeNodeIds,
+                messagingService.conversationsStream
+            ) { knownNodes, peerMap, routeNodeIds, conversations ->
+                val convByNodeId = conversations.associateBy { it.nodeID.toString() }
+                val onlineIds = (peerMap.keys + routeNodeIds)
+                    .filter { it != ownNodeId.toString() }
+
+                val seenNodeIds = mutableSetOf<String>()
+                seenNodeIds.add(ownNodeId.toString())
+
+                val nodes = mutableListOf<NodeCardState>()
+
+                // 1. All nodes in NodesStore (have real names)
+                knownNodes
+                    .filter { it.nodeId.toString() != ownNodeId.toString() }
+                    .forEach { node ->
+                        val nodeId = node.nodeId.toString()
+                        if (seenNodeIds.add(nodeId)) {
+                            val conv = convByNodeId[nodeId]
+                            val name = node.name.ifBlank { shortId(nodeId) }
+                            nodes += NodeCardState(
+                                id = nodeId,
+                                name = name,
+                                isOnline = nodeId in onlineIds,
+                                avatarInitials = initialsFrom(name),
+                                lastMessagePreview = conv?.lastMessage?.plaintextContent,
+                                lastMessageTimestamp = conv?.lastMessage?.let(::formatTime),
+                                unreadCount = conv?.unreadCount ?: 0,
+                                isPinned = false
+                            )
+                        }
+                    }
+
+                // 2. Route-only nodes: have a route but are NOT in NodesStore (no name/key)
+                routeNodeIds
+                    .filter { it != ownNodeId.toString() }
+                    .forEach { nodeId ->
+                        if (seenNodeIds.add(nodeId)) {
+                            val conv = convByNodeId[nodeId]
+                            nodes += NodeCardState(
+                                id = nodeId,
+                                name = shortId(nodeId),
+                                isOnline = true,
+                                avatarInitials = initialsFrom(shortId(nodeId)),
+                                lastMessagePreview = conv?.lastMessage?.plaintextContent,
+                                lastMessageTimestamp = conv?.lastMessage?.let(::formatTime),
+                                unreadCount = conv?.unreadCount ?: 0,
+                                isPinned = false
+                            )
+                        }
+                    }
+
+                // 3. Orphan conversations: message history but not in NodesStore or route table
+                convByNodeId.forEach { (nodeId, conv) ->
+                    if (seenNodeIds.add(nodeId)) {
+                        nodes += NodeCardState(
+                            id = nodeId,
+                            name = shortId(nodeId),
+                            isOnline = nodeId in onlineIds,
+                            avatarInitials = initialsFrom(shortId(nodeId)),
+                            lastMessagePreview = conv.lastMessage?.plaintextContent,
+                            lastMessageTimestamp = conv.lastMessage?.let(::formatTime),
+                            unreadCount = conv.unreadCount,
+                            isPinned = false
+                        )
+                    }
+                }
+
+                // Online nodes first, then alphabetical
+                nodes.sortWith(compareByDescending<NodeCardState> { it.isOnline }.thenBy { it.name })
+                nodes
+            }.collect { nodes ->
+                _uiState.value = ChatsUiState(nodes = nodes)
+            }
+        }
+    }
+
+    fun dial(nodeId: String) {
+        val parsedNodeId = parseNodeId(nodeId) ?: return
+        voiceCallManager.dial(parsedNodeId)
+    }
+
+    private fun parseNodeId(value: String): NodeId? {
+        if (value.length != 64) return null
+        return runCatching {
+            NodeId(value.hexToByteArray())
+        }.getOrNull()
+    }
+
+    private fun refreshFromRouting() {
+        val updatedNodes = nodesStore.listNodes()
+        val updatedRoutes = meshService.getRoutes()
+            .map { it.destinationNodeId.toString() }
+            .toSet()
+
+        _knownNodes.update { updatedNodes }
+        _routeNodeIds.update { updatedRoutes }
+    }
+
+    private fun initialsFrom(value: String): String {
+        val tokens = value.trim().split(" ").filter { it.isNotBlank() }
+        return when {
+            tokens.isEmpty() -> "NA"
+            tokens.size == 1 -> tokens[0].take(2).uppercase()
+            else -> "${tokens[0].first()}${tokens[1].first()}".uppercase()
+        }
+    }
+
+    private fun shortId(nodeId: String): String =
+        if (nodeId.length <= 8) nodeId else "${nodeId.take(8)}..."
+
+    private fun formatTime(message: Message): String {
+        return DateTimeFormatter.ofPattern("HH:mm")
+            .withZone(ZoneId.systemDefault())
+            .format(Instant.ofEpochMilli(message.composeTimestamp.millis))
+    }
+}
+
+data class ChatsUiState(
+    val nodes: List<NodeCardState> = emptyList()
+)
+</file>
+
+<file path="src/main/java/com/meshapp/ui/viewmodel/ChatsViewModelFactory.kt">
+package com.meshapp.ui.viewmodel
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import com.meshapp.meshcontrol.MeshService
+import com.meshapp.messaging.MessagingService
+import com.meshapp.security.NodesStore
+import com.meshapp.voice.VoiceCallManager
+import com.meshapp.model.NodeId
+
+class ChatsViewModelFactory(
+    private val messagingService: MessagingService,
+    private val meshService: MeshService,
+    private val nodesStore: NodesStore,
+    private val voiceCallManager: VoiceCallManager,
+    private val ownNodeId: NodeId
+) : ViewModelProvider.Factory {
+
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(ChatsViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return ChatsViewModel(
+                messagingService = messagingService,
+                meshService = meshService,
+                nodesStore = nodesStore,
+                voiceCallManager = voiceCallManager,
+                ownNodeId = ownNodeId
+            ) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
+    }
+}
+</file>
+
+<file path="src/main/java/com/meshapp/ui/viewmodel/ConversationViewModel.kt">
+package com.meshapp.ui.viewmodel
+
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import androidx.core.content.FileProvider
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.meshapp.filetransfer.FileTransferEvent
+import com.meshapp.filetransfer.FileTransferRecord
+import com.meshapp.filetransfer.FileTransferService
+import com.meshapp.filetransfer.FileTransferStatus
+import com.meshapp.meshcontrol.MeshService
+import com.meshapp.meshcontrol.PeerState
+import com.meshapp.meshcontrol.PeerStatus
+import com.meshapp.messaging.Message
+import com.meshapp.messaging.MessageDeliveryStatus
+import com.meshapp.messaging.MessagingService
+import com.meshapp.model.NodeId
+import com.meshapp.voice.VoiceCallManager
+import com.meshapp.voicemessage.VoiceMessageFile
+import com.meshapp.voicemessage.VoiceMessagePlayer
+import com.meshapp.voicemessage.VoiceMessageRecorder
+import com.meshapp.routing.PeerEvent
+import com.meshapp.ui.state.ConversationMessageUiState
+import com.meshapp.ui.state.ConversationUiState
+import com.meshapp.ui.state.FileTransferUiState
+import com.meshapp.ui.state.NodeCardState
+import java.io.File
+import java.io.FileOutputStream
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+class ConversationViewModel(
+    private val ownNodeId: NodeId,
+    private val messagingService: MessagingService,
+    private val meshService: MeshService,
+    private val voiceCallManager: VoiceCallManager,
+    private val fileTransferService: FileTransferService,
+    private val voiceMessageRecorder: VoiceMessageRecorder,
+    private val voiceMessagePlayer: VoiceMessagePlayer
+) : ViewModel() {
+    private val _uiState = MutableStateFlow(ConversationUiState(node = NodeCardState("", "", false, "")))
+    private val _peerMap = MutableStateFlow<Map<String, PeerState>>(emptyMap())
+    private val _routeNodeIds = MutableStateFlow<Set<String>>(emptySet())
+
+    val uiState: StateFlow<ConversationUiState> = _uiState.asStateFlow()
+
+    private var activeNodeId: NodeId? = null
+
+    init {
+        collectPeerEvents()
+        startRouteRefreshLoop()
+        observeConversationUpdates()
+        observeFileTransfers()
+    }
+
+    fun initialize(nodeId: String) {
+        if (nodeId.isBlank()) return
+        val parsedNodeId = parseNodeId(nodeId) ?: return
+        if (activeNodeId?.toString() == parsedNodeId.toString()) return
+        activeNodeId = parsedNodeId
+        refreshUI(parsedNodeId)
+    }
+
+    fun sendMessage(text: String) {
+        if (text.isBlank()) return
+        val destination = activeNodeId ?: return
+        try {
+            messagingService.send(destinationNodeID = destination, plaintext = text.trim())
+        } catch (e: Exception) {
+            android.util.Log.e("ConversationViewModel", "Failed to send message", e)
+        }
+    }
+
+    fun attachFile(context: Context, uri: Uri) {
+        val destination = activeNodeId ?: return
+        viewModelScope.launch {
+            try {
+                val fileName = getFileName(context, uri) ?: "file_${System.currentTimeMillis()}"
+                val outgoingDir = File(context.cacheDir, "file_transfer/outgoing").apply {
+                    if (!exists()) mkdirs()
+                }
+                val tempFile = File(outgoingDir, fileName)
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        FileOutputStream(tempFile).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                }
+                fileTransferService.sendFile(destination, tempFile)
+            } catch (e: Exception) {
+                android.util.Log.e("ConversationViewModel", "Failed to attach file", e)
+            }
+        }
+    }
+
+    fun openFile(context: Context, fileUiState: FileTransferUiState) {
+        val path = fileUiState.localPath ?: return
+        val file = File(path)
+        if (!file.exists()) return
+
+        try {
+            val uri = FileProvider.getUriForFile(context, "com.minor.meshapp.fileprovider", file)
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, context.contentResolver.getType(uri) ?: "*/*")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            android.util.Log.e("ConversationViewModel", "Failed to open file", e)
+        }
+    }
+
+    /** Starts recording; call on mic-button press. Returns false if permission is missing. */
+    fun startVoiceMessageRecording(): Boolean = voiceMessageRecorder.start()
+
+    /** Stops recording and hands the resulting file to FileTransferService, unchanged. */
+    fun stopVoiceMessageRecording() {
+        val destination = activeNodeId ?: return
+        val recorded = voiceMessageRecorder.stop() ?: return
+        fileTransferService.sendFile(destination, recorded.file)
+    }
+
+    /** Discards an in-progress recording, e.g. on swipe-to-cancel. */
+    fun cancelVoiceMessageRecording() {
+        voiceMessageRecorder.cancel()
+    }
+
+    fun playVoiceMessage(fileUiState: FileTransferUiState, onComplete: () -> Unit = {}) {
+        val path = fileUiState.localPath ?: return
+        voiceMessagePlayer.play(File(path), onComplete)
+    }
+
+    fun stopVoiceMessagePlayback() {
+        voiceMessagePlayer.stop()
+    }
+
+    private fun getFileName(context: Context, uri: Uri): String? {
+        var name: String? = null
+        if (uri.scheme == "content") {
+            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (index != -1) name = cursor.getString(index)
+                }
+            }
+        }
+        return name ?: uri.path?.let { File(it).name }
+    }
+
+    private fun observeFileTransfers() {
+        viewModelScope.launch {
+            fileTransferService.events.collect { event ->
+                val transferRecord = when (event) {
+                    is FileTransferEvent.OfferSent -> event.record
+                    is FileTransferEvent.OfferReceived -> event.record
+                    is FileTransferEvent.ProgressUpdated -> event.record
+                    is FileTransferEvent.Completed -> event.record
+                    is FileTransferEvent.Failed -> event.record
+                    is FileTransferEvent.Cancelled -> event.record
+                }
+
+                val destination = activeNodeId ?: return@collect
+                if (transferRecord.peerNodeId.toString() != destination.toString()) return@collect
+
+                refreshUI(destination)
+            }
+        }
+    }
+
+    private fun observeConversationUpdates() {
+        viewModelScope.launch {
+            combine(
+                messagingService.messagesStream,
+                _peerMap,
+                _routeNodeIds
+            ) { _, _, _ ->
+                activeNodeId
+            }.collect { destination ->
+                destination?.let { refreshUI(it) }
+            }
+        }
+    }
+
+    private fun refreshUI(destination: NodeId) {
+        messagingService.markConversationAsRead(destination)
+
+        val peer = _peerMap.value[destination.toString()]
+        val isInRouteTable = destination.toString() in _routeNodeIds.value
+        val currentNode = _uiState.value.node
+        val displayName = peer?.name?.takeIf { it.isNotBlank() } ?: shortId(destination.toString())
+
+        val textMessages = messagingService.getHistory(destination)
+        val fileTransfers = fileTransferService.store.list().filter {
+            it.peerNodeId.toString() == destination.toString()
+        }
+
+        // Merge and sort
+        val allMessages = (textMessages.map { it.toUiMessage(it.senderNodeId.toString() == ownNodeId.toString()) } +
+                fileTransfers.map { it.toUiMessage() })
+            .sortedBy { it.rawTimestamp } // Corrected sorting
+
+        _uiState.update { state ->
+            state.copy(
+                node = currentNode.copy(
+                    id = destination.toString(),
+                    name = displayName,
+                    isOnline = (peer?.status == PeerStatus.ACTIVE) || isInRouteTable,
+                    avatarInitials = initialsFrom(displayName)
+                ),
+                messages = allMessages
+            )
+        }
+    }
+
+    private fun Message.toUiMessage(isOutgoing: Boolean): ConversationMessageUiState {
+        return ConversationMessageUiState(
+            id = messageId.toString(),
+            text = plaintextContent,
+            isOutgoing = isOutgoing,
+            timestamp = formatTime(composeTimestamp.millis),
+            rawTimestamp = composeTimestamp.millis,
+            deliveryStatusLabel = if (isOutgoing) deliveryStatus.toUiLabel() else null,
+            deliveryStatus = if (isOutgoing) deliveryStatus else null
+        )
+    }
+
+    private fun FileTransferRecord.toUiMessage(): ConversationMessageUiState {
+        val isVoiceMessage = VoiceMessageFile.isVoiceMessage(metadata.filename)
+        return ConversationMessageUiState(
+            id = transferId.toString(),
+            text = if (isIncoming) "Incoming File: ${metadata.filename}" else "Sending File: ${metadata.filename}",
+            isOutgoing = !isIncoming,
+            timestamp = formatTime(createdAt),
+            rawTimestamp = createdAt,
+            deliveryStatusLabel = status.name,
+            fileTransfer = FileTransferUiState(
+                transferId = transferId.toString(),
+                filename = metadata.filename,
+                progress = progress,
+                status = status.name,
+                isIncoming = isIncoming,
+                localPath = if (isIncoming) outputPath else sourcePath,
+                isVoiceMessage = isVoiceMessage,
+                durationMs = VoiceMessageFile.durationMsOrNull(metadata.filename) ?: 0L
+            )
+        )
+    }
+
+    private fun MessageDeliveryStatus.toUiLabel(): String = when (this) {
+        MessageDeliveryStatus.QUEUED -> "Queued"
+        MessageDeliveryStatus.SENT -> "Sent"
+        MessageDeliveryStatus.DELIVERED -> "Delivered"
+        MessageDeliveryStatus.READ -> "Read"
+        MessageDeliveryStatus.FAILED -> "Failed"
+    }
+
+    private fun formatTime(millis: Long): String {
+        return DateTimeFormatter.ofPattern("HH:mm")
+            .withZone(ZoneId.systemDefault())
+            .format(Instant.ofEpochMilli(millis))
+    }
+
+    fun dial() {
+        val destination = activeNodeId ?: return
+        voiceCallManager.dial(destination)
+    }
+
+    private fun startRouteRefreshLoop() {
+        viewModelScope.launch {
+            while (true) {
+                _routeNodeIds.value = meshService.getRoutes().map { it.destinationNodeId.toString() }.toSet()
+                delay(5_000)
+            }
+        }
+    }
+
+    private fun collectPeerEvents() {
+        viewModelScope.launch {
+            meshService.peerEventsStream.collect { event ->
+                _peerMap.update { current ->
+                    val next = when (event) {
+                        is PeerEvent.Added -> {
+                            current + (event.peer.nodeId.toString() to
+                                    PeerState(event.peer.nodeId, event.peer.ip, null, null, PeerStatus.ACTIVE, event.peer.lastSeen))
+                        }
+                        is PeerEvent.Updated -> {
+                            val existing = current[event.peer.nodeId.toString()]
+                            current + (event.peer.nodeId.toString() to
+                                    PeerState(event.peer.nodeId, event.peer.ip, existing?.name, existing?.publicKey, PeerStatus.ACTIVE, event.peer.lastSeen))
+                        }
+                        is PeerEvent.Removed -> current - event.nodeId.toString()
+                    }
+                    // Trigger an immediate route refresh when peers change
+                    _routeNodeIds.value = meshService.getRoutes().map { it.destinationNodeId.toString() }.toSet()
+                    next
+                }
+            }
+        }
+    }
+
+    private fun shortId(nodeId: String): String =
+        if (nodeId.length <= 8) nodeId else "${nodeId.take(8)}..."
+
+    private fun initialsFrom(value: String): String {
+        val tokens = value.trim().split(" ").filter { it.isNotBlank() }
+        return when {
+            tokens.isEmpty() -> "NA"
+            tokens.size == 1 -> tokens[0].take(2).uppercase()
+            else -> "${tokens[0].first()}${tokens[1].first()}".uppercase()
+        }
+    }
+
+    private fun parseNodeId(value: String): NodeId? {
+        if (value.length != 64) return null
+        return runCatching {
+            val bytes = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            NodeId(bytes)
+        }.getOrNull()
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        voiceMessageRecorder.release()
+        voiceMessagePlayer.release()
+    }
+}
+</file>
+
+<file path="src/main/java/com/meshapp/ui/viewmodel/ConversationViewModelFactory.kt">
+package com.meshapp.ui.viewmodel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import com.meshapp.meshcontrol.MeshService
+import com.meshapp.messaging.MessagingService
+import com.meshapp.filetransfer.FileTransferService
+import com.meshapp.model.NodeId
+import com.meshapp.voice.VoiceCallManager
+import com.meshapp.voicemessage.VoiceMessagePlayer
+import com.meshapp.voicemessage.VoiceMessageRecorder
+class ConversationViewModelFactory(
+    private val ownNodeId: NodeId,
+    private val messagingService: MessagingService,
+    private val meshService: MeshService,
+    private val voiceCallManager: VoiceCallManager,
+    private val fileTransferService: FileTransferService,
+    private val voiceMessageRecorder: VoiceMessageRecorder,
+    private val voiceMessagePlayer: VoiceMessagePlayer
+) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(ConversationViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return ConversationViewModel(
+                ownNodeId = ownNodeId,
+                messagingService = messagingService,
+                meshService = meshService,
+                voiceCallManager = voiceCallManager,
+                fileTransferService = fileTransferService,
+                voiceMessageRecorder = voiceMessageRecorder,
+                voiceMessagePlayer = voiceMessagePlayer
+            ) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
+    }
+}
+</file>
+
+<file path="src/main/java/com/meshapp/ui/viewmodel/HomeViewModel.kt">
+package com.meshapp.ui.viewmodel
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.meshapp.meshcontrol.MeshService
+import com.meshapp.meshcontrol.MeshState
+import com.meshapp.meshcontrol.PeerState
+import com.meshapp.meshcontrol.PeerStatus
+import com.meshapp.network.NetworkInfo
+import com.meshapp.network.NetworkScanner
+import com.meshapp.routing.PeerEvent
+import com.meshapp.ui.state.HomeNodeUiState
+import com.meshapp.ui.state.HomeUiState
+import com.meshapp.ui.state.ProfileUiState
+import com.meshapp.voice.CallState
+import com.meshapp.voice.VoiceCallManager
+import com.meshapp.model.NodeId
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+class HomeViewModel(
+    application: Application,
+    private val meshService: MeshService,
+    private val meshController: MeshController,
+    private val voiceCallManager: VoiceCallManager,
+    appName: String,
+    deviceName: String,
+    nodeId: String
+) : AndroidViewModel(application) {
+    private val networkInfo = NetworkInfo(application)
+
+    private val _peerMap = MutableStateFlow<Map<String, PeerState>>(emptyMap())
+
+    private val _uiState = MutableStateFlow(
+        HomeUiState(
+            appName = appName,
+            profile = ProfileUiState(
+                name = deviceName,
+                nodeId = nodeId,
+                avatarInitials = initialsFrom(deviceName)
+            ),
+            isStaApSupported = networkInfo.isStaApSupported(),
+            isStaApLikelySupported = networkInfo.isLikelySupported(),
+            networkInterfaceCount = 0
+        )
+    )
+
+    val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+
+    init {
+        observeMeshState()
+        observeVoiceSimState()
+        observeVoiceCallState()
+        refreshNetworkInterfaces()
+    }
+
+    fun dial(nodeId: String) {
+        val peer = _peerMap.value[nodeId] ?: return
+        voiceCallManager.dial(peer.nodeId)
+        _uiState.update { it.copy(isCallMinimized = false) }
+    }
+
+    fun acceptCall() {
+        voiceCallManager.accept()
+    }
+
+    fun rejectCall() {
+        voiceCallManager.reject()
+    }
+
+    fun cancelCall() {
+        voiceCallManager.cancel()
+    }
+
+    fun hangupCall() {
+        voiceCallManager.hangup()
+    }
+
+    fun minimizeCall() {
+        _uiState.update { it.copy(isCallMinimized = true) }
+    }
+
+    fun maximizeCall() {
+        _uiState.update { it.copy(isCallMinimized = false) }
+    }
+
+    private fun observeVoiceCallState() {
+        viewModelScope.launch {
+            voiceCallManager.callState.collect { state ->
+                _uiState.update {
+                    val wasIdle = it.voiceCallState is CallState.Idle
+                    val isIdle = state is CallState.Idle
+                    it.copy(
+                        voiceCallState = state,
+                        isCallMinimized = when {
+                            isIdle -> false
+                            wasIdle -> false
+                            else -> it.isCallMinimized
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    fun toggleMesh() {
+        // Drive the foreground service so the notification reflects mesh state.
+        // The UI state itself updates by observing meshService.stateStream.
+        if (meshService.isRunning) {
+            meshController.stop()
+        } else {
+            meshController.start()
+        }
+    }
+
+    fun toggleVoiceSimulation() {
+        if (meshController.isVoiceSimActive.value) {
+            meshController.stopVoiceSim()
+        } else {
+            // Ensure mesh is running first, as simulation lives in the service
+            if (!meshService.isRunning) {
+                meshController.start()
+            }
+            meshController.startVoiceSim()
+        }
+    }
+
+    private fun observeVoiceSimState() {
+        viewModelScope.launch {
+            meshController.isVoiceSimActive.collect { active ->
+                _uiState.update { it.copy(isVoiceSimActive = active) }
+            }
+        }
+    }
+
+    fun refreshNetworkInterfaces() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val count = NetworkScanner.getNetworkInterfaceInfo().size
+            _uiState.update { it.copy(networkInterfaceCount = count) }
+        }
+    }
+
+    private fun observeMeshState() {
+        // Seed with peers already known to the running service so they appear
+        // immediately when the screen is reopened (not just on future events).
+        _peerMap.update {
+            meshService.getPeers().associate { peer ->
+                peer.nodeId.toString() to PeerState(
+                    peer.nodeId, peer.ip, null, null, PeerStatus.ACTIVE, peer.lastSeen
+                )
+            }
+        }
+
+        viewModelScope.launch {
+            meshService.peerEventsStream.collect { event ->
+                _peerMap.update { current ->
+                    when (event) {
+                        is PeerEvent.Added -> current + (event.peer.nodeId.toString() to
+                            PeerState(event.peer.nodeId, event.peer.ip, null, null, PeerStatus.ACTIVE, event.peer.lastSeen))
+                        is PeerEvent.Updated -> {
+                            val existing = current[event.peer.nodeId.toString()]
+                            current + (event.peer.nodeId.toString() to
+                                PeerState(event.peer.nodeId, event.peer.ip, existing?.name, existing?.publicKey, PeerStatus.ACTIVE, event.peer.lastSeen))
+                        }
+                        is PeerEvent.Removed -> current - event.nodeId.toString()
+                    }
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            combine(
+                meshService.stateStream,
+                _peerMap
+            ) { meshState, peerMap ->
+                meshState to peerMap
+            }.collect { (meshState, peerMap) ->
+                val nodes = peerMap.values
+                    .sortedBy { it.name ?: it.nodeId.toString() }
+                    .map { peer ->
+                        HomeNodeUiState(
+                            nodeId = peer.nodeId.toString(),
+                            name = peer.name ?: shortId(peer.nodeId.toString()),
+                            avatarInitials = initialsFrom(peer.name ?: peer.nodeId.toString()),
+                            isOnline = peer.status == PeerStatus.ACTIVE,
+                            status = peer.status.name,
+                            ip = peer.ip,
+                            hopCount = null
+                        )
+                    }
+                _uiState.update {
+                    it.copy(
+                        isMeshOn = meshState == MeshState.RUNNING,
+                        meshStatusLabel = meshState.name,
+                        connectionStatus = connectionStatus(meshState, nodes.count { n -> n.isOnline }),
+                        connectedNodes = nodes
+                    )
+                }
+            }
+        }
+    }
+
+    private fun connectionStatus(meshState: MeshState, activePeers: Int): String {
+        return when {
+            meshState != MeshState.RUNNING -> "Mesh is offline"
+            activePeers == 0 -> "Running - no nearby nodes"
+            activePeers == 1 -> "Running - 1 nearby node"
+            else -> "Running - $activePeers nearby nodes"
+        }
+    }
+
+    private fun initialsFrom(value: String): String {
+        val tokens = value.trim().split(" ").filter { it.isNotBlank() }
+        return when {
+            tokens.isEmpty() -> "NA"
+            tokens.size == 1 -> tokens[0].take(2).uppercase()
+            else -> "${tokens[0].first()}${tokens[1].first()}".uppercase()
+        }
+    }
+
+    private fun shortId(nodeId: String): String {
+        return if (nodeId.length <= 8) nodeId else "${nodeId.take(8)}..."
+    }
+}
+</file>
+
+<file path="src/main/java/com/meshapp/ui/viewmodel/HomeViewModelFactory.kt">
+package com.meshapp.ui.viewmodel
+
+import android.app.Application
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import com.meshapp.meshcontrol.MeshService
+import com.meshapp.voice.VoiceCallManager
+
+class HomeViewModelFactory(
+    private val application: Application,
+    private val meshService: MeshService,
+    private val meshController: MeshController,
+    private val voiceCallManager: VoiceCallManager,
+    private val appName: String,
+    private val deviceName: String,
+    private val nodeId: String
+) : ViewModelProvider.Factory {
+
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(HomeViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return HomeViewModel(
+                application = application,
+                meshService = meshService,
+                meshController = meshController,
+                voiceCallManager = voiceCallManager,
+                appName = appName,
+                deviceName = deviceName,
+                nodeId = nodeId
+            ) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
+    }
+}
+</file>
+
+<file path="src/main/java/com/meshapp/ui/viewmodel/MeshController.kt">
+package com.meshapp.ui.viewmodel
+
+import kotlinx.coroutines.flow.StateFlow
+
+/**
+ * Abstraction over the platform mesh lifecycle (the foreground service).
+ *
+ * The ui module must not depend on the app module, so the app provides a concrete
+ * implementation (starting/stopping MeshForegroundService) and injects it here.
+ */
+interface MeshController {
+    /** Turn the mesh ON: start the foreground service and its notification. */
+    fun start()
+
+    /** Turn the mesh OFF: stop the foreground service and remove its notification. */
+    fun stop()
+
+    /** Start voice call simulation in the foreground service. */
+    fun startVoiceSim()
+
+    /** Stop voice call simulation. */
+    fun stopVoiceSim()
+
+    /** Observable state of the voice simulation. */
+    val isVoiceSimActive: StateFlow<Boolean>
+}
+</file>
+
+<file path="src/main/java/com/meshapp/ui/viewmodel/NetworkInterfacesViewModel.kt">
+package com.meshapp.ui.viewmodel
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.meshapp.network.NetworkInfo
+import com.meshapp.network.NetworkScanner
+import com.meshapp.ui.state.NetworkInterfaceUiState
+import com.meshapp.ui.state.NetworkInterfacesUiState
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
+
+class NetworkInterfacesViewModel(application: Application) : AndroidViewModel(application) {
+    private val networkInfo = NetworkInfo(application)
+    private val _uiState = MutableStateFlow(
+        NetworkInterfacesUiState(
+            isStaApSupported = networkInfo.isStaApSupported(),
+            isLikelySupported = networkInfo.isLikelySupported(),
+            interfaces = emptyList()
+        )
+    )
+
+    val uiState: StateFlow<NetworkInterfacesUiState> = _uiState.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            while (true) {
+                val scannedInterfaces = NetworkScanner.getNetworkInterfaceInfo().map {
+                    NetworkInterfaceUiState(
+                        interfaceName = it.interfaceName,
+                        localIp = it.localAddress.hostAddress ?: "",
+                        broadcastIp = it.broadcastAddress.hostAddress ?: ""
+                    )
+                }
+                _uiState.value = _uiState.value.copy(interfaces = scannedInterfaces)
+                delay(2000.milliseconds)
+            }
+        }
+    }
+}
+</file>
+
+<file path="src/main/keepRules/rules.keep">
+# Add project specific R8 rules here.
+# AGP will combine all keep rule files in src/main/keepRules to pass to R8
+#
+# For more details, see
+#   https://d.android.com/r/tools/r8/keep-rules
+
+# If your project uses WebView with JS, uncomment the following
+# and specify the fully qualified class name to the JavaScript interface
+# class:
+#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
+#   public *;
+#}
+</file>
+
+<file path="src/main/AndroidManifest.xml">
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+</manifest>
+</file>
+
+<file path="src/test/java/com/meshapp/ui/ExampleUnitTest.kt">
+package com.meshapp.ui
+
+import org.junit.Test
+
+import org.junit.Assert.*
+
+/**
+ * Example local unit test, which will execute on the development machine (host).
+ *
+ * See [testing documentation](http://d.android.com/tools/testing).
+ */
+class ExampleUnitTest {
+    @Test
+    fun addition_isCorrect() {
+        assertEquals(4, 2 + 2)
+    }
+}
+</file>
+
+<file path=".gitignore">
+/build
+</file>
+
+<file path="build.gradle.kts">
+plugins {
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.kotlin.compose)
+}
+
+android {
+    namespace = "com.meshapp.ui"
+    compileSdk = 37
+
+    defaultConfig {
+        minSdk = 30
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+    buildFeatures {
+        compose = true
+    }
+}
+
+dependencies {
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.compose.animation)
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.appcompat)
+    implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons.extended)
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.ui.graphics)
+    implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.navigation.compose)
+    implementation(libs.material)
+    implementation(project(":filetransfer"))
+    implementation(project(":meshControl"))
+    implementation(project(":messaging"))
+    implementation(project(":model"))
+    implementation(project(":voice"))
+    implementation(project(":voicemessage"))
+    implementation(project(":routing"))
+    implementation(project(":transport"))
+    implementation(project(":logger"))
+    implementation(project(":security"))
+    debugImplementation(libs.androidx.compose.ui.tooling)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
+    testImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+}
+</file>
+
+<file path="consumer-rules.keep">
+
+</file>
+
+</files>

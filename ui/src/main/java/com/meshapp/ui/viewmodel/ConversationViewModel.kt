@@ -337,4 +337,19 @@ class ConversationViewModel(
         voiceMessageRecorder.release()
         voiceMessagePlayer.release()
     }
+
+    fun toggleVoicePlayback(transfer: FileTransferUiState) {
+        val currentlyPlaying = _uiState.value.playingTransferId
+        if (currentlyPlaying == transfer.transferId) {
+            voiceMessagePlayer.stop()
+            _uiState.update { it.copy(playingTransferId = null) }
+        } else {
+            playVoiceMessage(transfer) {
+                _uiState.update { state ->
+                    if (state.playingTransferId == transfer.transferId) state.copy(playingTransferId = null) else state
+                }
+            }
+            _uiState.update { it.copy(playingTransferId = transfer.transferId) }
+        }
+    }
 }

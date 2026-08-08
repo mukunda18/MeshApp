@@ -30,31 +30,39 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.meshapp.ui.theme.MeshBg0
+import com.meshapp.ui.theme.MeshBg1
+import com.meshapp.ui.theme.MeshBg2
+import com.meshapp.ui.theme.MeshBorder
 import com.meshapp.ui.theme.MeshGreen
+import com.meshapp.ui.theme.MeshMuted
+import com.meshapp.ui.theme.MeshShapes
+import com.meshapp.ui.theme.MeshSpacing
+import com.meshapp.ui.theme.MeshTextPrimary
 
 @Composable
 fun AboutScreen(onBack: () -> Unit) {
     Scaffold(
-        containerColor = AboutBg,
+        containerColor = MeshBg0,
         topBar = {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFF111316))
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                    .background(MeshBg2)
+                    .padding(horizontal = MeshSpacing.xs + 2.dp, vertical = MeshSpacing.xs),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onBack) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back",
-                        tint = Color(0xFFE4E7E9)
+                        tint = MeshTextPrimary
                     )
                 }
                 Text(
                     text = "About",
                     style = MaterialTheme.typography.headlineMedium,
-                    color = Color(0xFFE5E9EA),
+                    color = MeshTextPrimary,
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -64,24 +72,24 @@ fun AboutScreen(onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = MeshSpacing.md),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(
                 modifier = Modifier
-                    .padding(top = 24.dp)
+                    .padding(top = MeshSpacing.lg)
                     .size(160.dp)
                     .drawBehind {
-                        drawCircle(color = MeshGreen.copy(alpha = 0.18f), radius = size.minDimension / 2.1f)
+                        drawCircle(color = MeshGreen.copy(alpha = 0.16f), radius = size.minDimension / 2.1f)
                     },
                 contentAlignment = Alignment.Center
             ) {
                 Surface(
-                    shape = RoundedCornerShape(30.dp),
-                    color = Color(0xFF1B1B20),
+                    shape = MeshShapes.card,
+                    color = MeshBg1,
                     modifier = Modifier
                         .size(120.dp)
-                        .border(1.dp, Color(0xFF1D2A3E), RoundedCornerShape(30.dp))
+                        .border(1.dp, MeshBorder, MeshShapes.card)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         MeshIconGlyph(modifier = Modifier.size(64.dp))
@@ -91,15 +99,15 @@ fun AboutScreen(onBack: () -> Unit) {
 
             Text(
                 text = "MeshApp",
-                color = Color(0xFFE5EAE9),
+                color = MeshTextPrimary,
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold
             )
 
             Surface(
-                shape = RoundedCornerShape(20.dp),
+                shape = MeshShapes.chip,
                 color = MeshGreen.copy(alpha = 0.14f),
-                modifier = Modifier.padding(top = 8.dp)
+                modifier = Modifier.padding(top = MeshSpacing.xs)
             ) {
                 Text(
                     text = "Version 1.0.0",
@@ -107,35 +115,35 @@ fun AboutScreen(onBack: () -> Unit) {
                     style = MaterialTheme.typography.labelMedium,
                     letterSpacing = 0.8.sp,
                     fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    modifier = Modifier.padding(horizontal = MeshSpacing.md, vertical = MeshSpacing.xs)
                 )
             }
 
             Surface(
-                shape = RoundedCornerShape(18.dp),
-                color = Color(0xFF191A1D),
+                shape = MeshShapes.card,
+                color = MeshBg1,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 24.dp)
-                    .border(1.dp, Color(0xFF1E2C40), RoundedCornerShape(18.dp))
+                    .padding(top = MeshSpacing.lg)
+                    .border(1.dp, MeshBorder, MeshShapes.card)
             ) {
                 Text(
                     text = "A decentralized messaging application designed for absolute resilience. MeshApp operates over local Wi-Fi mesh networks, ensuring your communication remains private and functional even when the global internet is inaccessible.",
-                    color = Color(0xFFBFC6BF),
+                    color = MeshMuted,
                     style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(16.dp)
+                    modifier = Modifier.padding(MeshSpacing.md)
                 )
             }
 
             Surface(
-                shape = RoundedCornerShape(18.dp),
-                color = Color(0xFF191A1D),
+                shape = MeshShapes.card,
+                color = MeshBg1,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 16.dp)
-                    .border(1.dp, Color(0xFF1E2C40), RoundedCornerShape(18.dp))
+                    .padding(top = MeshSpacing.sm)
+                    .border(1.dp, MeshBorder, MeshShapes.card)
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(modifier = Modifier.padding(MeshSpacing.md), verticalArrangement = Arrangement.spacedBy(MeshSpacing.sm)) {
                     Text(
                         text = "CONNECTIVITY",
                         color = MeshGreen,
@@ -144,18 +152,18 @@ fun AboutScreen(onBack: () -> Unit) {
                         fontWeight = FontWeight.SemiBold
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Wifi, contentDescription = null, tint = Color(0xFFB9C1B8))
+                        Icon(Icons.Filled.Wifi, contentDescription = null, tint = MeshMuted)
                         Text(
                             text = " Wi-Fi Direct / Ad-hoc",
-                            color = Color(0xFFC4CBC5),
+                            color = MeshTextPrimary,
                             style = MaterialTheme.typography.bodyLarge
                         )
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Lock, contentDescription = null, tint = Color(0xFFB9C1B8))
+                        Icon(Icons.Filled.Lock, contentDescription = null, tint = MeshMuted)
                         Text(
                             text = " End-to-End Encrypted",
-                            color = Color(0xFFC4CBC5),
+                            color = MeshTextPrimary,
                             style = MaterialTheme.typography.bodyLarge
                         )
                     }
@@ -165,11 +173,11 @@ fun AboutScreen(onBack: () -> Unit) {
             Spacer(modifier = Modifier.weight(1f))
 
             Text(
-                text = "© 2025 All rights reserved.",
-                color = Color(0xFF7F8982),
+                text = "\u00A9 2025 All rights reserved.",
+                color = MeshMuted,
                 style = MaterialTheme.typography.bodyLarge,
                 letterSpacing = 1.sp,
-                modifier = Modifier.padding(bottom = 22.dp)
+                modifier = Modifier.padding(bottom = MeshSpacing.lg)
             )
         }
     }
@@ -201,5 +209,3 @@ private fun MeshIconGlyph(modifier: Modifier = Modifier) {
         }
     )
 }
-
-private val AboutBg = Color(0xFF090B0D)

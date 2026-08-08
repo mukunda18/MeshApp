@@ -9,20 +9,40 @@ import androidx.compose.ui.graphics.Color
 
 private val DarkColorScheme = darkColorScheme(
     primary = MeshGreen,
-    onPrimary = Color.White,
+    onPrimary = MeshGreenOnAccent,
+    primaryContainer = MeshGreenMuted,
+    onPrimaryContainer = MeshGreen,
     secondary = MeshGreenDark,
-    background = Color(0xFF0B0F14),
-    surface = Color(0xFF121821),
-    onSurface = Color.White
+    onSecondary = Color.White,
+    background = MeshBg0,
+    onBackground = MeshTextPrimary,
+    surface = MeshBg1,
+    onSurface = MeshTextPrimary,
+    surfaceVariant = MeshBg2,
+    onSurfaceVariant = MeshTextSecondary,
+    outline = MeshBorder,
+    outlineVariant = MeshDivider,
+    error = MeshDanger,
+    onError = Color.White,
+    errorContainer = MeshDangerMuted,
+    onErrorContainer = MeshDanger
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = MeshGreen,
+    primary = MeshGreenDark,
     onPrimary = Color.White,
+    primaryContainer = Color(0xFFD8F3E6),
+    onPrimaryContainer = MeshGreenDark,
     secondary = MeshGreenDark,
-    background = Color(0xFFF7F9FC),
-    surface = Color.White,
-    onSurface = Color(0xFF16212E)
+    background = MeshLightBg0,
+    onBackground = MeshLightTextPrimary,
+    surface = MeshLightBg1,
+    onSurface = MeshLightTextPrimary,
+    surfaceVariant = Color(0xFFEFF3F1),
+    onSurfaceVariant = MeshLightTextSecondary,
+    outline = MeshLightBorder,
+    error = MeshDanger,
+    onError = Color.White
 )
 
 @Composable
