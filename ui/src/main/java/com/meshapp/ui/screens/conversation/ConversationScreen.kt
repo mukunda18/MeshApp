@@ -51,7 +51,6 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PlayArrow
@@ -119,6 +118,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun ConversationScreen(
     nodeId: String,
+    nodeName: String = "",
     onBack: () -> Unit,
     viewModel: ConversationViewModel = viewModel()
 ) {
@@ -147,8 +147,8 @@ fun ConversationScreen(
         bitmap?.let { viewModel.attachCapturedImage(context, it) }
     }
 
-    LaunchedEffect(nodeId) {
-        viewModel.initialize(nodeId)
+    LaunchedEffect(nodeId, nodeName) {
+        viewModel.initialize(nodeId, nodeName)
     }
 
     val entries = remember(uiState.messages) { buildConversationEntries(uiState.messages) }
@@ -216,7 +216,7 @@ fun ConversationScreen(
             if (entries.isEmpty()) {
                 EmptyState(
                     title = "No messages yet",
-                    subtitle = "Say hello to ${uiState.node.name.ifBlank { "this node" }} to start the conversation.",
+                    subtitle = "",
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(MeshSpacing.lg)
@@ -400,21 +400,11 @@ private fun ConversationTopBar(
         }
         Spacer(modifier = Modifier.weight(1f))
 
-        if (isOnline) {
-            IconButton(onClick = onCall) {
-                Icon(
-                    imageVector = Icons.Default.Call,
-                    contentDescription = "Call",
-                    tint = MeshGreen
-                )
-            }
-        }
-
-        IconButton(onClick = { /* Menu Action */ }) {
+        IconButton(onClick = onCall) {
             Icon(
-                imageVector = Icons.Filled.MoreVert,
-                contentDescription = "More",
-                tint = MeshMuted
+                imageVector = Icons.Default.Call,
+                contentDescription = "Call",
+                tint = MeshGreen
             )
         }
     }

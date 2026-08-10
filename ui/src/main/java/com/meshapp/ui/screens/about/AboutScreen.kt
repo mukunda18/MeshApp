@@ -13,11 +13,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -32,7 +30,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meshapp.ui.theme.MeshBg0
 import com.meshapp.ui.theme.MeshBg1
-import com.meshapp.ui.theme.MeshBg2
 import com.meshapp.ui.theme.MeshBorder
 import com.meshapp.ui.theme.MeshGreen
 import com.meshapp.ui.theme.MeshMuted
@@ -41,32 +38,9 @@ import com.meshapp.ui.theme.MeshSpacing
 import com.meshapp.ui.theme.MeshTextPrimary
 
 @Composable
-fun AboutScreen(onBack: () -> Unit) {
+fun AboutScreen() {
     Scaffold(
-        containerColor = MeshBg0,
-        topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MeshBg2)
-                    .padding(horizontal = MeshSpacing.xs + 2.dp, vertical = MeshSpacing.xs),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = MeshTextPrimary
-                    )
-                }
-                Text(
-                    text = "About",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MeshTextPrimary,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
+        containerColor = MeshBg0
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -100,7 +74,7 @@ fun AboutScreen(onBack: () -> Unit) {
             Text(
                 text = "MeshApp",
                 color = MeshTextPrimary,
-                style = MaterialTheme.typography.headlineMedium,
+                style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold
             )
 
@@ -130,7 +104,7 @@ fun AboutScreen(onBack: () -> Unit) {
                 Text(
                     text = "A decentralized messaging application designed for absolute resilience. MeshApp operates over local Wi-Fi mesh networks, ensuring your communication remains private and functional even when the global internet is inaccessible.",
                     color = MeshMuted,
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(MeshSpacing.md)
                 )
             }
@@ -147,24 +121,24 @@ fun AboutScreen(onBack: () -> Unit) {
                     Text(
                         text = "CONNECTIVITY",
                         color = MeshGreen,
-                        style = MaterialTheme.typography.titleLarge,
+                        style = MaterialTheme.typography.titleMedium,
                         letterSpacing = 1.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Wifi, contentDescription = null, tint = MeshMuted)
+                        Icon(Icons.Filled.Wifi, contentDescription = null, tint = MeshMuted, modifier = Modifier.size(18.dp))
                         Text(
                             text = " Wi-Fi Direct / Ad-hoc",
                             color = MeshTextPrimary,
-                            style = MaterialTheme.typography.bodyLarge
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Lock, contentDescription = null, tint = MeshMuted)
+                        Icon(Icons.Filled.Lock, contentDescription = null, tint = MeshMuted, modifier = Modifier.size(18.dp))
                         Text(
                             text = " End-to-End Encrypted",
                             color = MeshTextPrimary,
-                            style = MaterialTheme.typography.bodyLarge
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
                 }
@@ -173,10 +147,10 @@ fun AboutScreen(onBack: () -> Unit) {
             Spacer(modifier = Modifier.weight(1f))
 
             Text(
-                text = "\u00A9 2025 All rights reserved.",
+                text = "\u00A9 2026 All rights reserved.",
                 color = MeshMuted,
-                style = MaterialTheme.typography.bodyLarge,
-                letterSpacing = 1.sp,
+                style = MaterialTheme.typography.bodySmall,
+                letterSpacing = 0.4.sp,
                 modifier = Modifier.padding(bottom = MeshSpacing.lg)
             )
         }
