@@ -18,6 +18,7 @@ import com.meshapp.messaging.Message
 import com.meshapp.messaging.MessageDeliveryStatus
 import com.meshapp.messaging.MessagingService
 import com.meshapp.model.NodeId
+import com.meshapp.security.NodesStore
 import com.meshapp.voice.VoiceCallManager
 import com.meshapp.voicemessage.VoiceMessageFile
 import com.meshapp.voicemessage.VoiceMessagePlayer
@@ -46,6 +47,7 @@ class ConversationViewModel(
     private val ownNodeId: NodeId,
     private val messagingService: MessagingService,
     private val meshService: MeshService,
+    private val nodesStore: NodesStore,
     private val voiceCallManager: VoiceCallManager,
     private val fileTransferService: FileTransferService,
     private val voiceMessageRecorder: VoiceMessageRecorder,
@@ -66,9 +68,23 @@ class ConversationViewModel(
         observeFileTransfers()
     }
 
-    fun initialize(nodeId: String) {
+    fun initialize(nodeId: String, initialName: String = "") {
         if (nodeId.isBlank()) return
         val parsedNodeId = parseNodeId(nodeId) ?: return
+        val sanitizedName = initialName.trim()
+
+        if (sanitizedName.isNotEmpty()) {
+            _uiState.update { state ->
+                state.copy(
+                    node = state.node.copy(
+                        id = parsedNodeId.toString(),
+                        name = sanitizedName,
+                        avatarInitials = initialsFrom(sanitizedName)
+                    )
+                )
+            }
+        }
+
         if (activeNodeId?.toString() == parsedNodeId.toString()) return
         activeNodeId = parsedNodeId
         refreshUI(parsedNodeId)
@@ -225,7 +241,9 @@ class ConversationViewModel(
         val peer = _peerMap.value[destination.toString()]
         val isInRouteTable = destination.toString() in _routeNodeIds.value
         val currentNode = _uiState.value.node
-        val displayName = peer?.name?.takeIf { it.isNotBlank() } ?: shortId(destination.toString())
+        val knownName = nodesStore.getName(destination)?.takeIf { it.isNotBlank() }
+        val fallbackName = currentNode.name.takeIf { it.isNotBlank() } ?: shortId(destination.toString())
+        val displayName = peer?.name?.takeIf { it.isNotBlank() } ?: knownName ?: fallbackName
 
         val textMessages = messagingService.getHistory(destination)
         val fileTransfers = fileTransferService.store.list().filter {

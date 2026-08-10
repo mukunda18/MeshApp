@@ -305,28 +305,41 @@ fun NodeCard(node: NodeCardState, onClick: () -> Unit, modifier: Modifier = Modi
             Spacer(modifier = Modifier.size(MeshSpacing.sm))
             Column(modifier = Modifier.weight(1f)) {
                 Text(node.name, style = MaterialTheme.typography.titleMedium, color = MeshTextPrimary, fontWeight = FontWeight.SemiBold)
-                Text(node.id, style = MaterialTheme.typography.bodySmall, color = MeshMuted)
-                if (!node.lastMessagePreview.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        node.lastMessagePreview,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MeshMuted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (!node.lastMessageTimestamp.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    if (!node.lastMessagePreview.isNullOrBlank()) {
                         Text(
-                            node.lastMessageTimestamp,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MeshMuted
+                            node.lastMessagePreview,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MeshMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
                         )
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
                     }
-                    if (node.unreadCount > 0) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        MeshStatusChip(text = node.unreadCount.toString(), color = MeshGreen)
+
+                    if (!node.lastMessageTimestamp.isNullOrBlank() || node.unreadCount > 0) {
+                        Column(
+                            horizontalAlignment = Alignment.End,
+                            modifier = Modifier.padding(start = 8.dp)
+                        ) {
+                            if (!node.lastMessageTimestamp.isNullOrBlank()) {
+                                Text(
+                                    node.lastMessageTimestamp,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MeshMuted
+                                )
+                            }
+                            if (node.unreadCount > 0) {
+                                Spacer(modifier = Modifier.height(2.dp))
+                                MeshStatusChip(text = node.unreadCount.toString(), color = MeshGreen)
+                            }
+                        }
                     }
                 }
             }

@@ -2,7 +2,6 @@ package com.meshapp.ui.state
 
 data class NetworkInterfacesUiState(
     val isStaApSupported: Boolean = false,
-    val isLikelySupported: Boolean = false,
     val interfaces: List<NetworkInterfaceUiState> = emptyList()
 )
 

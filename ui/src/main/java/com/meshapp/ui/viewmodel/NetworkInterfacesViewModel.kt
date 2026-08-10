@@ -19,7 +19,6 @@ class NetworkInterfacesViewModel(application: Application) : AndroidViewModel(ap
     private val _uiState = MutableStateFlow(
         NetworkInterfacesUiState(
             isStaApSupported = networkInfo.isStaApSupported(),
-            isLikelySupported = networkInfo.isLikelySupported(),
             interfaces = emptyList()
         )
     )

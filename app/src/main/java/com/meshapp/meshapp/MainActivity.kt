@@ -74,6 +74,9 @@ class MainActivity : ComponentActivity() {
                             meshService = container.meshService,
                             meshController = meshController,
                             voiceCallManager = container.voiceCallManager,
+                            nodesStore = container.nodesStore,
+                            ownNodeId = container.identity.nodeId,
+                            ownPublicKey = container.identity.publicKey,
                             appName = getString(R.string.app_name),
                             deviceName = container.identity.name,
                             nodeId = container.identity.nodeId.toString()
@@ -89,6 +92,7 @@ class MainActivity : ComponentActivity() {
                             ownNodeId = container.identity.nodeId,
                             messagingService = container.messagingService,
                             meshService = container.meshService,
+                            nodesStore = container.nodesStore,
                             voiceCallManager = container.voiceCallManager,
                             fileTransferService = container.fileTransferService,
                             voiceMessageRecorder = container.voiceMessageRecorder,
