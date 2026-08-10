@@ -24,22 +24,13 @@ import com.meshapp.security.NodesStore
  *
  * Instantiated once inside MeshApplication.onCreate().
  * All singletons are held here and accessed via (application as MeshApplication).container.
- *
- * Lifecycle:
- *   - meshService.start()       called in MeshApplication.onCreate()
- *   - messagingService.start()  called in MeshApplication.onCreate()
- *   - meshService.stop()        suspend — called via applicationScope in onTerminate() (emulator only)
- *   - messagingService.stop()   called in MeshApplication.onTerminate()
- *
- * On a real device the process is killed by the OS and sockets are closed by the kernel.
- * Phase 3 may promote mesh to a Foreground Service for background operation.
  */
 class AppContainer(context: Context) {
 
     private val appContext: Context = context.applicationContext
 
     // ── Audio control ─────────────────────────────────────────────────────────
-
+    // Created first to ensure the central audio manager is ready for all services.
     val audioController: AudioController = AudioController(appContext)
 
     // ── Identity & security ───────────────────────────────────────────────────
@@ -47,29 +38,28 @@ class AppContainer(context: Context) {
     val nodesStore: NodesStore = try {
         SqlNodesStore(appContext)
     } catch (e: Exception) {
-        // Critical: Failed to open or create the SQLite database for node identity tracking.
         throw RuntimeException("Failed to initialize SqlNodesStore", e)
     }
 
+    // IdentityManager uses PersistentIdentityStore for encrypted SharedPreferences storage.
     val identityManager: IdentityManager = IdentityManager(PersistentIdentityStore(appContext))
 
     val identity: Identity = try {
+        // Sanitize Build.MODEL for use as the default node name.
         identityManager.getOrGenerate(
-                Build.MODEL
-                    .replace(Regex("[^a-zA-Z0-9 _-]"), "")
-                    .trim()
-                    .take(20)
-                    .ifBlank { "MeshUser" }
-            )
+            Build.MODEL
+                .replace(Regex("[^a-zA-Z0-9 _-]"), "")
+                .trim()
+                .take(20)
+                .ifBlank { "MeshUser" }
+        )
     } catch (e: Exception) {
-        // Critical: Failed to generate or retrieve this node's identity from Android Keystore.
         throw RuntimeException("Failed to get or generate identity", e)
     }
 
     val security: Security = try {
         Security(identity, nodesStore)
     } catch (e: Exception) {
-        // Critical: Failed to initialize the cryptographic helper (e.g., missing algorithms).
         throw RuntimeException("Failed to initialize Security", e)
     }
 
@@ -89,7 +79,7 @@ class AppContainer(context: Context) {
         config = meshConfig,
         socketFactory = AndroidMeshSocketFactory(appContext),
         nodesStore = nodesStore,
-        audioController = audioController,
+        audioController = audioController, // Pass standardized audio controller
         signer = security,
         verifier = security
     )
@@ -113,7 +103,7 @@ class AppContainer(context: Context) {
         messagingService = messagingService,
         meshService = meshService,
         config = meshConfig,
-        audioController = audioController
+        audioController = audioController // Pass standardized audio controller
     )
 
     val fileTransferService: FileTransferService = FileTransferService(
@@ -132,16 +122,13 @@ class AppContainer(context: Context) {
 
     val voiceMessagePlayer: VoiceMessagePlayer = VoiceMessagePlayer(
         audioController = audioController,
-        settings = meshConfig.audioConfig.messageSettings
+        settings = meshConfig.audioConfig.messageSettings // Pass feature-specific settings
     )
 
     // ── Port constants ────────────────────────────────────────────────────────
 
     companion object {
-        /** UDP broadcast port for HELLO / RREQ / RERR packets. */
         const val UDP_PORT = 49152
-
-        /** TCP port for unicast MESSAGE / RREP / ACK packets. */
         const val TCP_PORT = 49153
     }
 }

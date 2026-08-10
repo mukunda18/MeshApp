@@ -165,6 +165,7 @@ class MeshForegroundService : Service() {
                 container.fileTransferService.stop()
                 container.voiceCallManager.stop()
                 container.voiceMessagePlayer.stop()
+                container.voiceMessageRecorder.cancel()
             }
         }
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -182,6 +183,7 @@ class MeshForegroundService : Service() {
                 container.fileTransferService.stop()
                 container.voiceCallManager.stop()
                 container.voiceMessagePlayer.stop()
+                container.voiceMessageRecorder.cancel()
             }
         }
         super.onDestroy()

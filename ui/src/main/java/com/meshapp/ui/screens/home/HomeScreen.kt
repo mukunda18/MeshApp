@@ -20,8 +20,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PowerSettingsNew
@@ -35,20 +33,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.meshapp.ui.components.EmptyState
-import com.meshapp.ui.components.ProfileAvatar
 import com.meshapp.ui.components.StatusDot
-import com.meshapp.ui.state.HomeNodeUiState
 import com.meshapp.ui.theme.MeshBg1
 import com.meshapp.ui.theme.MeshBg2
-import com.meshapp.ui.theme.MeshBg3
 import com.meshapp.ui.theme.MeshBorder
 import com.meshapp.ui.theme.MeshDanger
 import com.meshapp.ui.theme.MeshGreen
@@ -57,7 +49,6 @@ import com.meshapp.ui.theme.MeshMuted
 import com.meshapp.ui.theme.MeshShapes
 import com.meshapp.ui.theme.MeshSpacing
 import com.meshapp.ui.theme.MeshTextPrimary
-import com.meshapp.ui.theme.MeshTextSecondary
 import com.meshapp.ui.viewmodel.HomeViewModel
 
 @Composable
@@ -159,40 +150,11 @@ fun HomeScreen(
 
         Spacer(modifier = Modifier.height(MeshSpacing.lg))
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+        TextButton(
+            onClick = onNavigateToNearbyNodes,
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Text(
-                text = "NEARBY",
-                style = MaterialTheme.typography.labelLarge,
-                color = MeshGreen,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp,
-                modifier = Modifier.weight(1f)
-            )
-            TextButton(onClick = onNavigateToNearbyNodes) {
-                Text("See all", color = MeshGreen)
-            }
-        }
-
-        if (uiState.connectedNodes.isEmpty()) {
-            EmptyState(
-                title = "No nodes nearby",
-                subtitle = "Turn the mesh on and stay close to other devices to connect.",
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = MeshSpacing.lg)
-            )
-        } else {
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(MeshSpacing.sm),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = MeshSpacing.xs)
-            ) {
-                items(uiState.connectedNodes.take(8), key = { it.nodeId }) { node ->
-                    PeerPreviewChip(node = node, onClick = onNavigateToNearbyNodes)
-                }
-            }
+            Text("View Nearby Nodes", color = MeshGreen)
         }
 
         Spacer(modifier = Modifier.weight(1f))
@@ -296,40 +258,5 @@ private fun StatCard(
                 letterSpacing = 1.sp
             )
         }
-    }
-}
-
-@Composable
-private fun PeerPreviewChip(
-    node: HomeNodeUiState,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier
-            .width(64.dp)
-            .clickable(onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box {
-            ProfileAvatar(
-                initials = node.avatarInitials,
-                size = 52.dp,
-                containerColor = if (node.isOnline) MeshGreen else MeshBg3
-            )
-            StatusDot(
-                isOnline = node.isOnline,
-                size = 12.dp,
-                modifier = Modifier.align(Alignment.BottomEnd)
-            )
-        }
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = node.name,
-            style = MaterialTheme.typography.labelSmall,
-            color = MeshTextSecondary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
     }
 }
