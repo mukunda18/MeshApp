@@ -51,7 +51,7 @@ class VoiceSessionManager(
     private val callId: MessageId,
     private val peerNodeId: NodeId,
     private val callCrypto: CallCrypto,
-    private val settings: com.meshapp.meshcontrol.AudioFeatureSettings
+    private val settings: com.meshapp.meshcontrol.AudioFeatureSettings,
 ) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -161,7 +161,7 @@ class VoiceSessionManager(
                     while (frameAccumulator.position() >= VoiceCodec.BYTES_PER_FRAME) {
                         val frame = ByteArray(VoiceCodec.BYTES_PER_FRAME)
                         frameAccumulator.flip()
-                        frameAccumulator.get(frame)
+                        frameAccumulator[frame]
                         frameAccumulator.compact()
 
                         val seq = nextSequenceNumber.getAndIncrement()
@@ -216,8 +216,8 @@ class VoiceSessionManager(
         val track = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .setUsage(settings.usage)
+                    .setContentType(settings.contentType)
                     .build()
             )
             .setAudioFormat(

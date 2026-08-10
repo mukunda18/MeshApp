@@ -6,21 +6,25 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.AudioFormat
-import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
-import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
 import androidx.annotation.RequiresPermission
 import androidx.core.content.ContextCompat
-import com.meshapp.meshcontrol.AudioController
-import com.meshapp.meshcontrol.AudioSessionType
-import com.meshapp.meshcontrol.AudioFeatureSettings
 import com.meshapp.logger.MeshLogger
-import kotlinx.coroutines.*
-import java.nio.ByteOrder
+import com.meshapp.meshcontrol.AudioController
+import com.meshapp.meshcontrol.AudioFeatureSettings
+import com.meshapp.meshcontrol.AudioSessionType
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
 /**
@@ -29,7 +33,7 @@ import kotlin.math.abs
  */
 class VoiceSimulator(
     private val context: Context,
-    private val audioController: AudioController
+    private val audioController: AudioController,
 ) {
     // 16kHz is standard for VoIP and better supported by hardware filters
     private val sampleRate = VoiceCodec.SAMPLE_RATE
@@ -52,7 +56,7 @@ class VoiceSimulator(
             return
         }
 
-        val started = audioController.startSession(AudioSessionType.LOOPBACK) {
+        val started = audioController.startSession(AudioSessionType.LOOPBACK, mode = settings.audioMode) {
             isRunning = false
             job?.cancel()
             job = null
@@ -86,8 +90,8 @@ class VoiceSimulator(
             val track = AudioTrack.Builder()
                 .setAudioAttributes(
                     AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .setUsage(settings.usage)
+                        .setContentType(settings.contentType)
                         .build()
                 )
                 .setAudioFormat(
@@ -101,7 +105,7 @@ class VoiceSimulator(
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
 
-            if (recorder.state != AudioRecord.STATE_INITIALIZED || track.state != AudioTrack.STATE_INITIALIZED) {
+            if (recorder.state != AudioRecord.STATE_INITIALIZED || (track.state != AudioTrack.STATE_INITIALIZED)) {
                 recorder.release()
                 track.release()
                 isRunning = false

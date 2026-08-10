@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.IBinder
 import androidx.core.content.ContextCompat
 import com.meshapp.logger.MeshLogger
@@ -138,7 +139,8 @@ class MeshForegroundService : Service() {
                 container.meshService.start()
                 container.messagingService.start()
                 container.fileTransferService.start()
-                MeshLogger.info("ForegroundService", "Mesh, Messaging, and FileTransfer services started")
+                container.voiceCallManager.start()
+                MeshLogger.info("ForegroundService", "Mesh, Messaging, FileTransfer, and Call services started")
             } catch (e: Exception) {
                 // Critical failure during background mesh startup.
                 // - IllegalStateException (MeshService already started)
@@ -160,6 +162,9 @@ class MeshForegroundService : Service() {
                 val container = app.awaitContainer()
                 container.meshService.stop()
                 container.messagingService.stop()
+                container.fileTransferService.stop()
+                container.voiceCallManager.stop()
+                container.voiceMessagePlayer.stop()
             }
         }
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -174,6 +179,9 @@ class MeshForegroundService : Service() {
                 val container = app.awaitContainer()
                 container.meshService.stop()
                 container.messagingService.stop()
+                container.fileTransferService.stop()
+                container.voiceCallManager.stop()
+                container.voiceMessagePlayer.stop()
             }
         }
         super.onDestroy()
@@ -249,8 +257,16 @@ class MeshForegroundService : Service() {
                 )
                 builder.setPriority(NotificationCompat.PRIORITY_MAX)
                 builder.setCategory(NotificationCompat.CATEGORY_CALL)
+                
                 if (shouldLaunchFullScreen(callState)) {
-                    builder.setFullScreenIntent(openAppIntent, true)
+                    val canUseFullIntent =  if (Build.VERSION.SDK_INT >= 34) {
+                        getSystemService(NotificationManager::class.java).canUseFullScreenIntent()
+                    } else {
+                        true
+                    }
+                    if (canUseFullIntent) {
+                        builder.setFullScreenIntent(openAppIntent, true)
+                    }
                 }
             }
             is CallState.Active -> {

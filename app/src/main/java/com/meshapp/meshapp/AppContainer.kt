@@ -130,7 +130,10 @@ class AppContainer(context: Context) {
         audioController = audioController
     )
 
-    val voiceMessagePlayer: VoiceMessagePlayer = VoiceMessagePlayer()
+    val voiceMessagePlayer: VoiceMessagePlayer = VoiceMessagePlayer(
+        audioController = audioController,
+        settings = meshConfig.audioConfig.messageSettings
+    )
 
     // ── Port constants ────────────────────────────────────────────────────────
 

@@ -23,6 +23,7 @@ import com.meshapp.routing.RouteEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,9 +36,9 @@ class VoiceCallManager(
     private val messagingService: MessagingService,
     private val meshService: MeshService,
     private val config: MeshConfig,
-    private val audioController: AudioController
+    private val audioController: AudioController,
 ) {
-    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    private var managerScope: CoroutineScope? = null
     
     private val _callState = MutableStateFlow<CallState>(CallState.Idle)
     val callState = _callState.asStateFlow()
@@ -52,7 +53,11 @@ class VoiceCallManager(
     private val ownEphemeralPublicKey: ByteArray = ephemeralKeyPair.public.encoded
     private val ownEphemeralPrivateKey: ByteArray = ephemeralKeyPair.private.encoded
 
-    init {
+    fun start() {
+        if (managerScope != null) return
+        val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+        managerScope = scope
+
         scope.launch {
             messagingService.callSignalsStream.collect { (sourceNodeId, signal) ->
                 try {
@@ -72,13 +77,20 @@ class VoiceCallManager(
                         is CallState.Active -> current.peerNodeId
                         else -> null
                     }
-                    if (peerNodeId != null && peerNodeId.toString() == event.nodeId.toString()) {
+                    if (peerNodeId != null && (peerNodeId.toString() == event.nodeId.toString())) {
                         MeshLogger.info("VoiceCallManager", "Route to peer lost: $peerNodeId")
                         endCallWithReason("Connection lost")
                     }
                 }
             }
         }
+    }
+
+    fun stop() {
+        managerScope?.cancel()
+        managerScope = null
+        stopVoiceSession()
+        _callState.value = CallState.Idle
     }
 
     @SuppressLint("MissingPermission")
@@ -99,7 +111,7 @@ class VoiceCallManager(
         MeshLogger.info("VoiceCallManager", "Dialing $peerNodeId")
 
         // Start dialing timeout
-        scope.launch {
+        managerScope?.launch {
             delay(config.callDialingTimeoutMs.milliseconds)
             when (val current = _callState.value) {
                 is CallState.Dialing -> {
@@ -117,8 +129,7 @@ class VoiceCallManager(
     @SuppressLint("MissingPermission")
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun accept() {
-        val current = _callState.value
-        if (current !is CallState.Ringing) return
+        val current = _callState.value as? CallState.Ringing ?: return
 
         val accept = CallAccept(ownEphemeralPublicKey)
         val buf = ByteArray(256)
@@ -189,7 +200,7 @@ class VoiceCallManager(
             messagingService.sendCallSignal(peerNodeId, signal)
             // Retry once after a short delay in case the first attempt is queued
             // behind a discovery request or dropped due to a transient route issue.
-            scope.launch {
+            managerScope?.launch {
                 delay(500.milliseconds)
                 messagingService.sendCallSignal(peerNodeId, signal)
             }
@@ -215,7 +226,7 @@ class VoiceCallManager(
         stopVoiceSession()
         _callState.value = CallState.Ended(peerNodeId, reason)
 
-        scope.launch {
+        managerScope?.launch {
             delay(config.callEndedDisplayMs.milliseconds)
             if (_callState.value is CallState.Ended) {
                 _callState.value = CallState.Idle
@@ -226,7 +237,10 @@ class VoiceCallManager(
     @SuppressLint("MissingPermission")
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     private fun startVoiceSession(callId: MessageId, peerNodeId: NodeId, callCrypto: CallCrypto) {
-        val started = audioController.startSession(AudioSessionType.VOICE_CALL) {
+        val started = audioController.startSession(
+            AudioSessionType.VOICE_CALL, 
+            mode = config.audioConfig.callSettings.audioMode
+        ) {
             voiceSession?.stop()
             voiceSession = null
             // If we are active, we should probably transition to Idle or Ended
@@ -273,7 +287,7 @@ class VoiceCallManager(
                     MeshLogger.info("VoiceCallManager", "Incoming call from $sourceNodeId")
                     
                     // Start ringing timeout
-                    scope.launch {
+                    managerScope?.launch {
                         delay(config.callRingingTimeoutMs.milliseconds)
                         val current = _callState.value
                         if (current is CallState.Ringing && current.callId == signal.callId) {
@@ -328,8 +342,7 @@ class VoiceCallManager(
                 }
             }
             CallSignalType.HANGUP, CallSignalType.REJECT, CallSignalType.BUSY -> {
-                val current = _callState.value
-                val isRelevant = when (current) {
+                val isRelevant = when (val current = _callState.value) {
                     is CallState.Dialing -> current.peerNodeId == sourceNodeId
                     is CallState.Ringing -> current.peerNodeId == sourceNodeId
                     is CallState.Active -> current.peerNodeId == sourceNodeId

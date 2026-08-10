@@ -17,7 +17,7 @@ enum class AudioSessionType(val priority: Int) {
  * Central manager for all audio sessions in the Mesh app.
  * Enforces priority preemption: Voice Call > Voice Message > Loopback.
  */
-class AudioController(private val context: Context) {
+class AudioController(context: Context) {
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     
     private val _activeSession = MutableStateFlow(AudioSessionType.NONE)
@@ -31,7 +31,7 @@ class AudioController(private val context: Context) {
      * If a lower priority session is active, it is preempted (stopped).
      */
     @Synchronized
-    fun startSession(type: AudioSessionType, stopper: () -> Unit): Boolean {
+    fun startSession(type: AudioSessionType, mode: Int? = null, stopper: () -> Unit): Boolean {
         val current = _activeSession.value
         
         if (current != AudioSessionType.NONE) {
@@ -52,11 +52,11 @@ class AudioController(private val context: Context) {
         _activeSession.value = type
         activeStopper = stopper
         
-        // Mode will be set by the individual managers, but we reset to communication as a safe base.
-        if (type == AudioSessionType.VOICE_CALL || type == AudioSessionType.LOOPBACK) {
-            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-        } else if (type == AudioSessionType.VOICE_MESSAGE) {
-            audioManager.mode = AudioManager.MODE_NORMAL
+        // Mode will be set by the individual managers, but we use the provided one or a safe base.
+        audioManager.mode = mode ?: when (type) {
+            AudioSessionType.VOICE_CALL, AudioSessionType.LOOPBACK -> AudioManager.MODE_IN_COMMUNICATION
+            AudioSessionType.VOICE_MESSAGE -> AudioManager.MODE_NORMAL
+            else -> AudioManager.MODE_NORMAL
         }
         
         return true

@@ -6,24 +6,23 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
-import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
 import androidx.annotation.RequiresPermission
 import androidx.core.content.ContextCompat
-import com.meshapp.meshcontrol.AudioController
-import com.meshapp.meshcontrol.AudioSessionType
-import com.meshapp.meshcontrol.AudioFeatureSettings
 import com.meshapp.logger.MeshLogger
+import com.meshapp.meshcontrol.AudioController
+import com.meshapp.meshcontrol.AudioFeatureSettings
+import com.meshapp.meshcontrol.AudioSessionType
 import com.meshapp.voice.VoiceCodec
-import java.io.File
-import java.io.FileOutputStream
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlin.math.abs
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
 
 /**
  * Records a voice message using the same capture pipeline as live calls
@@ -37,7 +36,7 @@ import kotlin.math.abs
 class VoiceMessageRecorder(
     private val context: Context,
     private val audioController: AudioController,
-    private val codec: VoiceCodec = VoiceCodec()
+    private val codec: VoiceCodec = VoiceCodec(),
 ) {
     private var audioRecord: AudioRecord? = null
     private var recordingJob: Job? = null
@@ -65,7 +64,7 @@ class VoiceMessageRecorder(
             return false
         }
 
-        val started = audioController.startSession(AudioSessionType.VOICE_MESSAGE) {
+        val started = audioController.startSession(AudioSessionType.VOICE_MESSAGE, mode = settings.audioMode) {
             cancel()
         }
         if (!started) return false
@@ -120,7 +119,9 @@ class VoiceMessageRecorder(
                 if (bytesRead == VoiceCodec.BYTES_PER_FRAME) {
                     val processed = applyGain(pcmBuffer, settings.gain)
                     val encoded = codec.encode(processed)
-                    outputStream?.write(encoded)
+                    withContext(Dispatchers.IO) {
+                        outputStream?.write(encoded)
+                    }
                     frameCount++
                 }
             }
@@ -132,7 +133,7 @@ class VoiceMessageRecorder(
         if (gain == 1.0f) return pcm16
         val out = ByteArray(pcm16.size)
         var i = 0
-        while (i < pcm16.size - 1) {
+        while (i < (pcm16.size - 1)) {
             val low = pcm16[i].toInt() and 0xFF
             val high = (pcm16[i + 1].toInt() and 0xFF) shl 8
             var sample = high or low

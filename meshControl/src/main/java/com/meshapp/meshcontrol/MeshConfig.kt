@@ -1,5 +1,7 @@
 package com.meshapp.meshcontrol
 
+import android.media.AudioAttributes
+import android.media.AudioManager
 import android.media.MediaRecorder
 import com.meshapp.model.NodeId
 import com.meshapp.model.PublicKey
@@ -13,7 +15,10 @@ data class AudioFeatureSettings(
     val nsEnabled: Boolean,
     val agcEnabled: Boolean,
     val noiseGateThreshold: Int,
-    val audioSource: Int
+    val audioSource: Int,
+    val audioMode: Int,
+    val usage: Int,
+    val contentType: Int
 )
 
 /**
@@ -26,7 +31,10 @@ data class AudioConfig(
         nsEnabled = true,
         agcEnabled = true,
         noiseGateThreshold = 100,
-        audioSource = MediaRecorder.AudioSource.VOICE_COMMUNICATION
+        audioSource = MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+        audioMode = AudioManager.MODE_IN_COMMUNICATION,
+        usage = AudioAttributes.USAGE_VOICE_COMMUNICATION,
+        contentType = AudioAttributes.CONTENT_TYPE_SPEECH
     ),
     val messageSettings: AudioFeatureSettings = AudioFeatureSettings(
         gain = 1.0f,
@@ -34,7 +42,10 @@ data class AudioConfig(
         nsEnabled = true,
         agcEnabled = false,
         noiseGateThreshold = 50,
-        audioSource = MediaRecorder.AudioSource.VOICE_RECOGNITION
+        audioSource = MediaRecorder.AudioSource.VOICE_RECOGNITION,
+        audioMode = AudioManager.MODE_NORMAL,
+        usage = AudioAttributes.USAGE_MEDIA,
+        contentType = AudioAttributes.CONTENT_TYPE_SPEECH
     )
 )
 
