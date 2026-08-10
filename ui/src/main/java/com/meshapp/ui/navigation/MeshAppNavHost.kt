@@ -8,8 +8,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.List
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.List
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Router
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -146,7 +146,7 @@ fun MeshAppNavHost(
                                             )
                                             DropdownMenuItem(
                                                 text = { Text("System Logs") },
-                                                leadingIcon = { Icon(Icons.Outlined.List, contentDescription = null) },
+                                                leadingIcon = { Icon(Icons.AutoMirrored.Outlined.List, contentDescription = null) },
                                                 onClick = {
                                                     showQuickActions = false
                                                     navController.navigate(MeshRoutes.LOGS)
@@ -200,7 +200,7 @@ fun MeshAppNavHost(
                         HomeScreen(
                             viewModel = homeViewModel,
                             onNodeClick = { node ->
-                                navController.navigate(MeshRoutes.conversation(node.nodeId, node.name))
+                                navController.navigate(MeshRoutes.conversation(node.nodeId))
                             }
                         )
                     }
@@ -210,7 +210,7 @@ fun MeshAppNavHost(
                     composable(MeshRoutes.PROFILE) {
                         ProfileScreen(
                             viewModel = homeViewModel,
-                            onNavigateHome = { navController.navigateToTab(MeshRoutes.HOME) },
+                            onNavigateHome = { navController.navigateToHomeRoot() },
                             onNavigateChats = { navController.navigateToTab(MeshRoutes.CHATS) },
                             onNavigateNetworkInterfaces = { navController.navigate(MeshRoutes.NETWORK_INTERFACES) },
                             onNavigateAbout = { navController.navigate(MeshRoutes.ABOUT) }
@@ -224,7 +224,7 @@ fun MeshAppNavHost(
                         }
                         ChatsScreen(
                             viewModel = chatsViewModel,
-                            onNodeClick = { node -> navController.navigate(MeshRoutes.conversation(node.id, node.name)) }
+                            onNodeClick = { node -> navController.navigate(MeshRoutes.conversation(node.id)) }
                         )
                     }
                     composable(MeshRoutes.NETWORK_INTERFACES) {
@@ -246,7 +246,6 @@ fun MeshAppNavHost(
                         )
                     ) { backStackEntry ->
                         val nodeId = backStackEntry.arguments?.getString("nodeId") ?: ""
-                        val nodeName = backStackEntry.arguments?.getString("name") ?: ""
                         val conversationViewModel: ConversationViewModel = if (conversationViewModelFactory != null) {
                             viewModel(factory = conversationViewModelFactory)
                         } else {
@@ -255,7 +254,6 @@ fun MeshAppNavHost(
                         ConversationScreen(
                             viewModel = conversationViewModel,
                             nodeId = nodeId,
-                            nodeName = nodeName,
                             onBack = { navController.popBackStack() }
                         )
                     }
@@ -265,7 +263,10 @@ fun MeshAppNavHost(
                 VoiceCallOverlay(
                     state = uiState.voiceCallState,
                     isMinimized = uiState.isCallMinimized,
-                    onAccept = { homeViewModel.acceptCall() },
+                    onAccept = {
+                        @Suppress("MissingPermission")
+                        homeViewModel.acceptCall()
+                    },
                     onReject = { homeViewModel.rejectCall() },
                     onCancel = { homeViewModel.cancelCall() },
                     onHangup = { homeViewModel.hangupCall() },

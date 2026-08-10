@@ -1,7 +1,53 @@
 package com.meshapp.meshcontrol
 
+import android.media.AudioAttributes
+import android.media.AudioManager
+import android.media.MediaRecorder
 import com.meshapp.model.NodeId
 import com.meshapp.model.PublicKey
+
+/**
+ * Standardized audio processing settings for a specific feature.
+ */
+data class AudioFeatureSettings(
+    val gain: Float,
+    val aecEnabled: Boolean,
+    val nsEnabled: Boolean,
+    val agcEnabled: Boolean,
+    val noiseGateThreshold: Int,
+    val audioSource: Int,
+    val audioMode: Int,
+    val usage: Int,
+    val contentType: Int
+)
+
+/**
+ * Central audio configuration for all mesh voice features.
+ */
+data class AudioConfig(
+    val callSettings: AudioFeatureSettings = AudioFeatureSettings(
+        gain = 1.0f,
+        aecEnabled = true,
+        nsEnabled = true,
+        agcEnabled = true,
+        noiseGateThreshold = 100,
+        audioSource = MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+        audioMode = AudioManager.MODE_IN_COMMUNICATION,
+        usage = AudioAttributes.USAGE_VOICE_COMMUNICATION,
+        contentType = AudioAttributes.CONTENT_TYPE_SPEECH
+    ),
+    val messageSettings: AudioFeatureSettings = AudioFeatureSettings(
+        gain = 1.0f,
+        aecEnabled = false,
+        nsEnabled = true,
+        agcEnabled = false,
+        noiseGateThreshold = 50,
+        audioSource = MediaRecorder.AudioSource.VOICE_RECOGNITION,
+        audioMode = AudioManager.MODE_NORMAL,
+        usage = AudioAttributes.USAGE_MEDIA,
+        contentType = AudioAttributes.CONTENT_TYPE_SPEECH
+    )
+)
 
 /**
  * Central mesh runtime configuration.
@@ -33,7 +79,8 @@ data class MeshConfig(
     val udpReceiveTimeoutMs: Int = 500,
     val callDialingTimeoutMs: Long = 60_000L,
     val callRingingTimeoutMs: Long = 45_000L,
-    val callEndedDisplayMs: Long = 3_000L
+    val callEndedDisplayMs: Long = 3_000L,
+    val audioConfig: AudioConfig = AudioConfig()
 ) {
     init {
         require(udpBroadcastPort in 1..65535) { "Invalid UDP port: $udpBroadcastPort" }

@@ -38,4 +38,8 @@ class IdentityManager(
             throw RuntimeException("Failed to generate identity", e)
         }
     }
+
+    fun updateName(newName: String) {
+        identityStore.updateName(newName)
+    }
 }

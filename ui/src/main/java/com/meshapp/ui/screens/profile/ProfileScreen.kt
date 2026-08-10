@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DeviceHub
@@ -25,11 +24,12 @@ import androidx.compose.material.icons.filled.SettingsEthernet
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,7 +38,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -48,6 +47,7 @@ import com.meshapp.ui.components.MeshFooterNavigation
 import com.meshapp.ui.components.StatusDot
 import com.meshapp.ui.theme.MeshBg0
 import com.meshapp.ui.theme.MeshBg1
+import com.meshapp.ui.theme.MeshBg2
 import com.meshapp.ui.theme.MeshBg3
 import com.meshapp.ui.theme.MeshBorder
 import com.meshapp.ui.theme.MeshGreen
@@ -68,38 +68,7 @@ fun ProfileScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showEditNameDialog by remember { mutableStateOf(false) }
-    var editedName by remember { mutableStateOf(uiState.profile.name) }
-
-    if (showEditNameDialog) {
-        AlertDialog(
-            onDismissRequest = { showEditNameDialog = false },
-            title = { Text("Edit Device Name") },
-            text = {
-                OutlinedTextField(
-                    value = editedName,
-                    onValueChange = { editedName = it },
-                    singleLine = true,
-                    label = { Text("Device Name") }
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.updateDeviceName(editedName)
-                        showEditNameDialog = false
-                    },
-                    enabled = editedName.trim().isNotEmpty()
-                ) {
-                    Text("Save")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showEditNameDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
+    var newName by remember { mutableStateOf("") }
 
     Scaffold(
         containerColor = MeshBg0,
@@ -168,7 +137,7 @@ fun ProfileScreen(
                             value = uiState.profile.name,
                             icon = Icons.Filled.DeviceHub,
                             onClick = {
-                                editedName = uiState.profile.name
+                                newName = uiState.profile.name
                                 showEditNameDialog = true
                             }
                         )
@@ -226,6 +195,55 @@ fun ProfileScreen(
             }
         }
     }
+
+    if (showEditNameDialog) {
+        AlertDialog(
+            onDismissRequest = { showEditNameDialog = false },
+            title = { Text("Change Device Name", color = MeshTextPrimary) },
+            text = {
+                Column {
+                    Text(
+                        "This name is broadcast to nearby nodes.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MeshMuted,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    TextField(
+                        value = newName,
+                        onValueChange = { newName = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = MeshBg2,
+                            unfocusedContainerColor = MeshBg2,
+                            focusedTextColor = MeshTextPrimary,
+                            unfocusedTextColor = MeshTextPrimary,
+                            cursorColor = MeshGreen,
+                            focusedIndicatorColor = MeshGreen
+                        ),
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (newName.isNotBlank()) {
+                            viewModel.updateName(newName.trim())
+                            showEditNameDialog = false
+                        }
+                    }
+                ) {
+                    Text("Save", color = MeshGreen)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditNameDialog = false }) {
+                    Text("Cancel", color = MeshMuted)
+                }
+            },
+            containerColor = MeshBg1
+        )
+    }
 }
 
 @Composable
@@ -267,12 +285,22 @@ private fun InfoRow(
             modifier = Modifier.padding(start = MeshSpacing.sm)
         )
         Spacer(modifier = Modifier.weight(1f))
-        Text(
-            text = value,
-            color = MeshMuted,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = value,
+                color = MeshMuted,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium
+            )
+            if (onClick != null) {
+                Icon(
+                    imageVector = Icons.Filled.ChevronRight,
+                    contentDescription = null,
+                    tint = MeshMuted.copy(alpha = 0.5f),
+                    modifier = Modifier.size(16.dp).padding(start = 4.dp)
+                )
+            }
+        }
     }
 }
 

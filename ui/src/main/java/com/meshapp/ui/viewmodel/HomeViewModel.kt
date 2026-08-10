@@ -1,20 +1,21 @@
 package com.meshapp.ui.viewmodel
 
+import android.Manifest
 import android.app.Application
+import androidx.annotation.RequiresPermission
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.meshapp.meshcontrol.MeshService
 import com.meshapp.meshcontrol.MeshState
 import com.meshapp.meshcontrol.PeerState
 import com.meshapp.meshcontrol.PeerStatus
-import com.meshapp.model.PublicKey
 import com.meshapp.network.NetworkInfo
 import com.meshapp.network.NetworkScanner
 import com.meshapp.routing.PeerEvent
-import com.meshapp.security.NodesStore
 import com.meshapp.ui.state.HomeNodeUiState
 import com.meshapp.ui.state.HomeUiState
 import com.meshapp.ui.state.ProfileUiState
+import com.meshapp.security.IdentityManager
 import com.meshapp.voice.CallState
 import com.meshapp.voice.VoiceCallManager
 import com.meshapp.model.NodeId
@@ -31,9 +32,7 @@ class HomeViewModel(
     private val meshService: MeshService,
     private val meshController: MeshController,
     private val voiceCallManager: VoiceCallManager,
-    private val nodesStore: NodesStore,
-    private val ownNodeId: NodeId,
-    private val ownPublicKey: PublicKey,
+    private val identityManager: IdentityManager,
     appName: String,
     deviceName: String,
     nodeId: String
@@ -65,12 +64,14 @@ class HomeViewModel(
         refreshNetworkInterfaces()
     }
 
+    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun dial(nodeId: String) {
         val peer = _peerMap.value[nodeId] ?: return
         voiceCallManager.dial(peer.nodeId)
         _uiState.update { it.copy(isCallMinimized = false) }
     }
 
+    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun acceptCall() {
         voiceCallManager.accept()
     }
@@ -93,6 +94,26 @@ class HomeViewModel(
 
     fun maximizeCall() {
         _uiState.update { it.copy(isCallMinimized = false) }
+    }
+
+    fun updateName(newName: String) {
+        if (newName.isBlank()) return
+        
+        // 1. Update Persistent Identity
+        identityManager.updateName(newName)
+        
+        // 2. Update Running Mesh Service (propagates to HELLO packets)
+        meshService.updateDisplayName(newName)
+        
+        // 3. Update UI
+        _uiState.update { state ->
+            state.copy(
+                profile = state.profile.copy(
+                    name = newName,
+                    avatarInitials = initialsFrom(newName)
+                )
+            )
+        }
     }
 
     private fun observeVoiceCallState() {
@@ -151,31 +172,6 @@ class HomeViewModel(
         }
     }
 
-    fun updateDeviceName(newName: String) {
-        val sanitized = newName.trim()
-        if (sanitized.isBlank()) return
-
-        val previousName = _uiState.value.profile.name
-
-        _uiState.update {
-            it.copy(
-                profile = it.profile.copy(
-                    name = sanitized,
-                    avatarInitials = initialsFrom(sanitized)
-                )
-            )
-        }
-
-        // Keep shared identity/name mapping aligned so other UI viewmodels
-        // (Chats/Conversation) pick up the updated display name source.
-        nodesStore.addOrUpdateNode(ownNodeId, sanitized, ownPublicKey)
-        nodesStore.listNodes()
-            .filter { it.name == previousName }
-            .forEach { knownNode ->
-                nodesStore.addOrUpdateNode(knownNode.nodeId, sanitized, knownNode.publicKey)
-            }
-    }
-
     private fun observeMeshState() {
         // Seed with peers already known to the running service so they appear
         // immediately when the screen is reopened (not just on future events).
@@ -211,28 +207,13 @@ class HomeViewModel(
             ) { meshState, peerMap ->
                 meshState to peerMap
             }.collect { (meshState, peerMap) ->
-                val knownNamesByNodeId = nodesStore.listNodes().associate {
-                    it.nodeId.toString() to it.name
-                }
-
                 val nodes = peerMap.values
-                    .sortedBy { peer ->
-                        val resolvedName = knownNamesByNodeId[peer.nodeId.toString()]
-                            ?.takeIf { it.isNotBlank() }
-                            ?: peer.name
-                            ?: peer.nodeId.toString()
-                        resolvedName.lowercase()
-                    }
+                    .sortedBy { it.name ?: it.nodeId.toString() }
                     .map { peer ->
-                        val resolvedName = knownNamesByNodeId[peer.nodeId.toString()]
-                            ?.takeIf { it.isNotBlank() }
-                            ?: peer.name
-                            ?: shortId(peer.nodeId.toString())
-
                         HomeNodeUiState(
                             nodeId = peer.nodeId.toString(),
-                            name = resolvedName,
-                            avatarInitials = initialsFrom(resolvedName),
+                            name = peer.name ?: shortId(peer.nodeId.toString()),
+                            avatarInitials = initialsFrom(peer.name ?: peer.nodeId.toString()),
                             isOnline = peer.status == PeerStatus.ACTIVE,
                             status = peer.status.name,
                             ip = peer.ip,

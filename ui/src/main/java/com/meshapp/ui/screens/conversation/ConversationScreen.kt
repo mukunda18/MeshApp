@@ -118,7 +118,6 @@ import kotlinx.coroutines.launch
 @Composable
 fun ConversationScreen(
     nodeId: String,
-    nodeName: String = "",
     onBack: () -> Unit,
     viewModel: ConversationViewModel = viewModel()
 ) {
@@ -147,8 +146,8 @@ fun ConversationScreen(
         bitmap?.let { viewModel.attachCapturedImage(context, it) }
     }
 
-    LaunchedEffect(nodeId, nodeName) {
-        viewModel.initialize(nodeId, nodeName)
+    LaunchedEffect(nodeId) {
+        viewModel.initialize(nodeId)
     }
 
     val entries = remember(uiState.messages) { buildConversationEntries(uiState.messages) }

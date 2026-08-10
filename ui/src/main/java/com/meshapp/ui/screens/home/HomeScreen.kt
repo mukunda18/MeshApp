@@ -29,8 +29,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,6 +48,7 @@ import com.meshapp.ui.theme.MeshBg1
 import com.meshapp.ui.theme.MeshBg2
 import com.meshapp.ui.theme.MeshBg3
 import com.meshapp.ui.theme.MeshBorder
+import com.meshapp.ui.theme.MeshDanger
 import com.meshapp.ui.theme.MeshGreen
 import com.meshapp.ui.theme.MeshGreenOnAccent
 import com.meshapp.ui.theme.MeshMuted
@@ -95,6 +96,46 @@ fun HomeScreen(
             style = MaterialTheme.typography.bodyMedium,
             color = MeshMuted
         )
+
+        if (uiState.isMeshOn) {
+            Spacer(modifier = Modifier.height(MeshSpacing.md))
+            Surface(
+                onClick = { viewModel.toggleVoiceSimulation() },
+                shape = MeshShapes.chip,
+                color = if (uiState.isVoiceSimActive) MeshDanger else MeshBg2,
+                modifier = Modifier.border(
+                    1.dp, 
+                    if (uiState.isVoiceSimActive) MeshDanger else MeshBorder, 
+                    MeshShapes.chip
+                )
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = MeshSpacing.md, vertical = MeshSpacing.xs),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    StatusDot(
+                        isOnline = uiState.isVoiceSimActive,
+                        size = 8.dp
+                    )
+                    Spacer(modifier = Modifier.width(MeshSpacing.xs))
+                    Text(
+                        text = if (uiState.isVoiceSimActive) "STOP LOOPBACK" else "START LOOPBACK",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = if (uiState.isVoiceSimActive) MeshGreenOnAccent else MeshTextPrimary
+                    )
+                }
+            }
+            
+            if (uiState.isVoiceSimActive) {
+                Text(
+                    text = "Audio is playing back locally with 3s delay",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MeshDanger,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+        }
 
         Spacer(modifier = Modifier.height(MeshSpacing.xl))
 

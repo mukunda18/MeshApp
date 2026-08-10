@@ -53,4 +53,5 @@ data class Identity(
 interface IdentityStore {
     fun getIdentity(): Identity?
     fun saveIdentity(identity: Identity)
+    fun updateName(name: String)
 }

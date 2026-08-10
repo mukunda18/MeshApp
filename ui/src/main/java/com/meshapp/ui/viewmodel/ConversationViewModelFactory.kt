@@ -5,7 +5,6 @@ import com.meshapp.meshcontrol.MeshService
 import com.meshapp.messaging.MessagingService
 import com.meshapp.filetransfer.FileTransferService
 import com.meshapp.model.NodeId
-import com.meshapp.security.NodesStore
 import com.meshapp.voice.VoiceCallManager
 import com.meshapp.voicemessage.VoiceMessagePlayer
 import com.meshapp.voicemessage.VoiceMessageRecorder
@@ -13,7 +12,6 @@ class ConversationViewModelFactory(
     private val ownNodeId: NodeId,
     private val messagingService: MessagingService,
     private val meshService: MeshService,
-    private val nodesStore: NodesStore,
     private val voiceCallManager: VoiceCallManager,
     private val fileTransferService: FileTransferService,
     private val voiceMessageRecorder: VoiceMessageRecorder,
@@ -26,7 +24,6 @@ class ConversationViewModelFactory(
                 ownNodeId = ownNodeId,
                 messagingService = messagingService,
                 meshService = meshService,
-                nodesStore = nodesStore,
                 voiceCallManager = voiceCallManager,
                 fileTransferService = fileTransferService,
                 voiceMessageRecorder = voiceMessageRecorder,

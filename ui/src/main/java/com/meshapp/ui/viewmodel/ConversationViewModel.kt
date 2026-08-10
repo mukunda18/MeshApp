@@ -1,16 +1,17 @@
 package com.meshapp.ui.viewmodel
 
-import android.graphics.Bitmap
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.net.Uri
+import androidx.annotation.RequiresPermission
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meshapp.filetransfer.FileTransferEvent
 import com.meshapp.filetransfer.FileTransferRecord
 import com.meshapp.filetransfer.FileTransferService
-import com.meshapp.filetransfer.FileTransferStatus
 import com.meshapp.meshcontrol.MeshService
 import com.meshapp.meshcontrol.PeerState
 import com.meshapp.meshcontrol.PeerStatus
@@ -18,21 +19,15 @@ import com.meshapp.messaging.Message
 import com.meshapp.messaging.MessageDeliveryStatus
 import com.meshapp.messaging.MessagingService
 import com.meshapp.model.NodeId
-import com.meshapp.security.NodesStore
-import com.meshapp.voice.VoiceCallManager
-import com.meshapp.voicemessage.VoiceMessageFile
-import com.meshapp.voicemessage.VoiceMessagePlayer
-import com.meshapp.voicemessage.VoiceMessageRecorder
 import com.meshapp.routing.PeerEvent
 import com.meshapp.ui.state.ConversationMessageUiState
 import com.meshapp.ui.state.ConversationUiState
 import com.meshapp.ui.state.FileTransferUiState
 import com.meshapp.ui.state.NodeCardState
-import java.io.File
-import java.io.FileOutputStream
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
+import com.meshapp.voice.VoiceCallManager
+import com.meshapp.voicemessage.VoiceMessageFile
+import com.meshapp.voicemessage.VoiceMessagePlayer
+import com.meshapp.voicemessage.VoiceMessageRecorder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,18 +37,23 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import kotlin.time.Duration.Companion.milliseconds
 
 class ConversationViewModel(
     private val ownNodeId: NodeId,
     private val messagingService: MessagingService,
     private val meshService: MeshService,
-    private val nodesStore: NodesStore,
     private val voiceCallManager: VoiceCallManager,
     private val fileTransferService: FileTransferService,
     private val voiceMessageRecorder: VoiceMessageRecorder,
-    private val voiceMessagePlayer: VoiceMessagePlayer
+    private val voiceMessagePlayer: VoiceMessagePlayer,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(ConversationUiState(node = NodeCardState("", "", false, "")))
+    private val _uiState = MutableStateFlow(ConversationUiState(node = NodeCardState("", "", isOnline = false, "")))
     private val _peerMap = MutableStateFlow<Map<String, PeerState>>(emptyMap())
     private val _routeNodeIds = MutableStateFlow<Set<String>>(emptySet())
 
@@ -68,22 +68,9 @@ class ConversationViewModel(
         observeFileTransfers()
     }
 
-    fun initialize(nodeId: String, initialName: String = "") {
+    fun initialize(nodeId: String) {
         if (nodeId.isBlank()) return
         val parsedNodeId = parseNodeId(nodeId) ?: return
-        val sanitizedName = initialName.trim()
-
-        if (sanitizedName.isNotEmpty()) {
-            _uiState.update { state ->
-                state.copy(
-                    node = state.node.copy(
-                        id = parsedNodeId.toString(),
-                        name = sanitizedName,
-                        avatarInitials = initialsFrom(sanitizedName)
-                    )
-                )
-            }
-        }
 
         if (activeNodeId?.toString() == parsedNodeId.toString()) return
         activeNodeId = parsedNodeId
@@ -165,7 +152,9 @@ class ConversationViewModel(
     }
 
     /** Starts recording; call on mic-button press. Returns false if permission is missing. */
-    fun startVoiceMessageRecording(): Boolean = voiceMessageRecorder.start()
+    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
+    fun startVoiceMessageRecording(): Boolean =
+        voiceMessageRecorder.start(meshService.config.audioConfig.messageSettings)
 
     /** Stops recording and hands the resulting file to FileTransferService, unchanged. */
     fun stopVoiceMessageRecording() {
@@ -182,10 +171,6 @@ class ConversationViewModel(
     fun playVoiceMessage(fileUiState: FileTransferUiState, onComplete: () -> Unit = {}) {
         val path = fileUiState.localPath ?: return
         voiceMessagePlayer.play(File(path), onComplete)
-    }
-
-    fun stopVoiceMessagePlayback() {
-        voiceMessagePlayer.stop()
     }
 
     private fun getFileName(context: Context, uri: Uri): String? {
@@ -241,9 +226,7 @@ class ConversationViewModel(
         val peer = _peerMap.value[destination.toString()]
         val isInRouteTable = destination.toString() in _routeNodeIds.value
         val currentNode = _uiState.value.node
-        val knownName = nodesStore.getName(destination)?.takeIf { it.isNotBlank() }
-        val fallbackName = currentNode.name.takeIf { it.isNotBlank() } ?: shortId(destination.toString())
-        val displayName = peer?.name?.takeIf { it.isNotBlank() } ?: knownName ?: fallbackName
+        val displayName = peer?.name?.takeIf { it.isNotBlank() } ?: shortId(destination.toString())
 
         val textMessages = messagingService.getHistory(destination)
         val fileTransfers = fileTransferService.store.list().filter {
@@ -316,6 +299,7 @@ class ConversationViewModel(
             .format(Instant.ofEpochMilli(millis))
     }
 
+    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun dial() {
         val destination = activeNodeId ?: return
         voiceCallManager.dial(destination)
@@ -324,8 +308,8 @@ class ConversationViewModel(
     private fun startRouteRefreshLoop() {
         viewModelScope.launch {
             while (true) {
-                _routeNodeIds.value = meshService.getRoutes().map { it.destinationNodeId.toString() }.toSet()
-                delay(5_000)
+                _routeNodeIds.value = meshService.getRoutes().asSequence().map { it.destinationNodeId.toString() }.toSet()
+                delay(5_000.milliseconds)
             }
         }
     }

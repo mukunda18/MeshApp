@@ -10,14 +10,15 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import java.io.File
+import kotlin.time.Duration.Companion.milliseconds
 
 class FileTransferService(
-    private val context: Context,
+    context: Context,
     private val ownNodeId: NodeId,
     private val meshService: MeshService,
     private val messagingService: MessagingService,
     val store: FileTransferStore = InMemoryFileTransferStore(),
-    private val dispatcher: CoroutineDispatcher = Dispatchers.IO
+    dispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
     
@@ -38,8 +39,8 @@ class FileTransferService(
         }
         
         scope.launch {
-            meshService.incomingFileChunkStream.collect { (peerId, payload) ->
-                handleIncomingChunk(peerId, payload.packet)
+            meshService.incomingFileChunkStream.collect { (_, payload) ->
+                handleIncomingChunk(payload.packet)
             }
         }
     }
@@ -97,7 +98,7 @@ class FileTransferService(
         offerRetryJobs[record.transferId] = scope.launch {
             var attempts = 0
             while (attempts < 5 && (record.status == FileTransferStatus.OFFER_SENT)) {
-                delay(5000)
+                delay(5000.milliseconds)
                 if (record.status == FileTransferStatus.OFFER_SENT) {
                     messagingService.sendFileSignal(destinationNodeId, signal)
                     attempts++
@@ -115,8 +116,8 @@ class FileTransferService(
     private suspend fun handleIncomingSignal(peerId: NodeId, signal: FileSignal) {
         when (signal.type) {
             FileSignalType.OFFER -> handleOffer(peerId, signal)
-            FileSignalType.ACCEPT -> handleAccept(peerId, signal)
-            FileSignalType.REJECT -> handleReject(peerId, signal)
+            FileSignalType.ACCEPT -> handleAccept(signal)
+            FileSignalType.REJECT -> handleReject(signal)
             FileSignalType.CANCEL -> handleCancel(peerId, signal)
             FileSignalType.COMPLETE -> handleComplete(peerId, signal)
         }
@@ -147,7 +148,7 @@ class FileTransferService(
         messagingService.sendFileSignal(record.peerNodeId, signal)
     }
 
-    private suspend fun handleAccept(peerId: NodeId, signal: FileSignal) {
+    private fun handleAccept(signal: FileSignal) {
         val record = store.get(signal.transferId, false) ?: return
         if (record.status != FileTransferStatus.OFFER_SENT) return
         
@@ -164,10 +165,9 @@ class FileTransferService(
 
     private suspend fun performSend(record: FileTransferRecord) {
         val file = File(record.sourcePath ?: return)
-        val chunks = FileChunker.splitFile(file, record.metadata.chunkSize)
         
-        for ((index, data) in chunks.withIndex()) {
-            if (record.status != FileTransferStatus.TRANSFERRING) break
+        FileChunker.streamFile(file, record.metadata.chunkSize) { index, data ->
+            if (record.status != FileTransferStatus.TRANSFERRING) return@streamFile
             
             val packet = FileChunkPacket(record.transferId, index, record.metadata.totalChunks, data)
             meshService.sendFileChunk(record.peerNodeId, Payload.FileChunk(packet))
@@ -177,7 +177,7 @@ class FileTransferService(
             _events.emit(FileTransferEvent.ProgressUpdated(record))
             
             // Small delay to avoid saturating the network
-            delay(10)
+            delay(10.milliseconds)
         }
         
         if (record.status == FileTransferStatus.TRANSFERRING) {
@@ -187,7 +187,7 @@ class FileTransferService(
         }
     }
 
-    private suspend fun handleIncomingChunk(peerId: NodeId, packet: FileChunkPacket) {
+    private suspend fun handleIncomingChunk(packet: FileChunkPacket) {
         val record = store.get(packet.transferId, true) ?: return
         if (record.status == FileTransferStatus.OFFER_RECEIVED || record.status == FileTransferStatus.ACCEPTED) {
             record.status = FileTransferStatus.TRANSFERRING
@@ -245,7 +245,7 @@ class FileTransferService(
         }
     }
 
-    private suspend fun handleReject(peerId: NodeId, signal: FileSignal) {
+    private suspend fun handleReject(signal: FileSignal) {
         val record = store.get(signal.transferId, false) ?: return
         record.status = FileTransferStatus.REJECTED
         store.save(record)

@@ -1,7 +1,12 @@
 package com.meshapp.voice
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
+import androidx.annotation.RequiresPermission
 import com.meshapp.logger.MeshLogger
+import com.meshapp.meshcontrol.AudioController
+import com.meshapp.meshcontrol.AudioSessionType
 import com.meshapp.meshcontrol.MeshConfig
 import com.meshapp.meshcontrol.MeshService
 import com.meshapp.messaging.MessagingService
@@ -18,6 +23,7 @@ import com.meshapp.routing.RouteEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,9 +36,9 @@ class VoiceCallManager(
     private val messagingService: MessagingService,
     private val meshService: MeshService,
     private val config: MeshConfig,
-    private val ownNodeId: NodeId
+    private val audioController: AudioController,
 ) {
-    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    private var managerScope: CoroutineScope? = null
     
     private val _callState = MutableStateFlow<CallState>(CallState.Idle)
     val callState = _callState.asStateFlow()
@@ -47,10 +53,18 @@ class VoiceCallManager(
     private val ownEphemeralPublicKey: ByteArray = ephemeralKeyPair.public.encoded
     private val ownEphemeralPrivateKey: ByteArray = ephemeralKeyPair.private.encoded
 
-    init {
+    fun start() {
+        if (managerScope != null) return
+        val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+        managerScope = scope
+
         scope.launch {
             messagingService.callSignalsStream.collect { (sourceNodeId, signal) ->
-                handleIncomingSignal(sourceNodeId, signal)
+                try {
+                    handleIncomingSignal(sourceNodeId, signal)
+                } catch (e: SecurityException) {
+                    MeshLogger.error("VoiceCallManager", "Permission denied for incoming call audio", e.toString())
+                }
             }
         }
         
@@ -63,7 +77,7 @@ class VoiceCallManager(
                         is CallState.Active -> current.peerNodeId
                         else -> null
                     }
-                    if (peerNodeId != null && peerNodeId.toString() == event.nodeId.toString()) {
+                    if (peerNodeId != null && (peerNodeId.toString() == event.nodeId.toString())) {
                         MeshLogger.info("VoiceCallManager", "Route to peer lost: $peerNodeId")
                         endCallWithReason("Connection lost")
                     }
@@ -72,6 +86,15 @@ class VoiceCallManager(
         }
     }
 
+    fun stop() {
+        managerScope?.cancel()
+        managerScope = null
+        stopVoiceSession()
+        _callState.value = CallState.Idle
+    }
+
+    @SuppressLint("MissingPermission")
+    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun dial(peerNodeId: NodeId) {
         if (_callState.value !is CallState.Idle) return
 
@@ -88,20 +111,25 @@ class VoiceCallManager(
         MeshLogger.info("VoiceCallManager", "Dialing $peerNodeId")
 
         // Start dialing timeout
-        scope.launch {
+        managerScope?.launch {
             delay(config.callDialingTimeoutMs.milliseconds)
-            val current = _callState.value
-            if (current is CallState.Dialing && current.callId == callId) {
-                MeshLogger.info("VoiceCallManager", "Dialing timeout for $peerNodeId")
-                cancel()
-                endCallWithReason("No answer")
+            when (val current = _callState.value) {
+                is CallState.Dialing -> {
+                    if (current.callId == callId) {
+                        MeshLogger.info("VoiceCallManager", "Dialing timeout for $peerNodeId")
+                        cancel()
+                        endCallWithReason("No answer")
+                    }
+                }
+                else -> {}
             }
         }
     }
 
+    @SuppressLint("MissingPermission")
+    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun accept() {
-        val current = _callState.value
-        if (current !is CallState.Ringing) return
+        val current = _callState.value as? CallState.Ringing ?: return
 
         val accept = CallAccept(ownEphemeralPublicKey)
         val buf = ByteArray(256)
@@ -157,29 +185,22 @@ class VoiceCallManager(
         if (current is CallState.Idle) return
 
         // Capture peer/call details before mutating state.
-        val peerNodeId = when (current) {
-            is CallState.Dialing -> current.peerNodeId
-            is CallState.Ringing -> current.peerNodeId
-            is CallState.Active -> current.peerNodeId
-            is CallState.Ended -> current.peerNodeId
-            CallState.Idle -> null
+        val (peerNodeId, callId) = when (current) {
+            is CallState.Dialing -> current.peerNodeId to current.callId
+            is CallState.Ringing -> current.peerNodeId to current.callId
+            is CallState.Active -> current.peerNodeId to current.callId
+            is CallState.Ended -> current.peerNodeId to null
+            CallState.Idle -> null to null
         }
 
         // Notify the peer BEFORE tearing down local state so the signal has the
         // best chance to be sent while routes and keys are still known.
-        val callId = when (current) {
-            is CallState.Dialing -> current.callId
-            is CallState.Ringing -> current.callId
-            is CallState.Active -> current.callId
-            is CallState.Ended -> null
-            CallState.Idle -> null
-        }
         if (peerNodeId != null && callId != null) {
             val signal = CallSignal(callId, CallSignalType.HANGUP, ByteArray(0))
             messagingService.sendCallSignal(peerNodeId, signal)
             // Retry once after a short delay in case the first attempt is queued
             // behind a discovery request or dropped due to a transient route issue.
-            scope.launch {
+            managerScope?.launch {
                 delay(500.milliseconds)
                 messagingService.sendCallSignal(peerNodeId, signal)
             }
@@ -194,18 +215,18 @@ class VoiceCallManager(
     }
 
     private fun endCallWithReason(reason: String) {
-        val current = _callState.value
-        val peerNodeId = when (current) {
+        val peerNodeId = when (val current = _callState.value) {
             is CallState.Dialing -> current.peerNodeId
             is CallState.Ringing -> current.peerNodeId
             is CallState.Active -> current.peerNodeId
-            else -> return
+            is CallState.Ended -> current.peerNodeId
+            CallState.Idle -> return
         }
 
         stopVoiceSession()
         _callState.value = CallState.Ended(peerNodeId, reason)
 
-        scope.launch {
+        managerScope?.launch {
             delay(config.callEndedDisplayMs.milliseconds)
             if (_callState.value is CallState.Ended) {
                 _callState.value = CallState.Idle
@@ -213,18 +234,45 @@ class VoiceCallManager(
         }
     }
 
+    @SuppressLint("MissingPermission")
+    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     private fun startVoiceSession(callId: MessageId, peerNodeId: NodeId, callCrypto: CallCrypto) {
-        stopVoiceSession()
-        val session = VoiceSessionManager(context, meshService, callId, peerNodeId, callCrypto)
+        val started = audioController.startSession(
+            AudioSessionType.VOICE_CALL, 
+            mode = config.audioConfig.callSettings.audioMode
+        ) {
+            voiceSession?.stop()
+            voiceSession = null
+            // If we are active, we should probably transition to Idle or Ended
+            if (_callState.value is CallState.Active) {
+                _callState.value = CallState.Ended(peerNodeId, "Preempted")
+            }
+        }
+
+        if (!started) {
+            MeshLogger.error("VoiceCallManager", "Audio session rejected for call")
+            endCallWithReason("Audio resources busy")
+            return
+        }
+
+        val session = VoiceSessionManager(
+            context, 
+            meshService, 
+            callId, 
+            peerNodeId, 
+            callCrypto,
+            config.audioConfig.callSettings
+        )
         voiceSession = session
         session.start()
     }
 
     private fun stopVoiceSession() {
-        voiceSession?.stop()
-        voiceSession = null
+        audioController.stopSession(AudioSessionType.VOICE_CALL)
     }
 
+    @SuppressLint("MissingPermission")
+    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     private fun handleIncomingSignal(sourceNodeId: NodeId, signal: CallSignal) {
         when (signal.type) {
             CallSignalType.OFFER -> {
@@ -239,7 +287,7 @@ class VoiceCallManager(
                     MeshLogger.info("VoiceCallManager", "Incoming call from $sourceNodeId")
                     
                     // Start ringing timeout
-                    scope.launch {
+                    managerScope?.launch {
                         delay(config.callRingingTimeoutMs.milliseconds)
                         val current = _callState.value
                         if (current is CallState.Ringing && current.callId == signal.callId) {
@@ -254,40 +302,47 @@ class VoiceCallManager(
                 }
             }
             CallSignalType.ACCEPT -> {
-                val current = _callState.value
-                if (current is CallState.Dialing && current.peerNodeId == sourceNodeId) {
-                    val accept = try {
-                        CallSignalProtocol.callAccept.read(signal.payload, 0).value
-                    } catch (e: Exception) {
-                        MeshLogger.error("VoiceCallManager", "Failed to parse ACCEPT from $sourceNodeId", e.toString())
-                        return
+                when (val current = _callState.value) {
+                    is CallState.Dialing -> {
+                        if (current.peerNodeId == sourceNodeId) {
+                            val accept = try {
+                                CallSignalProtocol.callAccept.read(signal.payload, 0).value
+                            } catch (e: Exception) {
+                                MeshLogger.error("VoiceCallManager", "Failed to parse ACCEPT from $sourceNodeId", e.toString())
+                                return
+                            }
+                            val callCrypto = CallCrypto(
+                                ownEphemeralPrivateKeyBytes = ownEphemeralPrivateKey,
+                                ownEphemeralPublicKeyBytes = ownEphemeralPublicKey,
+                                peerEphemeralPublicKeyBytes = accept.ephemeralPublicKey,
+                                isCaller = true
+                            )
+                            _callState.value = CallState.Active(
+                                sourceNodeId,
+                                current.callId,
+                                current.startTime,
+                                Timestamp(System.currentTimeMillis()),
+                                callCrypto
+                            )
+                            startVoiceSession(current.callId, sourceNodeId, callCrypto)
+                            MeshLogger.info("VoiceCallManager", "Call accepted by $sourceNodeId")
+                        }
                     }
-                    val callCrypto = CallCrypto(
-                        ownEphemeralPrivateKeyBytes = ownEphemeralPrivateKey,
-                        ownEphemeralPublicKeyBytes = ownEphemeralPublicKey,
-                        peerEphemeralPublicKeyBytes = accept.ephemeralPublicKey,
-                        isCaller = true
-                    )
-                    _callState.value = CallState.Active(
-                        sourceNodeId,
-                        current.callId,
-                        current.startTime,
-                        Timestamp(System.currentTimeMillis()),
-                        callCrypto
-                    )
-                    startVoiceSession(current.callId, sourceNodeId, callCrypto)
-                    MeshLogger.info("VoiceCallManager", "Call accepted by $sourceNodeId")
+                    else -> {}
                 }
             }
             CallSignalType.CANCEL -> {
-                val current = _callState.value
-                if (current is CallState.Ringing && current.peerNodeId == sourceNodeId) {
-                    endCallWithReason("Caller cancelled")
+                when (val current = _callState.value) {
+                    is CallState.Ringing -> {
+                        if (current.peerNodeId == sourceNodeId) {
+                            endCallWithReason("Caller cancelled")
+                        }
+                    }
+                    else -> {}
                 }
             }
             CallSignalType.HANGUP, CallSignalType.REJECT, CallSignalType.BUSY -> {
-                val current = _callState.value
-                val isRelevant = when (current) {
+                val isRelevant = when (val current = _callState.value) {
                     is CallState.Dialing -> current.peerNodeId == sourceNodeId
                     is CallState.Ringing -> current.peerNodeId == sourceNodeId
                     is CallState.Active -> current.peerNodeId == sourceNodeId

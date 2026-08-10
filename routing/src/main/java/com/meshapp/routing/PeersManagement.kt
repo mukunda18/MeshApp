@@ -22,6 +22,7 @@ class PeersManagement(
     private val helloIntervalMs: Long
 ) {
     private val peers = ConcurrentHashMap<NodeId, Peer>()
+    private var selfName: String = ""
 
     /** Collectable stream of peer table mutations for upper layer observation */
     val peerEventsChannel = Channel<PeerEvent>(capacity = Channel.UNLIMITED)
@@ -87,10 +88,11 @@ class PeersManagement(
 
     /** Calls broadcastHello on the given Sender every helloIntervalMs milliseconds */
     fun startHelloBroadcastLoop(scope: CoroutineScope, sender: Sender, displayName: String) {
+        selfName = displayName
         scope.launch {
             while (true) {
                 try {
-                    sender.broadcastHello(displayName)
+                    sender.broadcastHello(selfName)
                 } catch (e: Exception) {
                     if (e is kotlinx.coroutines.CancellationException) throw e
                     android.util.Log.e("PeersManagement", "Error in hello loop", e)
@@ -98,5 +100,10 @@ class PeersManagement(
                 delay(helloIntervalMs.milliseconds)
             }
         }
+    }
+
+    /** Updates the name sent in HELLO broadcasts mid-session */
+    fun updateSelfName(newName: String) {
+        selfName = newName
     }
 }

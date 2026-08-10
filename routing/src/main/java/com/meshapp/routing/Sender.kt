@@ -32,7 +32,7 @@ import kotlin.time.Duration.Companion.milliseconds
 class Sender(
     private val selfNodeId: NodeId,
     private val selfPublicKey: PublicKey,
-    private val selfName: String,
+    private var selfName: String,
     private val transport: MeshTransport,
     private val router: Router,
     private val peers: PeersManagement,
@@ -102,6 +102,11 @@ class Sender(
             )
         )
         MeshLogger.packetSent("Sender", "Broadcasted HELLO", "Display Name: $displayName, Routes: ${combinedRoutes.size}")
+    }
+
+    /** Updates the name sent in RREQ/RREP packets mid-session */
+    fun updateSelfName(newName: String) {
+        selfName = newName
     }
 
     /** Builds and broadcasts a RERR listing each newly unreachable destination */
