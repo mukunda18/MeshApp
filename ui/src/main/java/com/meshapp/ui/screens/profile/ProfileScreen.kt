@@ -15,16 +15,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DeviceHub
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.SettingsEthernet
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -40,7 +38,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -64,10 +61,8 @@ import com.meshapp.ui.viewmodel.HomeViewModel
 @Composable
 fun ProfileScreen(
     viewModel: HomeViewModel = viewModel(),
-    onBack: () -> Unit,
     onNavigateHome: () -> Unit,
     onNavigateChats: () -> Unit,
-    onNavigateNearbyNodes: () -> Unit,
     onNavigateNetworkInterfaces: () -> Unit,
     onNavigateAbout: () -> Unit
 ) {
@@ -77,50 +72,6 @@ fun ProfileScreen(
 
     Scaffold(
         containerColor = MeshBg0,
-        topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MeshBg2)
-                    .padding(horizontal = MeshSpacing.sm, vertical = MeshSpacing.xs),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = MeshTextPrimary
-                    )
-                }
-                Text(
-                    text = "Profile",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MeshTextPrimary,
-                    modifier = Modifier.weight(1f)
-                )
-                Box {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(MeshBg3)
-                            .border(1.5.dp, MeshGreen, CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = uiState.profile.avatarInitials,
-                            color = MeshGreen,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Box(modifier = Modifier.align(Alignment.BottomEnd)) {
-                        StatusDot(isOnline = true, size = 12.dp)
-                    }
-                }
-            }
-        },
         bottomBar = {
             MeshFooterNavigation(
                 currentRoute = "profile",
@@ -165,21 +116,6 @@ fun ProfileScreen(
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(top = MeshSpacing.xs + 2.dp)
                     )
-                    Row(modifier = Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "NODE ID:",
-                            color = MeshMuted,
-                            style = MaterialTheme.typography.labelSmall,
-                            letterSpacing = 0.5.sp
-                        )
-                        Text(
-                            text = " ${uiState.profile.nodeId}",
-                            color = MeshGreen,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1
-                        )
-                    }
                 }
             }
 
@@ -253,8 +189,6 @@ fun ProfileScreen(
                         .padding(bottom = MeshSpacing.sm)
                 ) {
                     Column {
-                        OptionRow("View Nearby Nodes", Icons.Filled.DeviceHub, onNavigateNearbyNodes)
-                        DividerLine()
                         OptionRow("Network Interfaces", Icons.Filled.Router, onNavigateNetworkInterfaces)
                         DividerLine()
                         OptionRow("About", Icons.Filled.Info, onNavigateAbout)
@@ -265,7 +199,7 @@ fun ProfileScreen(
     }
 
     if (showEditNameDialog) {
-        androidx.compose.material3.AlertDialog(
+        AlertDialog(
             onDismissRequest = { showEditNameDialog = false },
             title = { Text("Change Device Name", color = MeshTextPrimary) },
             text = {

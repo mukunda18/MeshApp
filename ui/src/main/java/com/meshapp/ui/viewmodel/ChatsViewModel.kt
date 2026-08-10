@@ -26,7 +26,6 @@ import kotlin.time.Duration.Companion.milliseconds
 class ChatsViewModel(
     private val messagingService: MessagingService,
     private val meshService: MeshService,
-    private val voiceCallManager: VoiceCallManager,
     private val ownNodeId: NodeId
 ) : ViewModel() {
     private val _peerMap = MutableStateFlow<Map<String, PeerState>>(emptyMap())
@@ -130,18 +129,6 @@ class ChatsViewModel(
                 _uiState.value = ChatsUiState(nodes = nodes)
             }
         }
-    }
-
-    fun dial(nodeId: String) {
-        val parsedNodeId = parseNodeId(nodeId) ?: return
-        voiceCallManager.dial(parsedNodeId)
-    }
-
-    private fun parseNodeId(value: String): NodeId? {
-        if (value.length != 64) return null
-        return runCatching {
-            NodeId(value.hexToByteArray())
-        }.getOrNull()
     }
 
     private fun refreshFromRouting() {

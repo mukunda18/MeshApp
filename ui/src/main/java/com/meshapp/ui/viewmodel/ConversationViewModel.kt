@@ -71,6 +71,7 @@ class ConversationViewModel(
     fun initialize(nodeId: String) {
         if (nodeId.isBlank()) return
         val parsedNodeId = parseNodeId(nodeId) ?: return
+
         if (activeNodeId?.toString() == parsedNodeId.toString()) return
         activeNodeId = parsedNodeId
         refreshUI(parsedNodeId)

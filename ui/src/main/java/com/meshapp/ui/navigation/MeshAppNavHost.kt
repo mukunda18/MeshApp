@@ -8,9 +8,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.outlined.Devices
+import androidx.compose.material.icons.automirrored.outlined.List
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.List
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Router
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -51,7 +50,6 @@ import com.meshapp.ui.screens.about.AboutScreen
 import com.meshapp.ui.screens.chats.ChatsScreen
 import com.meshapp.ui.screens.conversation.ConversationScreen
 import com.meshapp.ui.screens.home.HomeScreen
-import com.meshapp.ui.screens.nearbynodes.NearbyNodesScreen
 import com.meshapp.ui.screens.networkinterfaces.NetworkInterfacesScreen
 import com.meshapp.ui.screens.profile.ProfileScreen
 import com.meshapp.ui.screens.voice.VoiceCallOverlay
@@ -79,6 +77,7 @@ fun MeshAppNavHost(
         val backStackEntry by navController.currentBackStackEntryAsState()
 
         val currentRoute = backStackEntry?.destination?.route?.substringBefore("/") ?: MeshRoutes.HOME
+        val conversationRoute = MeshRoutes.CONVERSATION.substringBefore("/")
 
         val homeViewModel: HomeViewModel = if (homeViewModelFactory != null) {
             viewModel(factory = homeViewModelFactory)
@@ -94,87 +93,83 @@ fun MeshAppNavHost(
         Scaffold(
             containerColor = MeshBg0,
             topBar = {
-                CenterAlignedTopAppBar(
-                    title = {
-                        Text(
-                            text = getTopBarTitle(currentRoute),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MeshTextPrimary
+                if (currentRoute != conversationRoute) {
+                    CenterAlignedTopAppBar(
+                        title = {
+                            Text(
+                                text = getTopBarTitle(currentRoute),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MeshTextPrimary
+                            )
+                        },
+                        navigationIcon = {
+                            if (!isRootTab) {
+                                IconButton(onClick = { navController.popBackStack() }) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = "Navigate Back",
+                                        tint = MeshTextPrimary
+                                    )
+                                }
+                            }
+                        },
+                        actions = {
+                            if (isRootTab || currentRoute == MeshRoutes.PROFILE) {
+                                Box {
+                                    IconButton(onClick = { showQuickActions = true }) {
+                                        ProfileAvatar(
+                                            initials = uiState.profile.avatarInitials,
+                                            size = 32.dp
+                                        )
+                                    }
+                                    if (isRootTab) {
+                                        DropdownMenu(
+                                            expanded = showQuickActions,
+                                            onDismissRequest = { showQuickActions = false }
+                                        ) {
+                                            DropdownMenuItem(
+                                                text = { Text("My Node Profile") },
+                                                leadingIcon = { Icon(Icons.Outlined.Person, contentDescription = null) },
+                                                onClick = {
+                                                    showQuickActions = false
+                                                    navController.navigate(MeshRoutes.PROFILE)
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Network Interfaces") },
+                                                leadingIcon = { Icon(Icons.Outlined.Router, contentDescription = null) },
+                                                onClick = {
+                                                    showQuickActions = false
+                                                    navController.navigate(MeshRoutes.NETWORK_INTERFACES)
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("System Logs") },
+                                                leadingIcon = { Icon(Icons.AutoMirrored.Outlined.List, contentDescription = null) },
+                                                onClick = {
+                                                    showQuickActions = false
+                                                    navController.navigate(MeshRoutes.LOGS)
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("About Mesh") },
+                                                leadingIcon = { Icon(Icons.Outlined.Info, contentDescription = null) },
+                                                onClick = {
+                                                    showQuickActions = false
+                                                    navController.navigate(MeshRoutes.ABOUT)
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                            containerColor = MeshBg0
                         )
-                    },
-                    navigationIcon = {
-                        if (!isRootTab) {
-                            IconButton(onClick = { navController.popBackStack() }) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = "Navigate Back",
-                                    tint = MeshTextPrimary
-                                )
-                            }
-                        }
-                    },
-                    actions = {
-                        if (isRootTab) {
-                            Box {
-                                IconButton(onClick = { showQuickActions = true }) {
-                                    ProfileAvatar(
-                                        initials = uiState.profile.avatarInitials,
-                                        size = 32.dp
-                                    )
-                                }
-                                DropdownMenu(
-                                    expanded = showQuickActions,
-                                    onDismissRequest = { showQuickActions = false }
-                                ) {
-                                    DropdownMenuItem(
-                                        text = { Text("My Node Profile") },
-                                        leadingIcon = { Icon(Icons.Outlined.Person, contentDescription = null) },
-                                        onClick = {
-                                            showQuickActions = false
-                                            navController.navigate(MeshRoutes.PROFILE)
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Nearby Nodes") },
-                                        leadingIcon = { Icon(Icons.Outlined.Devices, contentDescription = null) },
-                                        onClick = {
-                                            showQuickActions = false
-                                            navController.navigate(MeshRoutes.NEARBY_NODES)
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Network Interfaces") },
-                                        leadingIcon = { Icon(Icons.Outlined.Router, contentDescription = null) },
-                                        onClick = {
-                                            showQuickActions = false
-                                            navController.navigate(MeshRoutes.NETWORK_INTERFACES)
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("System Logs") },
-                                        leadingIcon = { Icon(Icons.Outlined.List, contentDescription = null) },
-                                        onClick = {
-                                            showQuickActions = false
-                                            navController.navigate(MeshRoutes.LOGS)
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("About Mesh") },
-                                        leadingIcon = { Icon(Icons.Outlined.Info, contentDescription = null) },
-                                        onClick = {
-                                            showQuickActions = false
-                                            navController.navigate(MeshRoutes.ABOUT)
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                        containerColor = MeshBg0
                     )
-                )
+                }
             },
             bottomBar = {
                 if (isRootTab && uiState.voiceCallState is CallState.Idle) {
@@ -213,21 +208,10 @@ fun MeshAppNavHost(
                     composable(MeshRoutes.PROFILE) {
                         ProfileScreen(
                             viewModel = homeViewModel,
-                            onBack = { navController.popBackStack() },
                             onNavigateHome = { navController.navigateToTab(MeshRoutes.HOME) },
                             onNavigateChats = { navController.navigateToTab(MeshRoutes.CHATS) },
-                            onNavigateNearbyNodes = { navController.navigate(MeshRoutes.NEARBY_NODES) },
                             onNavigateNetworkInterfaces = { navController.navigate(MeshRoutes.NETWORK_INTERFACES) },
                             onNavigateAbout = { navController.navigate(MeshRoutes.ABOUT) }
-                        )
-                    }
-                    composable(MeshRoutes.NEARBY_NODES) {
-                        NearbyNodesScreen(
-                            viewModel = homeViewModel,
-                            onBack = { navController.popBackStack() },
-                            onNavigateHome = { navController.navigateToTab(MeshRoutes.HOME) },
-                            onNavigateChats = { navController.navigateToTab(MeshRoutes.CHATS) },
-                            onNodeClick = { nodeId -> navController.navigate(MeshRoutes.conversation(nodeId)) }
                         )
                     }
                     composable(MeshRoutes.CHATS) {
@@ -243,16 +227,21 @@ fun MeshAppNavHost(
                     }
                     composable(MeshRoutes.NETWORK_INTERFACES) {
                         NetworkInterfacesScreen(
-                            viewModel = viewModel(),
-                            onBack = { navController.popBackStack() }
+                            viewModel = viewModel()
                         )
                     }
                     composable(MeshRoutes.ABOUT) {
-                        AboutScreen(onBack = { navController.popBackStack() })
+                        AboutScreen()
                     }
                     composable(
-                        route = MeshRoutes.CONVERSATION,
-                        arguments = listOf(navArgument("nodeId") { type = NavType.StringType })
+                        route = "${MeshRoutes.CONVERSATION}?name={name}",
+                        arguments = listOf(
+                            navArgument("nodeId") { type = NavType.StringType },
+                            navArgument("name") {
+                                type = NavType.StringType
+                                defaultValue = ""
+                            }
+                        )
                     ) { backStackEntry ->
                         val nodeId = backStackEntry.arguments?.getString("nodeId") ?: ""
                         val conversationViewModel: ConversationViewModel = if (conversationViewModelFactory != null) {
@@ -272,7 +261,10 @@ fun MeshAppNavHost(
                 VoiceCallOverlay(
                     state = uiState.voiceCallState,
                     isMinimized = uiState.isCallMinimized,
-                    onAccept = { homeViewModel.acceptCall() },
+                    onAccept = {
+                        @Suppress("MissingPermission")
+                        homeViewModel.acceptCall()
+                    },
                     onReject = { homeViewModel.rejectCall() },
                     onCancel = { homeViewModel.cancelCall() },
                     onHangup = { homeViewModel.hangupCall() },
@@ -327,12 +319,11 @@ private fun getTopBarTitle(route: String): String {
     return when (route) {
         MeshRoutes.HOME -> "Mesh Network"
         MeshRoutes.CHATS -> "Conversations"
-        MeshRoutes.NEARBY_NODES -> "Nearby Nodes"
         MeshRoutes.NETWORK_INTERFACES -> "Network Interfaces"
         MeshRoutes.PROFILE -> "Node Profile"
         MeshRoutes.ABOUT -> "About Mesh"
         MeshRoutes.LOGS -> "System Logs"
-        MeshRoutes.CONVERSATION -> "Chat"
+        MeshRoutes.CONVERSATION.substringBefore("/") -> "Chat"
         else -> "Mesh"
     }
 }

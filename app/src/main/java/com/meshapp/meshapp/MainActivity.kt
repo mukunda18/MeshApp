@@ -82,7 +82,6 @@ class MainActivity : ComponentActivity() {
                         chats = ChatsViewModelFactory(
                             messagingService = container.messagingService,
                             meshService = container.meshService,
-                            voiceCallManager = container.voiceCallManager,
                             ownNodeId = container.identity.nodeId
                         ),
                         conversation = ConversationViewModelFactory(

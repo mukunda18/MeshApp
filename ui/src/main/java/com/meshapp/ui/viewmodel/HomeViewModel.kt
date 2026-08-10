@@ -1,6 +1,8 @@
 package com.meshapp.ui.viewmodel
 
+import android.Manifest
 import android.app.Application
+import androidx.annotation.RequiresPermission
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.meshapp.meshcontrol.MeshService
@@ -62,12 +64,14 @@ class HomeViewModel(
         refreshNetworkInterfaces()
     }
 
+    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun dial(nodeId: String) {
         val peer = _peerMap.value[nodeId] ?: return
         voiceCallManager.dial(peer.nodeId)
         _uiState.update { it.copy(isCallMinimized = false) }
     }
 
+    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun acceptCall() {
         voiceCallManager.accept()
     }
