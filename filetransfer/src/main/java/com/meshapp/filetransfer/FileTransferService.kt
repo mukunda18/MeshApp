@@ -164,10 +164,9 @@ class FileTransferService(
 
     private suspend fun performSend(record: FileTransferRecord) {
         val file = File(record.sourcePath ?: return)
-        val chunks = FileChunker.splitFile(file, record.metadata.chunkSize)
         
-        for ((index, data) in chunks.withIndex()) {
-            if (record.status != FileTransferStatus.TRANSFERRING) break
+        FileChunker.streamFile(file, record.metadata.chunkSize) { index, data ->
+            if (record.status != FileTransferStatus.TRANSFERRING) return@streamFile
             
             val packet = FileChunkPacket(record.transferId, index, record.metadata.totalChunks, data)
             meshService.sendFileChunk(record.peerNodeId, Payload.FileChunk(packet))

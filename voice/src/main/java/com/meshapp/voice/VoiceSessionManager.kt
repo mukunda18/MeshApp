@@ -5,10 +5,8 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.AudioFormat
-import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
-import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
@@ -53,9 +51,9 @@ class VoiceSessionManager(
     private val callId: MessageId,
     private val peerNodeId: NodeId,
     private val callCrypto: CallCrypto,
+    private val settings: com.meshapp.meshcontrol.AudioFeatureSettings
 ) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     @Volatile
     private var isRunning = false
@@ -73,10 +71,6 @@ class VoiceSessionManager(
     private val initialBufferCount = 3 // ~60 ms initial delay cushion
     private val maxJitterPackets = 6    // ~120 ms latency ceiling
 
-    // Playback and filter settings
-    private val playbackGain = 1.0f
-    private val noiseGateThreshold = 0
-
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun start() {
         if (isRunning) return
@@ -88,7 +82,6 @@ class VoiceSessionManager(
         }
 
         isRunning = true
-        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
 
         sessionJob = scope.launch {
             try {
@@ -104,7 +97,6 @@ class VoiceSessionManager(
     fun stop() {
         if (!isRunning) return
         isRunning = false
-        audioManager.mode = AudioManager.MODE_NORMAL
         sessionJob?.cancel()
         sessionJob = null
         codec.release()
@@ -122,13 +114,18 @@ class VoiceSessionManager(
             return
         }
 
-        val recorder = AudioRecord(
-            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
-            VoiceCodec.SAMPLE_RATE,
-            AudioFormat.CHANNEL_IN_MONO,
-            AudioFormat.ENCODING_PCM_16BIT,
-            minBufferSize.coerceAtLeast(VoiceCodec.BYTES_PER_FRAME * 2)
-        )
+        val recorder = try {
+            AudioRecord(
+                settings.audioSource,
+                VoiceCodec.SAMPLE_RATE,
+                AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT,
+                minBufferSize.coerceAtLeast(VoiceCodec.BYTES_PER_FRAME * 2)
+            )
+        } catch (e: SecurityException) {
+            MeshLogger.error("VoiceSessionManager", "SecurityException during AudioRecord creation", e.toString())
+            return
+        }
 
         if (recorder.state != AudioRecord.STATE_INITIALIZED) {
             MeshLogger.error("VoiceSessionManager", "AudioRecord initialization failed")
@@ -144,9 +141,15 @@ class VoiceSessionManager(
 
         // Hardware audio enhancements
         runCatching {
-            if (AcousticEchoCanceler.isAvailable()) AcousticEchoCanceler.create(recorder.audioSessionId)?.enabled = true
-            if (NoiseSuppressor.isAvailable()) NoiseSuppressor.create(recorder.audioSessionId)?.enabled = true
-            if (AutomaticGainControl.isAvailable()) AutomaticGainControl.create(recorder.audioSessionId)?.enabled = true
+            if (settings.aecEnabled && AcousticEchoCanceler.isAvailable()) {
+                AcousticEchoCanceler.create(recorder.audioSessionId)?.enabled = true
+            }
+            if (settings.nsEnabled && NoiseSuppressor.isAvailable()) {
+                NoiseSuppressor.create(recorder.audioSessionId)?.enabled = true
+            }
+            if (settings.agcEnabled && AutomaticGainControl.isAvailable()) {
+                AutomaticGainControl.create(recorder.audioSessionId)?.enabled = true
+            }
         }
 
         try {
@@ -189,7 +192,7 @@ class VoiceSessionManager(
 
     private fun sendFrame(sequenceNumber: Int, pcmFrame: ByteArray) {
         try {
-            val processed = applyAudioFilters(pcmFrame, gain = 1.0f, useNoiseGate = false)
+            val processed = applyAudioFilters(pcmFrame, gain = settings.gain, useNoiseGate = settings.agcEnabled)
             val encoded = codec.encode(processed)
             val encrypted = callCrypto.encrypt(sequenceNumber, encoded)
 
@@ -280,7 +283,7 @@ class VoiceSessionManager(
             val seq = expectedSequence.get()
             val frame = jitterBuffer.remove(seq) ?: break
 
-            val amplified = applyAudioFilters(frame, gain = playbackGain, useNoiseGate = false)
+            val amplified = applyAudioFilters(frame, gain = settings.gain, useNoiseGate = false)
             track.write(amplified, 0, amplified.size)
             expectedSequence.incrementAndGet()
         }
@@ -307,7 +310,7 @@ class VoiceSessionManager(
             if (sample and 0x8000 != 0) sample -= 0x10000
 
             // 1. Noise Gate
-            if (useNoiseGate && abs(sample) < noiseGateThreshold) {
+            if (useNoiseGate && abs(sample) < settings.noiseGateThreshold) {
                 sample = 0
             }
 

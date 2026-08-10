@@ -35,9 +35,10 @@ import kotlinx.coroutines.sync.withLock
  * implement MeshSocketFactory to create Context-bound sockets.
  */
 class MeshService(
-    private val config: MeshConfig,
+    val config: MeshConfig,
     private val socketFactory: MeshSocketFactory,
     private val nodesStore: NodesStore,
+    private val audioController: AudioController? = null,
     private val signer: PacketSigner? = null,
     private val verifier: PacketVerifier? = null
 ) {
@@ -159,6 +160,9 @@ class MeshService(
 
         _stateStream.value = MeshState.STOPPING
         MeshLogger.info("MeshService", "Stopping Mesh Service...")
+
+        // Ensure all audio sessions are closed and mic indicator is off
+        audioController?.stopAll()
 
         serviceScope?.cancel()
         serviceScope = null

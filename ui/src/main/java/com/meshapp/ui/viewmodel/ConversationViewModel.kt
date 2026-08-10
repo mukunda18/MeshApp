@@ -149,7 +149,8 @@ class ConversationViewModel(
     }
 
     /** Starts recording; call on mic-button press. Returns false if permission is missing. */
-    fun startVoiceMessageRecording(): Boolean = voiceMessageRecorder.start()
+    fun startVoiceMessageRecording(): Boolean = 
+        voiceMessageRecorder.start(meshService.config.audioConfig.messageSettings)
 
     /** Stops recording and hands the resulting file to FileTransferService, unchanged. */
     fun stopVoiceMessageRecording() {

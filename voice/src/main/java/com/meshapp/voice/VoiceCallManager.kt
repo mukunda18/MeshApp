@@ -1,9 +1,12 @@
 package com.meshapp.voice
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import androidx.annotation.RequiresPermission
 import com.meshapp.logger.MeshLogger
+import com.meshapp.meshcontrol.AudioController
+import com.meshapp.meshcontrol.AudioSessionType
 import com.meshapp.meshcontrol.MeshConfig
 import com.meshapp.meshcontrol.MeshService
 import com.meshapp.messaging.MessagingService
@@ -31,7 +34,8 @@ class VoiceCallManager(
     private val context: Context,
     private val messagingService: MessagingService,
     private val meshService: MeshService,
-    private val config: MeshConfig
+    private val config: MeshConfig,
+    private val audioController: AudioController
 ) {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     
@@ -77,6 +81,7 @@ class VoiceCallManager(
         }
     }
 
+    @SuppressLint("MissingPermission")
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun dial(peerNodeId: NodeId) {
         if (_callState.value !is CallState.Idle) return
@@ -109,6 +114,7 @@ class VoiceCallManager(
         }
     }
 
+    @SuppressLint("MissingPermission")
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun accept() {
         val current = _callState.value
@@ -217,19 +223,41 @@ class VoiceCallManager(
         }
     }
 
+    @SuppressLint("MissingPermission")
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     private fun startVoiceSession(callId: MessageId, peerNodeId: NodeId, callCrypto: CallCrypto) {
-        stopVoiceSession()
-        val session = VoiceSessionManager(context, meshService, callId, peerNodeId, callCrypto)
+        val started = audioController.startSession(AudioSessionType.VOICE_CALL) {
+            voiceSession?.stop()
+            voiceSession = null
+            // If we are active, we should probably transition to Idle or Ended
+            if (_callState.value is CallState.Active) {
+                _callState.value = CallState.Ended(peerNodeId, "Preempted")
+            }
+        }
+
+        if (!started) {
+            MeshLogger.error("VoiceCallManager", "Audio session rejected for call")
+            endCallWithReason("Audio resources busy")
+            return
+        }
+
+        val session = VoiceSessionManager(
+            context, 
+            meshService, 
+            callId, 
+            peerNodeId, 
+            callCrypto,
+            config.audioConfig.callSettings
+        )
         voiceSession = session
         session.start()
     }
 
     private fun stopVoiceSession() {
-        voiceSession?.stop()
-        voiceSession = null
+        audioController.stopSession(AudioSessionType.VOICE_CALL)
     }
 
+    @SuppressLint("MissingPermission")
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     private fun handleIncomingSignal(sourceNodeId: NodeId, signal: CallSignal) {
         when (signal.type) {

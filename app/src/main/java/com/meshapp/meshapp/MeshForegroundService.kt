@@ -1,5 +1,6 @@
 package com.meshapp.meshapp
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -7,11 +8,14 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.IBinder
+import androidx.core.content.ContextCompat
 import com.meshapp.logger.MeshLogger
 import com.meshapp.voice.VoiceSimulator
 import com.meshapp.voice.CallState
+import com.meshapp.meshcontrol.AudioSessionType
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,7 +35,10 @@ class MeshForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        voiceSimulator = VoiceSimulator(this)
+        val app = application as MeshApplication
+        // We use the shared container to get the AudioController for the simulator
+        val audioController = app.container.audioController
+        voiceSimulator = VoiceSimulator(this, audioController)
         createNotificationChannels()
         MeshLogger.info("ForegroundService", "Mesh Foreground Service Created")
         
@@ -49,6 +56,15 @@ class MeshForegroundService : Service() {
         val app = application as MeshApplication
         app.applicationScope.launch {
             val container = app.awaitContainer()
+
+            // Sync Voice Simulation state with AudioController
+            launch {
+                container.audioController.activeSession.collect { session ->
+                    _isVoiceSimActive.value = (session == AudioSessionType.LOOPBACK)
+                    updateNotification()
+                }
+            }
+
             container.voiceCallManager.callState.collect { state ->
                 if (state is CallState.Idle) {
                     fullScreenPresentedCallId = null
@@ -66,9 +82,16 @@ class MeshForegroundService : Service() {
                 return START_NOT_STICKY
             }
             ACTION_START_VOICE_SIM -> {
-                voiceSimulator.start()
-                _isVoiceSimActive.value = true
-                updateNotification()
+                if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                    app.applicationScope.launch {
+                        val container = app.awaitContainer()
+                        voiceSimulator.start(container.meshConfig.audioConfig.callSettings)
+                        _isVoiceSimActive.value = true
+                        updateNotification()
+                    }
+                } else {
+                    MeshLogger.error("ForegroundService", "Cannot start loopback: RECORD_AUDIO permission missing")
+                }
             }
             ACTION_STOP_VOICE_SIM -> {
                 voiceSimulator.stop()
@@ -130,6 +153,7 @@ class MeshForegroundService : Service() {
 
     private fun stopMeshAndSelf() {
         MeshLogger.info("ForegroundService", "Stopping Mesh Foreground Service...")
+        _isVoiceSimActive.value = false
         val app = application as MeshApplication
         if (app.isContainerReady) {
             app.applicationScope.launch(Dispatchers.Default) {
@@ -143,6 +167,7 @@ class MeshForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        _isVoiceSimActive.value = false
         val app = application as MeshApplication
         if (app.isContainerReady) {
             app.applicationScope.launch(Dispatchers.Default) {

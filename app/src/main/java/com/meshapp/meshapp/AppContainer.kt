@@ -3,6 +3,7 @@ package com.meshapp.meshapp
 import android.content.Context
 import android.os.Build
 import com.meshapp.meshapp.network.AndroidMeshSocketFactory
+import com.meshapp.meshcontrol.AudioController
 import com.meshapp.meshcontrol.MeshConfig
 import com.meshapp.meshcontrol.MeshService
 import com.meshapp.messaging.ConversationStore
@@ -36,6 +37,10 @@ import com.meshapp.security.NodesStore
 class AppContainer(context: Context) {
 
     private val appContext: Context = context.applicationContext
+
+    // ── Audio control ─────────────────────────────────────────────────────────
+
+    val audioController: AudioController = AudioController(appContext)
 
     // ── Identity & security ───────────────────────────────────────────────────
 
@@ -84,6 +89,7 @@ class AppContainer(context: Context) {
         config = meshConfig,
         socketFactory = AndroidMeshSocketFactory(appContext),
         nodesStore = nodesStore,
+        audioController = audioController,
         signer = security,
         verifier = security
     )
@@ -106,7 +112,8 @@ class AppContainer(context: Context) {
         context = appContext,
         messagingService = messagingService,
         meshService = meshService,
-        config = meshConfig
+        config = meshConfig,
+        audioController = audioController
     )
 
     val fileTransferService: FileTransferService = FileTransferService(
@@ -119,7 +126,8 @@ class AppContainer(context: Context) {
     // ── Voice messaging ───────────────────────────────────────────────────────
 
     val voiceMessageRecorder: VoiceMessageRecorder = VoiceMessageRecorder(
-        context = appContext
+        context = appContext,
+        audioController = audioController
     )
 
     val voiceMessagePlayer: VoiceMessagePlayer = VoiceMessagePlayer()
