@@ -142,8 +142,6 @@ fun ProfileScreen(
                             }
                         )
                         DividerLine()
-                        InfoRow("Node ID", uiState.profile.nodeId, Icons.Filled.SettingsEthernet)
-                        DividerLine()
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()

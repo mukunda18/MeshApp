@@ -199,7 +199,9 @@ fun MeshAppNavHost(
                     composable(MeshRoutes.HOME) {
                         HomeScreen(
                             viewModel = homeViewModel,
-                            onNavigateToNearbyNodes = { navController.navigate(MeshRoutes.NEARBY_NODES) }
+                            onNodeClick = { node ->
+                                navController.navigate(MeshRoutes.conversation(node.nodeId))
+                            }
                         )
                     }
                     composable(MeshRoutes.LOGS) {
@@ -208,7 +210,7 @@ fun MeshAppNavHost(
                     composable(MeshRoutes.PROFILE) {
                         ProfileScreen(
                             viewModel = homeViewModel,
-                            onNavigateHome = { navController.navigateToTab(MeshRoutes.HOME) },
+                            onNavigateHome = { navController.navigateToHomeRoot() },
                             onNavigateChats = { navController.navigateToTab(MeshRoutes.CHATS) },
                             onNavigateNetworkInterfaces = { navController.navigate(MeshRoutes.NETWORK_INTERFACES) },
                             onNavigateAbout = { navController.navigate(MeshRoutes.ABOUT) }
