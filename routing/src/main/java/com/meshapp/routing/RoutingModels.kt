@@ -43,3 +43,22 @@ data class QueuedMessage(
 
 /** Delivery lifecycle states emitted on the Sender status channel */
 enum class SendStatus { SENT, DELIVERED, FAILED }
+
+/**
+ * Returns a bounded window of up to limit elements starting at offset
+ * Wraps around to the front of the list once the end is reached so repeated
+ * calls with an advancing offset eventually cycle through every element
+ * Used to rotate a large routing table across successive HELLO emissions
+ * Returns an empty list when the source list is empty or limit is not positive
+ */
+fun <T> List<T>.chunkFrom(offset: Int, limit: Int): List<T> {
+    if (isEmpty() || limit <= 0) return emptyList()
+    val start = offset.mod(size)
+    val result = mutableListOf<T>()
+    var index = start
+    while (result.size < limit && result.size < size) {
+        result.add(this[index])
+        index = (index + 1) % size
+    }
+    return result
+}
