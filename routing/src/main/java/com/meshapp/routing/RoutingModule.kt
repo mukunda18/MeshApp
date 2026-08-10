@@ -90,4 +90,10 @@ class RoutingModule(
         activeJob?.cancel()
         activeJob = null
     }
+
+    /** Updates the display name used for HELLO broadcasts mid-session */
+    fun updateDisplayName(newName: String) {
+        peers.updateSelfName(newName)
+        sender.updateSelfName(newName)
+    }
 }

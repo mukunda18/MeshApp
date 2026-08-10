@@ -12,7 +12,6 @@ package com.meshapp.voice
 class VoiceCodec {
     companion object {
         const val SAMPLE_RATE = 16000
-        const val CHANNELS = 1
         const val FRAME_MS = 20
         const val SAMPLES_PER_FRAME = SAMPLE_RATE * FRAME_MS / 1000 // 320
         const val BYTES_PER_FRAME = SAMPLES_PER_FRAME * 2 // 16-bit PCM

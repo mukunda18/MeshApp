@@ -74,6 +74,7 @@ class MainActivity : ComponentActivity() {
                             meshService = container.meshService,
                             meshController = meshController,
                             voiceCallManager = container.voiceCallManager,
+                            identityManager = container.identityManager,
                             appName = getString(R.string.app_name),
                             deviceName = container.identity.name,
                             nodeId = container.identity.nodeId.toString()

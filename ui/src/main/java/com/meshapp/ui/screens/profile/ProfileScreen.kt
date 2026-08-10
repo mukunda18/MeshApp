@@ -29,8 +29,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,6 +72,8 @@ fun ProfileScreen(
     onNavigateAbout: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    var showEditNameDialog by remember { mutableStateOf(false) }
+    var newName by remember { mutableStateOf("") }
 
     Scaffold(
         containerColor = MeshBg0,
@@ -188,7 +196,15 @@ fun ProfileScreen(
                         .border(1.dp, MeshBorder, MeshShapes.card)
                 ) {
                     Column {
-                        InfoRow("Device Name", uiState.profile.name, Icons.Filled.DeviceHub)
+                        InfoRow(
+                            title = "Device Name",
+                            value = uiState.profile.name,
+                            icon = Icons.Filled.DeviceHub,
+                            onClick = {
+                                newName = uiState.profile.name
+                                showEditNameDialog = true
+                            }
+                        )
                         DividerLine()
                         InfoRow("Node ID", uiState.profile.nodeId, Icons.Filled.SettingsEthernet)
                         DividerLine()
@@ -247,6 +263,55 @@ fun ProfileScreen(
             }
         }
     }
+
+    if (showEditNameDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showEditNameDialog = false },
+            title = { Text("Change Device Name", color = MeshTextPrimary) },
+            text = {
+                Column {
+                    Text(
+                        "This name is broadcast to nearby nodes.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MeshMuted,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    TextField(
+                        value = newName,
+                        onValueChange = { newName = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = MeshBg2,
+                            unfocusedContainerColor = MeshBg2,
+                            focusedTextColor = MeshTextPrimary,
+                            unfocusedTextColor = MeshTextPrimary,
+                            cursorColor = MeshGreen,
+                            focusedIndicatorColor = MeshGreen
+                        ),
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (newName.isNotBlank()) {
+                            viewModel.updateName(newName.trim())
+                            showEditNameDialog = false
+                        }
+                    }
+                ) {
+                    Text("Save", color = MeshGreen)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditNameDialog = false }) {
+                    Text("Cancel", color = MeshMuted)
+                }
+            },
+            containerColor = MeshBg1
+        )
+    }
 }
 
 @Composable
@@ -262,10 +327,16 @@ private fun SectionTitle(value: String) {
 }
 
 @Composable
-private fun InfoRow(title: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
+private fun InfoRow(
+    title: String,
+    value: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: (() -> Unit)? = null
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(MeshSpacing.sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -282,12 +353,22 @@ private fun InfoRow(title: String, value: String, icon: androidx.compose.ui.grap
             modifier = Modifier.padding(start = MeshSpacing.sm)
         )
         Spacer(modifier = Modifier.weight(1f))
-        Text(
-            text = value,
-            color = MeshMuted,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = value,
+                color = MeshMuted,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium
+            )
+            if (onClick != null) {
+                Icon(
+                    imageVector = Icons.Filled.ChevronRight,
+                    contentDescription = null,
+                    tint = MeshMuted.copy(alpha = 0.5f),
+                    modifier = Modifier.size(16.dp).padding(start = 4.dp)
+                )
+            }
+        }
     }
 }
 

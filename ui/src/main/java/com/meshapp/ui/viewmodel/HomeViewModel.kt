@@ -13,6 +13,7 @@ import com.meshapp.routing.PeerEvent
 import com.meshapp.ui.state.HomeNodeUiState
 import com.meshapp.ui.state.HomeUiState
 import com.meshapp.ui.state.ProfileUiState
+import com.meshapp.security.IdentityManager
 import com.meshapp.voice.CallState
 import com.meshapp.voice.VoiceCallManager
 import com.meshapp.model.NodeId
@@ -29,6 +30,7 @@ class HomeViewModel(
     private val meshService: MeshService,
     private val meshController: MeshController,
     private val voiceCallManager: VoiceCallManager,
+    private val identityManager: IdentityManager,
     appName: String,
     deviceName: String,
     nodeId: String
@@ -88,6 +90,26 @@ class HomeViewModel(
 
     fun maximizeCall() {
         _uiState.update { it.copy(isCallMinimized = false) }
+    }
+
+    fun updateName(newName: String) {
+        if (newName.isBlank()) return
+        
+        // 1. Update Persistent Identity
+        identityManager.updateName(newName)
+        
+        // 2. Update Running Mesh Service (propagates to HELLO packets)
+        meshService.updateDisplayName(newName)
+        
+        // 3. Update UI
+        _uiState.update { state ->
+            state.copy(
+                profile = state.profile.copy(
+                    name = newName,
+                    avatarInitials = initialsFrom(newName)
+                )
+            )
+        }
     }
 
     private fun observeVoiceCallState() {

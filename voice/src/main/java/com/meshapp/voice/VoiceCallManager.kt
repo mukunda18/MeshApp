@@ -1,6 +1,8 @@
 package com.meshapp.voice
 
+import android.Manifest
 import android.content.Context
+import androidx.annotation.RequiresPermission
 import com.meshapp.logger.MeshLogger
 import com.meshapp.meshcontrol.MeshConfig
 import com.meshapp.meshcontrol.MeshService
@@ -29,8 +31,7 @@ class VoiceCallManager(
     private val context: Context,
     private val messagingService: MessagingService,
     private val meshService: MeshService,
-    private val config: MeshConfig,
-    private val ownNodeId: NodeId
+    private val config: MeshConfig
 ) {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     
@@ -50,7 +51,11 @@ class VoiceCallManager(
     init {
         scope.launch {
             messagingService.callSignalsStream.collect { (sourceNodeId, signal) ->
-                handleIncomingSignal(sourceNodeId, signal)
+                try {
+                    handleIncomingSignal(sourceNodeId, signal)
+                } catch (e: SecurityException) {
+                    MeshLogger.error("VoiceCallManager", "Permission denied for incoming call audio", e.toString())
+                }
             }
         }
         
@@ -72,6 +77,7 @@ class VoiceCallManager(
         }
     }
 
+    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun dial(peerNodeId: NodeId) {
         if (_callState.value !is CallState.Idle) return
 
@@ -90,15 +96,20 @@ class VoiceCallManager(
         // Start dialing timeout
         scope.launch {
             delay(config.callDialingTimeoutMs.milliseconds)
-            val current = _callState.value
-            if (current is CallState.Dialing && current.callId == callId) {
-                MeshLogger.info("VoiceCallManager", "Dialing timeout for $peerNodeId")
-                cancel()
-                endCallWithReason("No answer")
+            when (val current = _callState.value) {
+                is CallState.Dialing -> {
+                    if (current.callId == callId) {
+                        MeshLogger.info("VoiceCallManager", "Dialing timeout for $peerNodeId")
+                        cancel()
+                        endCallWithReason("No answer")
+                    }
+                }
+                else -> {}
             }
         }
     }
 
+    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun accept() {
         val current = _callState.value
         if (current !is CallState.Ringing) return
@@ -157,23 +168,16 @@ class VoiceCallManager(
         if (current is CallState.Idle) return
 
         // Capture peer/call details before mutating state.
-        val peerNodeId = when (current) {
-            is CallState.Dialing -> current.peerNodeId
-            is CallState.Ringing -> current.peerNodeId
-            is CallState.Active -> current.peerNodeId
-            is CallState.Ended -> current.peerNodeId
-            CallState.Idle -> null
+        val (peerNodeId, callId) = when (current) {
+            is CallState.Dialing -> current.peerNodeId to current.callId
+            is CallState.Ringing -> current.peerNodeId to current.callId
+            is CallState.Active -> current.peerNodeId to current.callId
+            is CallState.Ended -> current.peerNodeId to null
+            CallState.Idle -> null to null
         }
 
         // Notify the peer BEFORE tearing down local state so the signal has the
         // best chance to be sent while routes and keys are still known.
-        val callId = when (current) {
-            is CallState.Dialing -> current.callId
-            is CallState.Ringing -> current.callId
-            is CallState.Active -> current.callId
-            is CallState.Ended -> null
-            CallState.Idle -> null
-        }
         if (peerNodeId != null && callId != null) {
             val signal = CallSignal(callId, CallSignalType.HANGUP, ByteArray(0))
             messagingService.sendCallSignal(peerNodeId, signal)
@@ -194,12 +198,12 @@ class VoiceCallManager(
     }
 
     private fun endCallWithReason(reason: String) {
-        val current = _callState.value
-        val peerNodeId = when (current) {
+        val peerNodeId = when (val current = _callState.value) {
             is CallState.Dialing -> current.peerNodeId
             is CallState.Ringing -> current.peerNodeId
             is CallState.Active -> current.peerNodeId
-            else -> return
+            is CallState.Ended -> current.peerNodeId
+            CallState.Idle -> return
         }
 
         stopVoiceSession()
@@ -213,6 +217,7 @@ class VoiceCallManager(
         }
     }
 
+    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     private fun startVoiceSession(callId: MessageId, peerNodeId: NodeId, callCrypto: CallCrypto) {
         stopVoiceSession()
         val session = VoiceSessionManager(context, meshService, callId, peerNodeId, callCrypto)
@@ -225,6 +230,7 @@ class VoiceCallManager(
         voiceSession = null
     }
 
+    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     private fun handleIncomingSignal(sourceNodeId: NodeId, signal: CallSignal) {
         when (signal.type) {
             CallSignalType.OFFER -> {
@@ -254,35 +260,43 @@ class VoiceCallManager(
                 }
             }
             CallSignalType.ACCEPT -> {
-                val current = _callState.value
-                if (current is CallState.Dialing && current.peerNodeId == sourceNodeId) {
-                    val accept = try {
-                        CallSignalProtocol.callAccept.read(signal.payload, 0).value
-                    } catch (e: Exception) {
-                        MeshLogger.error("VoiceCallManager", "Failed to parse ACCEPT from $sourceNodeId", e.toString())
-                        return
+                when (val current = _callState.value) {
+                    is CallState.Dialing -> {
+                        if (current.peerNodeId == sourceNodeId) {
+                            val accept = try {
+                                CallSignalProtocol.callAccept.read(signal.payload, 0).value
+                            } catch (e: Exception) {
+                                MeshLogger.error("VoiceCallManager", "Failed to parse ACCEPT from $sourceNodeId", e.toString())
+                                return
+                            }
+                            val callCrypto = CallCrypto(
+                                ownEphemeralPrivateKeyBytes = ownEphemeralPrivateKey,
+                                ownEphemeralPublicKeyBytes = ownEphemeralPublicKey,
+                                peerEphemeralPublicKeyBytes = accept.ephemeralPublicKey,
+                                isCaller = true
+                            )
+                            _callState.value = CallState.Active(
+                                sourceNodeId,
+                                current.callId,
+                                current.startTime,
+                                Timestamp(System.currentTimeMillis()),
+                                callCrypto
+                            )
+                            startVoiceSession(current.callId, sourceNodeId, callCrypto)
+                            MeshLogger.info("VoiceCallManager", "Call accepted by $sourceNodeId")
+                        }
                     }
-                    val callCrypto = CallCrypto(
-                        ownEphemeralPrivateKeyBytes = ownEphemeralPrivateKey,
-                        ownEphemeralPublicKeyBytes = ownEphemeralPublicKey,
-                        peerEphemeralPublicKeyBytes = accept.ephemeralPublicKey,
-                        isCaller = true
-                    )
-                    _callState.value = CallState.Active(
-                        sourceNodeId,
-                        current.callId,
-                        current.startTime,
-                        Timestamp(System.currentTimeMillis()),
-                        callCrypto
-                    )
-                    startVoiceSession(current.callId, sourceNodeId, callCrypto)
-                    MeshLogger.info("VoiceCallManager", "Call accepted by $sourceNodeId")
+                    else -> {}
                 }
             }
             CallSignalType.CANCEL -> {
-                val current = _callState.value
-                if (current is CallState.Ringing && current.peerNodeId == sourceNodeId) {
-                    endCallWithReason("Caller cancelled")
+                when (val current = _callState.value) {
+                    is CallState.Ringing -> {
+                        if (current.peerNodeId == sourceNodeId) {
+                            endCallWithReason("Caller cancelled")
+                        }
+                    }
+                    else -> {}
                 }
             }
             CallSignalType.HANGUP, CallSignalType.REJECT, CallSignalType.BUSY -> {

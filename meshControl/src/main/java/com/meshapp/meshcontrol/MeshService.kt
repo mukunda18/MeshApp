@@ -178,6 +178,11 @@ class MeshService(
         MeshLogger.info("MeshService", "Mesh Service STOPPED")
     }
 
+    /** Updates the display name used in HELLO broadcasts */
+    fun updateDisplayName(newName: String) {
+        routingModule?.updateDisplayName(newName)
+    }
+
     fun sendMessage(destinationNodeID: NodeId, payload: Payload.Message, messageId: MessageId) {
         val rm = routingModule ?: error("MeshService not running")
         rm.sender.enqueue(messageId, payload, destinationNodeID)

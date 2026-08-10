@@ -46,9 +46,10 @@ class AppContainer(context: Context) {
         throw RuntimeException("Failed to initialize SqlNodesStore", e)
     }
 
+    val identityManager: IdentityManager = IdentityManager(PersistentIdentityStore(appContext))
+
     val identity: Identity = try {
-        IdentityManager(PersistentIdentityStore(appContext))
-            .getOrGenerate(
+        identityManager.getOrGenerate(
                 Build.MODEL
                     .replace(Regex("[^a-zA-Z0-9 _-]"), "")
                     .trim()
@@ -105,8 +106,7 @@ class AppContainer(context: Context) {
         context = appContext,
         messagingService = messagingService,
         meshService = meshService,
-        config = meshConfig,
-        ownNodeId = identity.nodeId
+        config = meshConfig
     )
 
     val fileTransferService: FileTransferService = FileTransferService(
