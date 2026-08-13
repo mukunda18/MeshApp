@@ -1,7 +1,11 @@
 package com.meshapp.ui.screens.conversation
 
+import android.annotation.SuppressLint
+import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -41,6 +45,8 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Close
@@ -48,13 +54,11 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -114,7 +118,9 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
+@SuppressLint("MissingPermission")
 @Composable
 fun ConversationScreen(
     nodeId: String,
@@ -181,7 +187,15 @@ fun ConversationScreen(
                 initials = uiState.node.avatarInitials.ifBlank { "?" }.take(1),
                 isOnline = uiState.node.isOnline,
                 onBack = onBack,
-                onCall = { viewModel.dial() }
+                onCall = {
+                    if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                        viewModel.dial()
+                    } else {
+                        // In a real app, we'd trigger a permission request or show a rationale.
+                        // Here we just log for brevity as the user handles general permission flow in MainActivity.
+                        Log.w("ConversationScreen", "RECORD_AUDIO permission missing for dial")
+                    }
+                }
             )
         },
         bottomBar = {
@@ -201,7 +215,14 @@ fun ConversationScreen(
                     )
                 },
                 onAttachCamera = { cameraPickerLauncher.launch(null) },
-                onRecordStart = { viewModel.startVoiceMessageRecording() },
+                onRecordStart = {
+                    if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                        viewModel.startVoiceMessageRecording()
+                    } else {
+                        Log.w("ConversationScreen", "RECORD_AUDIO permission missing for recording")
+                        false
+                    }
+                },
                 onRecordStop = { viewModel.stopVoiceMessageRecording() },
                 onRecordCancel = { viewModel.cancelVoiceMessageRecording() }
             )
@@ -490,7 +511,6 @@ private fun DeliveryStatusIcon(status: MessageDeliveryStatus?) {
         MessageDeliveryStatus.QUEUED, MessageDeliveryStatus.SENT -> Icons.Filled.Done to MeshGreen
         MessageDeliveryStatus.DELIVERED, MessageDeliveryStatus.READ -> Icons.Filled.DoneAll to MeshGreen
         MessageDeliveryStatus.FAILED -> Icons.Filled.Close to MeshDanger
-        else -> Icons.Filled.Done to MeshGreen
     }
 
     Icon(
@@ -607,7 +627,7 @@ private fun ConversationInputBar(
         if (mode == InputBarMode.RECORDING) {
             recordingTimeSeconds = 0L
             while (true) {
-                delay(1000L)
+                delay(1000.milliseconds)
                 recordingTimeSeconds++
             }
         }
@@ -691,7 +711,7 @@ private fun ConversationInputBar(
             val micIcon = when {
                 isRecording -> Icons.Filled.Stop
                 draftMessage.isBlank() -> Icons.Filled.Mic
-                else -> Icons.Filled.Send
+                else -> Icons.AutoMirrored.Filled.Send
             }
             val micDescription = when {
                 isRecording -> "Stop and send recording"
@@ -802,7 +822,7 @@ private fun AttachmentChipRow(
         horizontalArrangement = Arrangement.spacedBy(MeshSpacing.xs)
     ) {
         AttachmentChip(
-            icon = Icons.Filled.InsertDriveFile,
+            icon = Icons.AutoMirrored.Filled.InsertDriveFile,
             label = "Document",
             modifier = Modifier.weight(1f),
             onClick = onDocument

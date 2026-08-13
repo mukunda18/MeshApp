@@ -54,57 +54,55 @@ class ConversationStore(
     fun appendMessage(nodeID: NodeId, message: Message) {
         val db = helper.writableDatabase
         val now = System.currentTimeMillis()
-        db.beginTransaction()
-        try {
-            db.insertWithOnConflict(
-                TABLE_CONVERSATIONS,
-                null,
-                ContentValues().apply {
-                    put(COL_REMOTE_NODE_ID, nodeID.toString())
-                    put(COL_REMOTE_NODE_ID_BYTES, nodeID.bytes)
-                    put(COL_UPDATED_AT, now)
-                },
-                SQLiteDatabase.CONFLICT_IGNORE
-            )
-            db.update(
-                TABLE_CONVERSATIONS,
-                ContentValues().apply { put(COL_UPDATED_AT, now) },
-                "$COL_REMOTE_NODE_ID = ?",
-                arrayOf(nodeID.toString())
-            )
-            db.insert(
-                TABLE_MESSAGES,
-                null,
-                ContentValues().apply {
-                    put(COL_REMOTE_NODE_ID, nodeID.toString())
-                    put(COL_SENDER_NODE_ID_BYTES, message.senderNodeId.bytes)
-                    put(COL_PLAINTEXT_CONTENT, message.plaintextContent)
-                    put(COL_COMPOSE_TIMESTAMP, message.composeTimestamp.millis)
-                    put(COL_MESSAGE_ID, message.messageId.bytes)
-                    put(COL_DELIVERY_STATUS, message.deliveryStatus.name)
-                }
-            )
-            db.setTransactionSuccessful()
-        } finally {
-            db.endTransaction()
+        db.transaction {
+            try {
+                insertWithOnConflict(
+                    TABLE_CONVERSATIONS,
+                    null,
+                    ContentValues().apply {
+                        put(COL_REMOTE_NODE_ID, nodeID.toString())
+                        put(COL_REMOTE_NODE_ID_BYTES, nodeID.bytes)
+                        put(COL_UPDATED_AT, now)
+                    },
+                    SQLiteDatabase.CONFLICT_IGNORE
+                )
+                update(
+                    TABLE_CONVERSATIONS,
+                    ContentValues().apply { put(COL_UPDATED_AT, now) },
+                    "$COL_REMOTE_NODE_ID = ?",
+                    arrayOf(nodeID.toString())
+                )
+                insert(
+                    TABLE_MESSAGES,
+                    null,
+                    ContentValues().apply {
+                        put(COL_REMOTE_NODE_ID, nodeID.toString())
+                        put(COL_SENDER_NODE_ID_BYTES, message.senderNodeId.bytes)
+                        put(COL_PLAINTEXT_CONTENT, message.plaintextContent)
+                        put(COL_COMPOSE_TIMESTAMP, message.composeTimestamp.millis)
+                        put(COL_MESSAGE_ID, message.messageId.bytes)
+                        put(COL_DELIVERY_STATUS, message.deliveryStatus.name)
+                    }
+                )
+            } finally {
+            }
         }
     }
 
     fun updateDeliveryStatus(messageID: MessageId, deliveryStatus: MessageDeliveryStatus): StoredMessage? {
         val db = helper.writableDatabase
-        db.beginTransaction()
-        try {
-            db.update(
-                TABLE_MESSAGES,
-                ContentValues().apply { put(COL_DELIVERY_STATUS, deliveryStatus.name) },
-                "$COL_MESSAGE_ID = ?",
-                arrayOf(messageID.toString())
-            )
-            val storedMessage = db.readMessageById(messageID)
-            db.setTransactionSuccessful()
-            return storedMessage
-        } finally {
-            db.endTransaction()
+        db.transaction {
+            try {
+                // SQLite update with BLOB in whe   reArgs requires execSQL or SQLiteStatement for byte[] binding
+                execSQL(
+                    "UPDATE $TABLE_MESSAGES SET $COL_DELIVERY_STATUS = ? WHERE $COL_MESSAGE_ID = ?",
+                    arrayOf(deliveryStatus.name, messageID.bytes)
+                )
+
+                val storedMessage = readMessageById(messageID)
+                return storedMessage
+            } finally {
+            }
         }
     }
 
@@ -128,14 +126,13 @@ class ConversationStore(
 
     fun deleteConversation(nodeID: NodeId) {
         val db = helper.writableDatabase
-        db.beginTransaction()
-        try {
-            val args = arrayOf(nodeID.toString())
-            db.delete(TABLE_MESSAGES, "$COL_REMOTE_NODE_ID = ?", args)
-            db.delete(TABLE_CONVERSATIONS, "$COL_REMOTE_NODE_ID = ?", args)
-            db.setTransactionSuccessful()
-        } finally {
-            db.endTransaction()
+        db.transaction {
+            try {
+                val args = arrayOf(nodeID.toString())
+                delete(TABLE_MESSAGES, "$COL_REMOTE_NODE_ID = ?", args)
+                delete(TABLE_CONVERSATIONS, "$COL_REMOTE_NODE_ID = ?", args)
+            } finally {
+            }
         }
     }
 
@@ -179,7 +176,7 @@ class ConversationStore(
     }
 
     private fun SQLiteDatabase.readMessageById(messageID: MessageId): StoredMessage? {
-        rawQuery(
+        return rawQuery(
             """
             SELECT
                 c.$COL_REMOTE_NODE_ID_BYTES,
@@ -191,14 +188,14 @@ class ConversationStore(
             FROM $TABLE_MESSAGES m
             INNER JOIN $TABLE_CONVERSATIONS c
                 ON c.$COL_REMOTE_NODE_ID = m.$COL_REMOTE_NODE_ID
-            WHERE m.$COL_MESSAGE_ID = ?
+            WHERE hex(m.$COL_MESSAGE_ID) = UPPER(?)
             ORDER BY m.$COL_ROW_ID DESC
             LIMIT 1
             """.trimIndent(),
             arrayOf(messageID.toString())
         ).use { cursor ->
             if (!cursor.moveToFirst()) return null
-            return StoredMessage(
+            StoredMessage(
                 remoteNodeId = NodeId(cursor.getBlob(cursor.getColumnIndexOrThrow(COL_REMOTE_NODE_ID_BYTES))),
                 message = cursor.toMessage()
             )

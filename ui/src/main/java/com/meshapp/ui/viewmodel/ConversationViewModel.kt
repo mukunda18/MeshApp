@@ -18,6 +18,7 @@ import com.meshapp.meshcontrol.PeerStatus
 import com.meshapp.messaging.Message
 import com.meshapp.messaging.MessageDeliveryStatus
 import com.meshapp.messaging.MessagingService
+import com.meshapp.security.NodesStore
 import com.meshapp.model.NodeId
 import com.meshapp.routing.PeerEvent
 import com.meshapp.ui.state.ConversationMessageUiState
@@ -48,6 +49,7 @@ class ConversationViewModel(
     private val ownNodeId: NodeId,
     private val messagingService: MessagingService,
     private val meshService: MeshService,
+    private val nodesStore: NodesStore,
     private val voiceCallManager: VoiceCallManager,
     private val fileTransferService: FileTransferService,
     private val voiceMessageRecorder: VoiceMessageRecorder,
@@ -59,6 +61,8 @@ class ConversationViewModel(
 
     val uiState: StateFlow<ConversationUiState> = _uiState.asStateFlow()
 
+    private val nameRefreshTrigger = MutableStateFlow(0)
+
     private var activeNodeId: NodeId? = null
 
     init {
@@ -66,6 +70,12 @@ class ConversationViewModel(
         startRouteRefreshLoop()
         observeConversationUpdates()
         observeFileTransfers()
+
+        viewModelScope.launch {
+            nodesStore.nodeUpdates.collect {
+                nameRefreshTrigger.value++
+            }
+        }
     }
 
     fun initialize(nodeId: String) {
@@ -211,8 +221,9 @@ class ConversationViewModel(
             combine(
                 messagingService.messagesStream,
                 _peerMap,
-                _routeNodeIds
-            ) { _, _, _ ->
+                _routeNodeIds,
+                nameRefreshTrigger
+            ) { _, _, _, _ ->
                 activeNodeId
             }.collect { destination ->
                 destination?.let { refreshUI(it) }
@@ -226,7 +237,7 @@ class ConversationViewModel(
         val peer = _peerMap.value[destination.toString()]
         val isInRouteTable = destination.toString() in _routeNodeIds.value
         val currentNode = _uiState.value.node
-        val displayName = peer?.name?.takeIf { it.isNotBlank() } ?: shortId(destination.toString())
+        val displayName = nodesStore.getName(destination) ?: shortId(destination.toString())
 
         val textMessages = messagingService.getHistory(destination)
         val fileTransfers = fileTransferService.store.list().filter {

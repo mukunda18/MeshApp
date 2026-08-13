@@ -7,6 +7,7 @@ import com.meshapp.meshcontrol.PeerState
 import com.meshapp.meshcontrol.PeerStatus
 import com.meshapp.messaging.Message
 import com.meshapp.messaging.MessagingService
+import com.meshapp.security.NodesStore
 import com.meshapp.routing.PeerEvent
 import com.meshapp.model.NodeId
 import com.meshapp.voice.VoiceCallManager
@@ -26,6 +27,7 @@ import kotlin.time.Duration.Companion.milliseconds
 class ChatsViewModel(
     private val messagingService: MessagingService,
     private val meshService: MeshService,
+    private val nodesStore: NodesStore,
     private val ownNodeId: NodeId
 ) : ViewModel() {
     private val _peerMap = MutableStateFlow<Map<String, PeerState>>(emptyMap())
@@ -36,10 +38,12 @@ class ChatsViewModel(
     private val _uiState = MutableStateFlow(ChatsUiState(nodes = emptyList()))
     val uiState: StateFlow<ChatsUiState> = _uiState.asStateFlow()
 
+    private val nameRefreshTrigger = MutableStateFlow(0)
+
     init {
         refreshFromRouting()
 
-        // React to peer events + refresh routing tables
+        // React to peer events
         viewModelScope.launch {
             meshService.peerEventsStream.collect { event ->
                 _peerMap.update { current ->
@@ -47,12 +51,11 @@ class ChatsViewModel(
                         is PeerEvent.Added -> {
                             refreshFromRouting()
                             current + (event.peer.nodeId.toString() to
-                                PeerState(event.peer.nodeId, event.peer.ip, null, null, PeerStatus.ACTIVE, event.peer.lastSeen))
+                                PeerState(event.peer.nodeId, event.peer.ip, nodesStore.getName(event.peer.nodeId), null, PeerStatus.ACTIVE, event.peer.lastSeen))
                         }
                         is PeerEvent.Updated -> {
-                            val existing = current[event.peer.nodeId.toString()]
                             current + (event.peer.nodeId.toString() to
-                                PeerState(event.peer.nodeId, event.peer.ip, existing?.name, existing?.publicKey, PeerStatus.ACTIVE, event.peer.lastSeen))
+                                PeerState(event.peer.nodeId, event.peer.ip, nodesStore.getName(event.peer.nodeId), null, PeerStatus.ACTIVE, event.peer.lastSeen))
                         }
                         is PeerEvent.Removed -> {
                             refreshFromRouting()
@@ -60,6 +63,13 @@ class ChatsViewModel(
                         }
                     }
                 }
+            }
+        }
+
+        // React to name updates in NodesStore
+        viewModelScope.launch {
+            nodesStore.nodeUpdates.collect {
+                nameRefreshTrigger.value++
             }
         }
 
@@ -76,8 +86,9 @@ class ChatsViewModel(
             combine(
                 _peerMap,
                 _routeNodeIds,
-                messagingService.conversationsStream
-            ) { peerMap, routeNodeIds, conversations ->
+                messagingService.conversationsStream,
+                nameRefreshTrigger
+            ) { peerMap, routeNodeIds, conversations, _ ->
                 val convByNodeId = conversations.associateBy { it.nodeID.toString() }
                 val onlineIds = (peerMap.keys + routeNodeIds)
                     .filter { it != ownNodeId.toString() }
@@ -91,8 +102,7 @@ class ChatsViewModel(
                 onlineIds.forEach { nodeId ->
                     if (seenNodeIds.add(nodeId)) {
                         val conv = convByNodeId[nodeId]
-                        val peer = peerMap[nodeId]
-                        val name = peer?.name ?: shortId(nodeId)
+                        val name = nodesStore.getName(parseNodeId(nodeId)) ?: shortId(nodeId)
                         nodes += NodeCardState(
                             id = nodeId,
                             name = name,
@@ -109,11 +119,12 @@ class ChatsViewModel(
                 // 2. Offline conversations: message history but no current route
                 convByNodeId.forEach { (nodeId, conv) ->
                     if (seenNodeIds.add(nodeId)) {
+                        val name = nodesStore.getName(parseNodeId(nodeId)) ?: shortId(nodeId)
                         nodes += NodeCardState(
                             id = nodeId,
-                            name = shortId(nodeId),
+                            name = name,
                             isOnline = false,
-                            avatarInitials = initialsFrom(shortId(nodeId)),
+                            avatarInitials = initialsFrom(name),
                             lastMessagePreview = conv.lastMessage?.plaintextContent,
                             lastMessageTimestamp = conv.lastMessage?.let(::formatTime),
                             unreadCount = conv.unreadCount,
@@ -130,6 +141,8 @@ class ChatsViewModel(
             }
         }
     }
+
+    private fun parseNodeId(hex: String): NodeId = NodeId(hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray())
 
     private fun refreshFromRouting() {
         val updatedRoutes = meshService.getRoutes()

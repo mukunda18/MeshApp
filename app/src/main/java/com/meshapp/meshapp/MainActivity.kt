@@ -75,6 +75,7 @@ class MainActivity : ComponentActivity() {
                             meshController = meshController,
                             voiceCallManager = container.voiceCallManager,
                             identityManager = container.identityManager,
+                            nodesStore = container.nodesStore,
                             appName = getString(R.string.app_name),
                             deviceName = container.identity.name,
                             nodeId = container.identity.nodeId.toString()
@@ -82,12 +83,14 @@ class MainActivity : ComponentActivity() {
                         chats = ChatsViewModelFactory(
                             messagingService = container.messagingService,
                             meshService = container.meshService,
+                            nodesStore = container.nodesStore,
                             ownNodeId = container.identity.nodeId
                         ),
                         conversation = ConversationViewModelFactory(
                             ownNodeId = container.identity.nodeId,
                             messagingService = container.messagingService,
                             meshService = container.meshService,
+                            nodesStore = container.nodesStore,
                             voiceCallManager = container.voiceCallManager,
                             fileTransferService = container.fileTransferService,
                             voiceMessageRecorder = container.voiceMessageRecorder,
