@@ -16,6 +16,7 @@ import com.meshapp.ui.state.HomeNodeUiState
 import com.meshapp.ui.state.HomeUiState
 import com.meshapp.ui.state.ProfileUiState
 import com.meshapp.security.IdentityManager
+import com.meshapp.security.NodesStore
 import com.meshapp.voice.CallState
 import com.meshapp.voice.VoiceCallManager
 import com.meshapp.model.NodeId
@@ -33,6 +34,7 @@ class HomeViewModel(
     private val meshController: MeshController,
     private val voiceCallManager: VoiceCallManager,
     private val identityManager: IdentityManager,
+    private val nodesStore: NodesStore,
     appName: String,
     deviceName: String,
     nodeId: String
@@ -57,11 +59,19 @@ class HomeViewModel(
 
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
+    private val nameRefreshTrigger = MutableStateFlow(0)
+
     init {
         observeMeshState()
         observeVoiceSimState()
         observeVoiceCallState()
         refreshNetworkInterfaces()
+        
+        viewModelScope.launch {
+            nodesStore.nodeUpdates.collect {
+                nameRefreshTrigger.value++
+            }
+        }
     }
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
@@ -173,12 +183,11 @@ class HomeViewModel(
     }
 
     private fun observeMeshState() {
-        // Seed with peers already known to the running service so they appear
-        // immediately when the screen is reopened (not just on future events).
+        // Seed with peers already known to the running service
         _peerMap.update {
             meshService.getPeers().associate { peer ->
                 peer.nodeId.toString() to PeerState(
-                    peer.nodeId, peer.ip, null, null, PeerStatus.ACTIVE, peer.lastSeen
+                    peer.nodeId, peer.ip, nodesStore.getName(peer.nodeId), null, PeerStatus.ACTIVE, peer.lastSeen
                 )
             }
         }
@@ -188,11 +197,10 @@ class HomeViewModel(
                 _peerMap.update { current ->
                     when (event) {
                         is PeerEvent.Added -> current + (event.peer.nodeId.toString() to
-                            PeerState(event.peer.nodeId, event.peer.ip, null, null, PeerStatus.ACTIVE, event.peer.lastSeen))
+                            PeerState(event.peer.nodeId, event.peer.ip, nodesStore.getName(event.peer.nodeId), null, PeerStatus.ACTIVE, event.peer.lastSeen))
                         is PeerEvent.Updated -> {
-                            val existing = current[event.peer.nodeId.toString()]
                             current + (event.peer.nodeId.toString() to
-                                PeerState(event.peer.nodeId, event.peer.ip, existing?.name, existing?.publicKey, PeerStatus.ACTIVE, event.peer.lastSeen))
+                                PeerState(event.peer.nodeId, event.peer.ip, nodesStore.getName(event.peer.nodeId), null, PeerStatus.ACTIVE, event.peer.lastSeen))
                         }
                         is PeerEvent.Removed -> current - event.nodeId.toString()
                     }
@@ -203,23 +211,25 @@ class HomeViewModel(
         viewModelScope.launch {
             combine(
                 meshService.stateStream,
-                _peerMap
-            ) { meshState, peerMap ->
-                meshState to peerMap
-            }.collect { (meshState, peerMap) ->
+                _peerMap,
+                nameRefreshTrigger
+            ) { meshState, peerMap, _ ->
                 val nodes = peerMap.values
                     .sortedBy { it.name ?: it.nodeId.toString() }
                     .map { peer ->
+                        val name = nodesStore.getName(peer.nodeId) ?: shortId(peer.nodeId.toString())
                         HomeNodeUiState(
                             nodeId = peer.nodeId.toString(),
-                            name = peer.name ?: shortId(peer.nodeId.toString()),
-                            avatarInitials = initialsFrom(peer.name ?: peer.nodeId.toString()),
+                            name = name,
+                            avatarInitials = initialsFrom(name),
                             isOnline = peer.status == PeerStatus.ACTIVE,
                             status = peer.status.name,
                             ip = peer.ip,
                             hopCount = null
                         )
                     }
+                meshState to nodes
+            }.collect { (meshState, nodes) ->
                 _uiState.update {
                     it.copy(
                         isMeshOn = meshState == MeshState.RUNNING,

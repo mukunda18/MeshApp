@@ -96,7 +96,7 @@ class Receiver(
                 HeaderProtocol.Type.RREP -> handleRrep(packet)
                 HeaderProtocol.Type.ACK -> handleAck(packet)
                 HeaderProtocol.Type.RERR -> handleRerr(packet)
-                HeaderProtocol.Type.VOICE -> handleVoice(packet, senderIp)
+                HeaderProtocol.Type.VOICE -> handleVoice(packet)
                 HeaderProtocol.Type.FILE_CHUNK -> handleFileChunk(packet)
                 else -> MeshLogger.error("Receiver", "Unknown packet type ${h.type}", "ID: ${h.id}")
             }
@@ -343,7 +343,7 @@ class Receiver(
         }
     }
 
-    private suspend fun handleVoice(packet: Packet, senderIp: String) {
+    private suspend fun handleVoice(packet: Packet) {
         try {
             val h = packet.header
             val result = PayloadParser.parse(packet) as? ParseResult.Success<*> ?: return
