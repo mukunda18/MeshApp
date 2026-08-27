@@ -67,6 +67,10 @@ class MessagingService(
     val conversationsStream: StateFlow<List<ConversationSummary>> = _conversationsStream.asStateFlow()
 
     private val outboundChannel = Channel<OutboundRequest>(Channel.UNLIMITED)
+    // Cooldown map for RREQ discovery per destination. Only accessed from the
+    // single outbound-processing coroutine, so no extra synchronization needed.
+    private val discoveryLastMs = mutableMapOf<NodeId, Long>()
+    private val discoveryRreqBackoffMs = 5_000L
 
     private var serviceJob: Job? = null
     private var serviceScope: CoroutineScope? = null
@@ -178,7 +182,15 @@ class MessagingService(
         if (pubKey == null) {
             // Key missing: Trigger RREQ and put back in queue to retry
             MeshLogger.info("MessagingService", "Public key missing for ${request.destinationNodeId}, discovering...")
-            meshService.discoverNode(request.destinationNodeId)
+            val nowMs = System.currentTimeMillis()
+            val lastDiscovery = discoveryLastMs[request.destinationNodeId]
+            if (lastDiscovery == null || nowMs - lastDiscovery > discoveryRreqBackoffMs) {
+                MeshLogger.info("MessagingService", "Public key missing for ${request.destinationNodeId}, discovering...")
+                meshService.discoverNode(request.destinationNodeId)
+                discoveryLastMs[request.destinationNodeId] = nowMs
+            } else {
+                MeshLogger.info("MessagingService", "Public key missing for ${request.destinationNodeId}, discovery already in progress")
+            }
             
             // Unblock the main loop: delay and re-enqueue in the background
             serviceScope?.launch {

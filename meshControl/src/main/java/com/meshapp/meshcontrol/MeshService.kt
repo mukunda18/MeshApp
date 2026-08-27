@@ -228,13 +228,12 @@ class MeshService(
         }
     }
 
-    /** Sends a FILE_CHUNK payload via TCP, routed if necessary */
-    fun sendFileChunk(destinationNodeID: NodeId, payload: Payload.FileChunk) {
-        val rm = routingModule ?: return
-        val scope = serviceScope ?: return
-        scope.launch {
-            rm.sender.sendFileChunk(destinationNodeID, payload)
-        }
+    /** Sends a FILE_CHUNK payload via TCP, routed if necessary.
+     * Suspends until the chunk is written to the transport so callers can pace
+     * and retry based on the result. Returns true on successful hand-off. */
+    suspend fun sendFileChunk(destinationNodeID: NodeId, payload: Payload.FileChunk): Boolean {
+        val rm = routingModule ?: return false
+        return rm.sender.sendFileChunk(destinationNodeID, payload)
     }
 
     /** Triggers AODV discovery for a node (route + public key) */

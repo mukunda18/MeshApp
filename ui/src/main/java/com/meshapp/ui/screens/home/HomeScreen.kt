@@ -97,45 +97,6 @@ fun HomeScreen(
             color = MeshMuted
         )
 
-        if (uiState.isMeshOn) {
-            Spacer(modifier = Modifier.height(MeshSpacing.md))
-            Surface(
-                onClick = { viewModel.toggleVoiceSimulation() },
-                shape = MeshShapes.chip,
-                color = if (uiState.isVoiceSimActive) MeshDanger else MeshBg2,
-                modifier = Modifier.border(
-                    1.dp, 
-                    if (uiState.isVoiceSimActive) MeshDanger else MeshBorder, 
-                    MeshShapes.chip
-                )
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = MeshSpacing.md, vertical = MeshSpacing.xs),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    StatusDot(
-                        isOnline = uiState.isVoiceSimActive,
-                        size = 8.dp
-                    )
-                    Spacer(modifier = Modifier.width(MeshSpacing.xs))
-                    Text(
-                        text = if (uiState.isVoiceSimActive) "STOP LOOPBACK" else "START LOOPBACK",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = if (uiState.isVoiceSimActive) MeshGreenOnAccent else MeshTextPrimary
-                    )
-                }
-            }
-            
-            if (uiState.isVoiceSimActive) {
-                Text(
-                    text = "Audio is playing back locally with 3s delay",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MeshDanger,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-            }
-        }
 
         Spacer(modifier = Modifier.height(MeshSpacing.xl))
 
