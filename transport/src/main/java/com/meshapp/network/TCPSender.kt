@@ -1,4 +1,4 @@
-package com.meshapp.network
+﻿package com.meshapp.network
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -10,6 +10,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import com.meshapp.logger.MeshLogger
 import java.net.Socket
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.milliseconds
 
 class TCPSender(
@@ -19,6 +20,12 @@ class TCPSender(
 ) {
     private val pool = ConnectionPool()
 
+    // One write lock per peer address. Concurrent coroutines frequently send on the
+    // SAME pooled socket (file chunks, chat messages, ACKs, forwarded packets).
+    // Without serializing the OutputStream writes, frames get interleaved and the
+    // receiving side loses its packet framing, which corrupts file transfers.
+    private val writeLocks = ConcurrentHashMap<String, Mutex>()
+
     suspend fun send(
         payload: ByteArray,
         address: String,
@@ -26,9 +33,12 @@ class TCPSender(
         length: Int = payload.size
     ) = withContext(Dispatchers.IO) {
         val socket = pool.getOrCreate(address)
+        val writeMutex = writeLocks.getOrPut(address) { Mutex() }
         try {
-            socket.getOutputStream().write(payload, offset, length)
-            socket.getOutputStream().flush()
+            writeMutex.withLock {
+                socket.getOutputStream().write(payload, offset, length)
+                socket.getOutputStream().flush()
+            }
         } catch (e: Exception) {
             MeshLogger.error("TCPSender", "Failed to send data to $address", e.toString())
             pool.purge(address)
@@ -38,7 +48,10 @@ class TCPSender(
         }
     }
 
-    suspend fun close() = pool.closeAll()
+    suspend fun close() {
+        writeLocks.clear()
+        pool.closeAll()
+    }
 
     private inner class ConnectionPool {
         private val connections = mutableMapOf<String, Socket>()

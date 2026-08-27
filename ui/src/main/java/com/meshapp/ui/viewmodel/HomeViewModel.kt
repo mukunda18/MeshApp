@@ -63,7 +63,6 @@ class HomeViewModel(
 
     init {
         observeMeshState()
-        observeVoiceSimState()
         observeVoiceCallState()
         refreshNetworkInterfaces()
         
@@ -152,26 +151,6 @@ class HomeViewModel(
             meshController.stop()
         } else {
             meshController.start()
-        }
-    }
-
-    fun toggleVoiceSimulation() {
-        if (meshController.isVoiceSimActive.value) {
-            meshController.stopVoiceSim()
-        } else {
-            // Ensure mesh is running first, as simulation lives in the service
-            if (!meshService.isRunning) {
-                meshController.start()
-            }
-            meshController.startVoiceSim()
-        }
-    }
-
-    private fun observeVoiceSimState() {
-        viewModelScope.launch {
-            meshController.isVoiceSimActive.collect { active ->
-                _uiState.update { it.copy(isVoiceSimActive = active) }
-            }
         }
     }
 

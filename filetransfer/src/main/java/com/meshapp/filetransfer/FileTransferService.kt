@@ -1,4 +1,4 @@
-package com.meshapp.filetransfer
+﻿package com.meshapp.filetransfer
 
 import android.content.Context
 import com.meshapp.logger.MeshLogger
@@ -9,7 +9,10 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.milliseconds
 
 class FileTransferService(
@@ -18,50 +21,106 @@ class FileTransferService(
     private val meshService: MeshService,
     private val messagingService: MessagingService,
     val store: FileTransferStore = InMemoryFileTransferStore(),
-    dispatcher: CoroutineDispatcher = Dispatchers.IO
+    private val dispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + dispatcher)
-    
+    companion object {
+        private const val TAG = "FileTransferService"
+        private const val CHUNK_SIZE_BYTES = 32 * 1024
+        private const val OFFER_RETRY_MAX_ATTEMPTS = 5
+        private const val OFFER_RETRY_INTERVAL_MS = 5_000L
+        private const val CHUNK_SEND_MAX_ATTEMPTS = 3
+        private const val CHUNK_RETRY_BASE_DELAY_MS = 300L
+        private const val MAX_CONSECUTIVE_CHUNK_FAILURES = 5
+        private const val COMPLETE_WAIT_TIMEOUT_MS = 30_000L
+        private const val CHUNK_PACING_DELAY_MS = 10L
+    }
+
+    // Recreated on every start() so stop/start cycles fully work.
+    private var scope: CoroutineScope? = null
+
+    @Volatile
+    private var started = false
+
     private val _events = MutableSharedFlow<FileTransferEvent>(extraBufferCapacity = 64)
     val events: SharedFlow<FileTransferEvent> = _events.asSharedFlow()
-    
-    private val offerRetryJobs = mutableMapOf<MessageId, Job>()
-    
+
+    // Serializes every mutation of FileTransferRecord state so signal handlers,
+    // the chunk handler, retry jobs and performSend never interleave transitions.
+    private val recordMutex = Mutex()
+
+    // Signal/job maps accessed from multiple threads: concurrent structures.
+    private val offerRetryJobs = ConcurrentHashMap<MessageId, Job>()
+    private val completionSignals = ConcurrentHashMap<MessageId, CompletableDeferred<Boolean>>()
+
     private val incomingDir = File(context.filesDir, "file_transfer/incoming").apply {
         if (!exists()) mkdirs()
     }
 
     fun start() {
-        scope.launch {
+        // Idempotent: previously every call appended ANOTHER pair of collectors,
+        // which double-handled signals/chunks and caused duplicated OFFER traffic.
+        if (started) {
+            MeshLogger.info(TAG, "start() called while already running - ignoring")
+            return
+        }
+        started = true
+        val s = CoroutineScope(SupervisorJob() + dispatcher)
+        scope = s
+
+        s.launch {
             messagingService.fileSignalsStream.collect { (peerId, signal) ->
-                handleIncomingSignal(peerId, signal)
+                try {
+                    handleIncomingSignal(peerId, signal)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    MeshLogger.error(TAG, "Error handling file signal", e.toString())
+                }
             }
         }
-        
-        scope.launch {
+
+        s.launch {
             meshService.incomingFileChunkStream.collect { (_, payload) ->
-                handleIncomingChunk(payload.packet)
+                try {
+                    handleIncomingChunk(payload.packet)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    MeshLogger.error(TAG, "Error handling file chunk", e.toString())
+                }
             }
         }
+        MeshLogger.info(TAG, "FileTransferService STARTED")
     }
 
     fun stop() {
-        scope.cancel()
+        started = false
         offerRetryJobs.values.forEach { it.cancel() }
         offerRetryJobs.clear()
+        completionSignals.values.forEach { it.complete(false) }
+        completionSignals.clear()
+        scope?.cancel()
+        scope = null
+        MeshLogger.info(TAG, "FileTransferService STOPPED")
     }
 
     fun sendFile(destinationNodeId: NodeId, file: File) {
         if (!file.exists()) {
-            MeshLogger.error("FileTransferService", "File does not exist: ${file.absolutePath}")
+            MeshLogger.error(TAG, "File does not exist: ${file.absolutePath}")
+            return
+        }
+        if (file.length() == 0L) {
+            // A zero-byte file produces totalChunks == 0 and can never complete;
+            // refuse it explicitly instead of leaving both sides waiting forever.
+            MeshLogger.error(TAG, "Refusing to send empty file: ${file.absolutePath}")
             return
         }
 
         val transferId = randomMessageId()
-        val chunkSize = 32 * 1024
+        val chunkSize = CHUNK_SIZE_BYTES
         val totalChunks = ((file.length() + chunkSize - 1) / chunkSize).toInt()
         val checksum = FileChecksum.sha256Hex(file)
-        
+
         val metadata = FileTransferMetadata(
             filename = file.name,
             size = file.length(),
@@ -80,36 +139,47 @@ class FileTransferService(
             isIncoming = false,
             sourcePath = file.absolutePath
         )
-        
+
         store.save(record)
         _events.tryEmit(FileTransferEvent.OfferSent(record))
-        
+
         sendFileOffer(destinationNodeId, record)
     }
 
     private fun sendFileOffer(destinationNodeId: NodeId, record: FileTransferRecord) {
-        val metadataBytes = ByteArray(1024) // Buffer for metadata
+        val metadataBytes = ByteArray(1024)
         val size = FileTransferMetadataProtocol.write(metadataBytes, record.metadata, 0)
         val signal = FileSignal(record.transferId, FileSignalType.OFFER, metadataBytes.copyOfRange(0, size))
-        
+
         messagingService.sendFileSignal(destinationNodeId, signal)
-        
-        // Start retry job
-        offerRetryJobs[record.transferId] = scope.launch {
-            var attempts = 0
-            while (attempts < 5 && (record.status == FileTransferStatus.OFFER_SENT)) {
-                delay(5000.milliseconds)
+
+        val jobScope = scope ?: return
+        offerRetryJobs[record.transferId]?.cancel()
+        offerRetryJobs[record.transferId] = jobScope.launch {
+            var resent = 1
+            while (resent < OFFER_RETRY_MAX_ATTEMPTS) {
+                delay(OFFER_RETRY_INTERVAL_MS.milliseconds)
+                // Stop retrying as soon as any other state has been reached
+                // (ACCEPTED, REJECTED, FAILED, TRANSFERRING...).
+                if (record.status != FileTransferStatus.OFFER_SENT) return@launch
+                resent++
+                MeshLogger.info(TAG, "Resending OFFER (attempt ${resent}/${OFFER_RETRY_MAX_ATTEMPTS}) for ${record.transferId}")
+                messagingService.sendFileSignal(destinationNodeId, signal)
+            }
+
+            // All retries exhausted without any response: surface the failure to the
+            // UI instead of leaving the record stuck at OFFER_SENT forever.
+            recordMutex.withLock {
                 if (record.status == FileTransferStatus.OFFER_SENT) {
-                    messagingService.sendFileSignal(destinationNodeId, signal)
-                    attempts++
-                    MeshLogger.info("FileTransferService", "Retrying offer for ${record.transferId}, attempt $attempts")
+                    record.status = FileTransferStatus.FAILED
+                    store.save(record)
                 }
             }
-            if (record.status == FileTransferStatus.OFFER_SENT) {
-                record.status = FileTransferStatus.FAILED
-                store.save(record)
-                _events.emit(FileTransferEvent.Failed(record, "Offer timeout"))
+            if (record.status == FileTransferStatus.FAILED) {
+                _events.tryEmit(FileTransferEvent.Failed(record, "No response to file offer"))
+                MeshLogger.error(TAG, "Offer failed for ${record.transferId}: no ACCEPT/REJECT received")
             }
+            offerRetryJobs.remove(record.transferId)
         }
     }
 
@@ -117,152 +187,315 @@ class FileTransferService(
         when (signal.type) {
             FileSignalType.OFFER -> handleOffer(peerId, signal)
             FileSignalType.ACCEPT -> handleAccept(signal)
-            FileSignalType.REJECT -> handleReject(signal)
+            FileSignalType.REJECT -> handleReject(peerId, signal)
             FileSignalType.CANCEL -> handleCancel(peerId, signal)
             FileSignalType.COMPLETE -> handleComplete(peerId, signal)
         }
     }
 
     private suspend fun handleOffer(peerId: NodeId, signal: FileSignal) {
-        val metadata = FileTransferMetadataProtocol.read(signal.payload, 0).value
-        val record = FileTransferRecord(
-            transferId = signal.transferId,
-            metadata = metadata,
-            status = FileTransferStatus.OFFER_RECEIVED,
-            peerNodeId = peerId,
-            isIncoming = true,
-            outputPath = File(incomingDir, "${signal.transferId}-${metadata.filename}").absolutePath
-        )
-        store.save(record)
-        _events.emit(FileTransferEvent.OfferReceived(record))
-        
-        // Auto-accept as per architecture
-        acceptTransfer(record)
-    }
+        var acceptedRecord: FileTransferRecord? = null
 
-    private fun acceptTransfer(record: FileTransferRecord) {
-        record.status = FileTransferStatus.ACCEPTED
-        store.save(record)
-        
-        val signal = FileSignal(record.transferId, FileSignalType.ACCEPT, ByteArray(0))
-        messagingService.sendFileSignal(record.peerNodeId, signal)
-    }
+        recordMutex.withLock {
+            val existing = store.get(signal.transferId, true)
+            if (existing != null && existing.isIncoming) {
+                val active = existing.status in setOf(
+                    FileTransferStatus.OFFER_RECEIVED,
+                    FileTransferStatus.ACCEPTED,
+                    FileTransferStatus.TRANSFERRING
+                )
+                if (active || existing.status == FileTransferStatus.COMPLETED) {
+                    // Duplicate/retried OFFER for a transfer we already have: NEVER reset
+                    // an active record here (that used to wipe receivedChunks mid-transfer).
+                    MeshLogger.info(TAG, "Duplicate OFFER for active/completed transfer ${signal.transferId} - ignoring")
+                    if (active) acceptedRecord = existing
+                    return@withLock
+                }
+            }
 
-    private fun handleAccept(signal: FileSignal) {
-        val record = store.get(signal.transferId, false) ?: return
-        if (record.status != FileTransferStatus.OFFER_SENT) return
-        
-        offerRetryJobs[signal.transferId]?.cancel()
-        offerRetryJobs.remove(signal.transferId)
-        
-        record.status = FileTransferStatus.TRANSFERRING
-        store.save(record)
-        
-        scope.launch {
-            performSend(record)
+            val metadata = try {
+                FileTransferMetadataProtocol.read(signal.payload).value
+            } catch (e: Exception) {
+                MeshLogger.error(TAG, "Malformed offer payload", e.toString())
+                return@withLock
+            }
+
+            if (metadata.totalChunks <= 0 || metadata.chunkSize <= 0) {
+                MeshLogger.error(TAG, "Rejected malformed metadata (chunks=${metadata.totalChunks})")
+                return@withLock
+            }
+
+            val outputFile = File(incomingDir, "${signal.transferId}-${metadata.filename}")
+            // Remove any stale partial output from an earlier incarnation
+            if (outputFile.exists()) outputFile.delete()
+
+            val record = FileTransferRecord(
+                transferId = signal.transferId,
+                metadata = metadata,
+                status = FileTransferStatus.OFFER_RECEIVED,
+                peerNodeId = peerId,
+                isIncoming = true,
+                outputPath = outputFile.absolutePath
+            )
+            store.save(record)
+            _events.emit(FileTransferEvent.OfferReceived(record))
+
+            // Auto-accept architecture: prepare for chunks immediately
+            record.status = FileTransferStatus.ACCEPTED
+            store.save(record)
+            acceptedRecord = record
         }
+
+        acceptedRecord?.let { rec ->
+            sendSignal(rec.peerNodeId, rec.transferId, FileSignalType.ACCEPT)
+        }
+    }
+
+    private suspend fun handleAccept(signal: FileSignal) {
+        recordMutex.withLock {
+            val record = store.get(signal.transferId, false) ?: return@withLock
+            if (record.status != FileTransferStatus.OFFER_SENT) return@withLock
+
+            record.status = FileTransferStatus.TRANSFERRING
+            store.save(record)
+        }
+
+        val record = store.get(signal.transferId, false) ?: return
+        if (record.status != FileTransferStatus.TRANSFERRING) return
+
+        offerRetryJobs.remove(signal.transferId)?.cancel()
+
+        // Register the completion signal BEFORE the first chunk leaves so a very fast
+        // COMPLETE reply can never be missed.
+        completionSignals.getOrPut(signal.transferId) { CompletableDeferred() }
+
+        val s = scope ?: return
+        s.launch { performSend(record) }
     }
 
     private suspend fun performSend(record: FileTransferRecord) {
-        val file = File(record.sourcePath ?: return)
-        
-        FileChunker.streamFile(file, record.metadata.chunkSize) { index, data ->
-            if (record.status != FileTransferStatus.TRANSFERRING) return@streamFile
-            
-            val packet = FileChunkPacket(record.transferId, index, record.metadata.totalChunks, data)
-            meshService.sendFileChunk(record.peerNodeId, Payload.FileChunk(packet))
-            
-            record.bytesTransferred += data.size
-            store.save(record)
-            _events.emit(FileTransferEvent.ProgressUpdated(record))
-            
-            // Small delay to avoid saturating the network
-            delay(10.milliseconds)
+        val sourceFile = File(record.sourcePath ?: return)
+        val peerId = record.peerNodeId
+        var consecutiveFailures = 0
+        var aborted = false
+        var streamedChunks = 0
+
+        MeshLogger.info(TAG, "Starting file transfer ${record.transferId} (${record.metadata.totalChunks} chunks) to $peerId")
+
+        try {
+            FileChunker.streamFile(sourceFile, record.metadata.chunkSize) { index, data ->
+                if (record.status != FileTransferStatus.TRANSFERRING) {
+                    aborted = true // cancelled/rejected/failed elsewhere
+                    return@streamFile false
+                }
+
+                var delivered = false
+                repeat(CHUNK_SEND_MAX_ATTEMPTS) { attempt ->
+                    val payload = Payload.FileChunk(
+                        FileChunkPacket(record.transferId, index, record.metadata.totalChunks, data)
+                    )
+                    delivered = meshService.sendFileChunk(peerId, payload)
+                    if (!delivered) {
+                        delay(CHUNK_RETRY_BASE_DELAY_MS * (attempt + 1))
+                    }
+                }
+
+                if (!delivered) {
+                    consecutiveFailures++
+                    MeshLogger.error(TAG, "Chunk ${index} failed after ${CHUNK_SEND_MAX_ATTEMPTS} attempts (consecutive=${consecutiveFailures})")
+                    if (consecutiveFailures >= MAX_CONSECUTIVE_CHUNK_FAILURES) {
+                        failSend(record, "Route lost or repeated chunk delivery failures")
+                        aborted = true
+                        return@streamFile false
+                    }
+                    // Keep going; later chunks may still succeed once route returns.
+                    return@streamFile true
+                }
+
+                consecutiveFailures = 0
+                streamedChunks++
+
+                recordMutex.withLock {
+                    record.bytesTransferred += data.size
+                    store.save(record)
+                }
+                _events.tryEmit(FileTransferEvent.ProgressUpdated(record))
+
+                delay(CHUNK_PACING_DELAY_MS.milliseconds) // gentle pacing keeps sockets responsive
+                true
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            MeshLogger.error(TAG, "Error streaming file ${record.transferId}", e.toString())
+            failSend(record, "Local file error: ${e.message}")
+            return
         }
-        
-        if (record.status == FileTransferStatus.TRANSFERRING) {
-            record.status = FileTransferStatus.COMPLETED
-            store.save(record)
-            _events.emit(FileTransferEvent.Completed(record))
+
+        if (aborted) return
+
+        if (streamedChunks < record.metadata.totalChunks) {
+            failSend(record, "Only ${streamedChunks}/${record.metadata.totalChunks} chunks could be queued")
+            return
         }
+
+        MeshLogger.info(TAG, "All ${streamedChunks} chunks sent for ${record.transferId}, awaiting receiver confirmation")
+
+        val confirmed = completionSignals[record.transferId]
+        val completeOk = if (confirmed != null) {
+            withTimeoutOrNull(COMPLETE_WAIT_TIMEOUT_MS.milliseconds) { confirmed.await() } ?: false
+        } else {
+            false
+        }
+
+        if (!completeOk && record.status == FileTransferStatus.TRANSFERRING) {
+            failSend(record, "Receiver did not confirm completion")
+        }
+        completionSignals.remove(record.transferId)
+    }
+
+    private suspend fun failSend(record: FileTransferRecord, reason: String) {
+        recordMutex.withLock {
+            if (record.status == FileTransferStatus.COMPLETED) return@withLock
+            record.status = FileTransferStatus.FAILED
+            store.save(record)
+        }
+        completionSignals.remove(record.transferId)?.complete(false)
+        offerRetryJobs.remove(record.transferId)?.cancel()
+        _events.emit(FileTransferEvent.Failed(record, reason))
+        MeshLogger.error(TAG, "Transfer ${record.transferId} failed: ${reason}")
+        // Tell the peer to drop its side of the transfer as well.
+        sendSignal(record.peerNodeId, record.transferId, FileSignalType.CANCEL)
     }
 
     private suspend fun handleIncomingChunk(packet: FileChunkPacket) {
-        val record = store.get(packet.transferId, true) ?: return
-        if (record.status == FileTransferStatus.OFFER_RECEIVED || record.status == FileTransferStatus.ACCEPTED) {
-            record.status = FileTransferStatus.TRANSFERRING
+        var completed = false
+        var target: FileTransferRecord? = null
+
+        recordMutex.withLock {
+            val r = store.get(packet.transferId, true) ?: return@withLock
+            target = r
+
+            if (packet.chunkIndex < 0 || packet.chunkIndex >= r.metadata.totalChunks) {
+                MeshLogger.error(TAG, "Chunk index ${packet.chunkIndex} out of bounds for ${r.transferId}")
+                return@withLock
+            }
+
+            // Duplicates (retries) are idempotent writes at the same offset; do not
+            // recount bytes or re-add to receivedChunks.
+            if (packet.chunkIndex in r.receivedChunks) return@withLock
+
+            when (r.status) {
+                FileTransferStatus.OFFER_RECEIVED, FileTransferStatus.ACCEPTED -> r.status = FileTransferStatus.TRANSFERRING
+                FileTransferStatus.TRANSFERRING -> Unit
+                else -> return@withLock // terminal states: ignore stray chunks
+            }
+
+            withContext(Dispatchers.IO) {
+                try {
+                    val out = File(r.outputPath ?: return@withContext)
+                    FileChunker.writeChunk(out, packet.chunkIndex, r.metadata.chunkSize, packet.data)
+                    r.receivedChunks.add(packet.chunkIndex)
+                    r.bytesTransferred += packet.data.size
+                    store.save(r)
+                } catch (e: Exception) {
+                    MeshLogger.error(TAG, "Failed to write chunk ${packet.chunkIndex}", e.toString())
+                }
+            }
+
+            if (r.receivedChunks.size >= r.metadata.totalChunks) completed = true
+            _events.emit(FileTransferEvent.ProgressUpdated(r))
         }
-        
-        if (record.status != FileTransferStatus.TRANSFERRING) return
-        
-        val file = File(record.outputPath ?: return)
-        
-        // Reassembly logic: Use RandomAccessFile to write at correct offset
-        withContext(Dispatchers.IO) {
-            FileChunker.writeChunk(file, packet.chunkIndex, record.metadata.chunkSize, packet.data)
-        }
-        
-        if (record.receivedChunks.add(packet.chunkIndex)) {
-            record.bytesTransferred += packet.data.size
-            store.save(record)
-            _events.emit(FileTransferEvent.ProgressUpdated(record))
-        }
-        
-        if (record.receivedChunks.size >= record.metadata.totalChunks) {
-            verifyAndComplete(record)
+
+        if (completed) {
+            target?.let { verifyAndComplete(it) }
         }
     }
 
     private suspend fun verifyAndComplete(record: FileTransferRecord) {
         val file = File(record.outputPath ?: return)
-        val actualChecksum = FileChecksum.sha256Hex(file)
-        
-        if (actualChecksum == record.metadata.checksum) {
-            record.status = FileTransferStatus.COMPLETED
-            store.save(record)
-            _events.emit(FileTransferEvent.Completed(record))
-            
-            // Send COMPLETE signal back to sender
-            val signal = FileSignal(record.transferId, FileSignalType.COMPLETE, ByteArray(0))
-            messagingService.sendFileSignal(record.peerNodeId, signal)
+        val actualChecksum = withContext(Dispatchers.IO) { FileChecksum.sha256Hex(file) }
+
+        if (actualChecksum.equals(record.metadata.checksum, ignoreCase = true)) {
+            var okToComplete = false
+            recordMutex.withLock {
+                if (record.status == FileTransferStatus.TRANSFERRING || record.status == FileTransferStatus.ACCEPTED) {
+                    record.status = FileTransferStatus.COMPLETED
+                    store.save(record)
+                    okToComplete = true
+                }
+            }
+            if (okToComplete) {
+                _events.emit(FileTransferEvent.Completed(record))
+                MeshLogger.info(TAG, "Received file ${record.metadata.filename} verified OK")
+                sendSignal(record.peerNodeId, record.transferId, FileSignalType.COMPLETE)
+            }
         } else {
-            MeshLogger.error("FileTransferService", "Checksum mismatch for ${record.transferId}")
-            record.status = FileTransferStatus.FAILED
-            store.save(record)
+            MeshLogger.error(TAG, "Checksum mismatch for ${record.transferId}")
+            recordMutex.withLock {
+                record.status = FileTransferStatus.FAILED
+                store.save(record)
+            }
             _events.emit(FileTransferEvent.Failed(record, "Checksum mismatch"))
+            // Notify the sender so its side fails too instead of waiting for COMPLETE.
+            sendSignal(record.peerNodeId, record.transferId, FileSignalType.CANCEL)
         }
     }
 
     private suspend fun handleComplete(peerId: NodeId, signal: FileSignal) {
         val record = store.get(signal.transferId, false) ?: return
-        if (record.status == FileTransferStatus.COMPLETED) {
-            // Already marked locally, but this confirms receiver finished too
-            MeshLogger.info("FileTransferService", "Peer $peerId confirmed completion of ${signal.transferId}")
-        } else {
-            record.status = FileTransferStatus.COMPLETED
-            store.save(record)
-            _events.emit(FileTransferEvent.Completed(record))
+        if (!record.peerNodeId.bytes.contentEquals(peerId.bytes)) return
+
+        when (record.status) {
+            FileTransferStatus.COMPLETED -> {
+                MeshLogger.info(TAG, "Peer $peerId confirmed completion of ${signal.transferId}")
+            }
+            else -> {
+                recordMutex.withLock {
+                    record.status = FileTransferStatus.COMPLETED
+                    store.save(record)
+                }
+                _events.emit(FileTransferEvent.Completed(record))
+            }
         }
+        completionSignals.remove(signal.transferId)?.complete(true)
+        offerRetryJobs.remove(signal.transferId)?.cancel()
     }
 
-    private suspend fun handleReject(signal: FileSignal) {
+    private suspend fun handleReject(peerId: NodeId, signal: FileSignal) {
         val record = store.get(signal.transferId, false) ?: return
-        record.status = FileTransferStatus.REJECTED
-        store.save(record)
+        if (!record.peerNodeId.bytes.contentEquals(peerId.bytes)) return
+
+        recordMutex.withLock {
+            record.status = FileTransferStatus.REJECTED
+            store.save(record)
+        }
         _events.emit(FileTransferEvent.Failed(record, "Rejected by peer"))
-        offerRetryJobs[signal.transferId]?.cancel()
-        offerRetryJobs.remove(signal.transferId)
+        offerRetryJobs.remove(signal.transferId)?.cancel()
+        completionSignals.remove(signal.transferId)?.complete(false)
     }
 
     private suspend fun handleCancel(peerId: NodeId, signal: FileSignal) {
-        // Try to find as incoming first, then outgoing
-        val record = store.get(signal.transferId, true) ?: store.get(signal.transferId, false)
-        if (record == null || !record.peerNodeId.bytes.contentEquals(peerId.bytes)) return
-        
-        record.status = FileTransferStatus.CANCELLED
-        store.save(record)
-        _events.emit(FileTransferEvent.Cancelled(record))
-        offerRetryJobs[signal.transferId]?.cancel()
-        offerRetryJobs.remove(signal.transferId)
+        // Peer-initiated cancel: may target an outgoing transfer (receiver gave up /
+        // mismatch) or an incoming one (sender aborted).
+        val record = store.get(signal.transferId, true) ?: store.get(signal.transferId, false) ?: return
+        if (!record.peerNodeId.bytes.contentEquals(peerId.bytes)) return
+
+        var changed = false
+        recordMutex.withLock {
+            if (record.status in setOf(FileTransferStatus.COMPLETED, FileTransferStatus.CANCELLED, FileTransferStatus.FAILED, FileTransferStatus.REJECTED)) return@withLock
+            record.status = FileTransferStatus.CANCELLED
+            store.save(record)
+            changed = true
+        }
+        if (changed) {
+            _events.emit(FileTransferEvent.Cancelled(record))
+        }
+        offerRetryJobs.remove(signal.transferId)?.cancel()
+        completionSignals.remove(signal.transferId)?.complete(false)
+    }
+
+    private fun sendSignal(to: NodeId, transferId: MessageId, type: Int) {
+        messagingService.sendFileSignal(to, FileSignal(transferId, type, ByteArray(0)))
     }
 }

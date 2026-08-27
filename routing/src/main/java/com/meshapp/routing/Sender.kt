@@ -248,18 +248,20 @@ class Sender(
         }
     }
 
-    /** Sends a FILE_CHUNK payload via TCP, routed if necessary */
-    suspend fun sendFileChunk(destinationNodeID: NodeId, payload: Payload.FileChunk) {
+    /** Sends a FILE_CHUNK payload via TCP, routed if necessary.
+     * Returns true when the chunk was successfully handed to the transport,
+     * false when no route was found or the send failed, so callers can retry. */
+    suspend fun sendFileChunk(destinationNodeID: NodeId, payload: Payload.FileChunk): Boolean {
         val directIp = if (peers.isDirectPeer(destinationNodeID)) peers.resolveIp(destinationNodeID) else null
         val routedNextHop = router.lookup(destinationNodeID)
         val routedIp = routedNextHop?.let { peers.resolveIp(it) }
 
         val ip = directIp ?: routedIp ?: run {
             MeshLogger.error("Sender", "No route for FILE_CHUNK to $destinationNodeID")
-            return
+            return false
         }
 
-        try {
+        return try {
             val bytes = buildPacket(
                 type = HeaderProtocol.Type.FILE_CHUNK,
                 flags = 0, // No ENCRYPTED, no ACK_REQUESTED for chunks as per architecture doc
@@ -270,9 +272,11 @@ class Sender(
             )
             transport.sendTcp(bytes, ip)
             MeshLogger.packetSent("Sender", "Sent FILE_CHUNK ${payload.packet.chunkIndex} to $destinationNodeID", "IP: $ip")
+            true
         } catch (e: Exception) {
             Log.w("Sender", "Failed to send FILE_CHUNK to $ip", e)
             MeshLogger.error("Sender", "Failed to send FILE_CHUNK to $ip", e.toString())
+            false
         }
     }
 
