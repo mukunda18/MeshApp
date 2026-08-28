@@ -1,14 +1,26 @@
 package com.meshapp.ui.screens.home
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,6 +44,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -80,26 +93,39 @@ fun HomeScreen(
 
         Spacer(modifier = Modifier.height(MeshSpacing.md))
 
+        // Animated color transition for power status title
+        val textColor by animateColorAsState(
+            targetValue = if (uiState.isMeshOn) MeshGreen else MeshTextSecondary,
+            animationSpec = tween(durationMillis = 300),
+            label = "textColor"
+        )
+
         Text(
             text = if (uiState.isMeshOn) "Mesh active" else "Mesh off",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
-            color = if (uiState.isMeshOn) {
-                MeshGreen
-            } else {
-                MeshTextSecondary
-            }
+            color = textColor
         )
 
         Spacer(modifier = Modifier.height(2.dp))
 
-        Text(
-            text = uiState.connectionStatus,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MeshMuted,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        // Smooth vertical roll transition for subtext updates
+        AnimatedContent(
+            targetState = uiState.connectionStatus,
+            transitionSpec = {
+                (slideInVertically { height -> height } + fadeIn()) togetherWith
+                        (slideOutVertically { height -> -height } + fadeOut())
+            },
+            label = "statusText"
+        ) { status ->
+            Text(
+                text = status,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MeshMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
 
         Spacer(modifier = Modifier.height(MeshSpacing.xl))
 
@@ -139,29 +165,37 @@ fun HomeScreen(
 
         Spacer(modifier = Modifier.height(MeshSpacing.xs))
 
-        if (uiState.connectedNodes.isEmpty()) {
-            EmptyState(
-                title = "No nodes nearby",
-                subtitle = "Turn the mesh on and stay close to other devices to connect.",
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = MeshSpacing.lg)
-            )
-        } else {
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(MeshSpacing.md),
-                contentPadding = PaddingValues(
-                    vertical = MeshSpacing.xxs
+        // Fade transition between list and empty state
+        Crossfade(
+            targetState = uiState.connectedNodes.isEmpty(),
+            animationSpec = tween(durationMillis = 300),
+            label = "emptyStateCrossfade"
+        ) { isEmpty ->
+            if (isEmpty) {
+                EmptyState(
+                    title = "No nodes nearby",
+                    subtitle = "Turn the mesh on and stay close to other devices to connect.",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = MeshSpacing.lg)
                 )
-            ) {
-                items(
-                    items = uiState.connectedNodes.take(8),
-                    key = { it.nodeId }
-                ) { node ->
-                    PeerPreviewChip(
-                        node = node,
-                        onClick = { onNodeClick(node) }
+            } else {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(MeshSpacing.md),
+                    contentPadding = PaddingValues(
+                        vertical = MeshSpacing.xxs
                     )
+                ) {
+                    items(
+                        items = uiState.connectedNodes.take(8),
+                        key = { it.nodeId }
+                    ) { node ->
+                        PeerPreviewChip(
+                            node = node,
+                            onClick = { onNodeClick(node) },
+                            modifier = Modifier.animateItem()
+                        )
+                    }
                 }
             }
         }
@@ -177,68 +211,92 @@ private fun MeshPowerControl(
     onToggle: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    // Smooth press feedback scale
+    val pressScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.93f else 1f,
+        animationSpec = spring(stiffness = 400f),
+        label = "pressScale"
+    )
+
+    // Animated colors for power state toggle
+    val bgColor by animateColorAsState(
+        targetValue = if (isOn) MeshGreen else MeshBg2,
+        animationSpec = tween(durationMillis = 300),
+        label = "bgColor"
+    )
+    val borderColor by animateColorAsState(
+        targetValue = if (isOn) MeshGreen else MeshBorder,
+        animationSpec = tween(durationMillis = 300),
+        label = "borderColor"
+    )
+    val iconTint by animateColorAsState(
+        targetValue = if (isOn) MeshGreenOnAccent else MeshMuted,
+        animationSpec = tween(durationMillis = 300),
+        label = "iconTint"
+    )
+
+    // Pulse aura animation when active
+    val auraAlpha by animateFloatAsState(
+        targetValue = if (isOn) 0.10f else 0f,
+        animationSpec = tween(durationMillis = 400),
+        label = "auraAlpha"
+    )
+
     Box(
         modifier = modifier.size(168.dp),
         contentAlignment = Alignment.Center
     ) {
-        if (isOn) {
-            val transition = rememberInfiniteTransition(
-                label = "mesh-power-pulse"
-            )
+        val transition = rememberInfiniteTransition(label = "meshPulse")
+        val pulseScale by transition.animateFloat(
+            initialValue = 0.96f,
+            targetValue = 1.08f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 2200, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "pulseScale"
+        )
 
-            val pulse by transition.animateFloat(
-                initialValue = 0.96f,
-                targetValue = 1.08f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(
-                        durationMillis = 2200,
-                        easing = FastOutSlowInEasing
-                    ),
-                    repeatMode = RepeatMode.Reverse
-                ),
-                label = "mesh-power-pulse-scale"
-            )
-
-            Box(
-                modifier = Modifier
-                    .size(150.dp)
-                    .graphicsLayer {
-                        scaleX = pulse
-                        scaleY = pulse
-                        alpha = 0.10f
-                    }
-                    .clip(CircleShape)
-                    .background(MeshGreen)
-            )
-        }
+        Box(
+            modifier = Modifier
+                .size(150.dp)
+                .graphicsLayer {
+                    scaleX = if (isOn) pulseScale else 1f
+                    scaleY = if (isOn) pulseScale else 1f
+                    alpha = auraAlpha
+                }
+                .clip(CircleShape)
+                .background(MeshGreen)
+        )
 
         Box(
             modifier = Modifier
                 .size(120.dp)
+                .graphicsLayer {
+                    scaleX = pressScale
+                    scaleY = pressScale
+                }
                 .clip(CircleShape)
-                .background(
-                    if (isOn) MeshGreen else MeshBg2
-                )
+                .background(bgColor)
                 .border(
                     width = 1.dp,
-                    color = if (isOn) MeshGreen else MeshBorder,
+                    color = borderColor,
                     shape = CircleShape
                 )
-                .clickable(onClick = onToggle),
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = onToggle
+                ),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.Filled.PowerSettingsNew,
-                contentDescription = if (isOn) {
-                    "Turn mesh off"
-                } else {
-                    "Turn mesh on"
-                },
-                tint = if (isOn) {
-                    MeshGreenOnAccent
-                } else {
-                    MeshMuted
-                },
+                contentDescription = if (isOn) "Turn mesh off" else "Turn mesh on",
+                tint = iconTint,
                 modifier = Modifier.size(44.dp)
             )
         }
@@ -262,12 +320,27 @@ private fun StatCard(
                 .padding(vertical = MeshSpacing.md),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(
-                text = value,
-                style = MaterialTheme.typography.headlineSmall,
-                color = MeshTextPrimary,
-                fontWeight = FontWeight.Bold
-            )
+            // Number roller transition when counts change
+            AnimatedContent(
+                targetState = value,
+                transitionSpec = {
+                    if (targetState > initialState) {
+                        (slideInVertically { height -> height } + fadeIn()) togetherWith
+                                (slideOutVertically { height -> -height } + fadeOut())
+                    } else {
+                        (slideInVertically { height -> -height } + fadeIn()) togetherWith
+                                (slideOutVertically { height -> height } + fadeOut())
+                    }
+                },
+                label = "statCounter"
+            ) { countText ->
+                Text(
+                    text = countText,
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MeshTextPrimary,
+                    fontWeight = FontWeight.Bold
+                )
+            }
 
             Spacer(modifier = Modifier.height(2.dp))
 
@@ -286,21 +359,35 @@ private fun PeerPreviewChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    // Tactile press scale feedback on chip
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.90f else 1f,
+        animationSpec = spring(stiffness = 400f),
+        label = "chipPressScale"
+    )
+
     Column(
         modifier = modifier
             .width(64.dp)
-            .clickable(onClick = onClick),
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            ),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box {
             ProfileAvatar(
                 initials = node.avatarInitials,
                 size = 52.dp,
-                containerColor = if (node.isOnline) {
-                    MeshGreen
-                } else {
-                    MeshBg3
-                }
+                containerColor = if (node.isOnline) MeshGreen else MeshBg3
             )
 
             StatusDot(
