@@ -90,6 +90,12 @@ class PersistentIdentityStore(context: Context) : IdentityStore {
         }
     }
 
+    override fun updateName(name: String) {
+        sharedPrefs.edit {
+            putString(KEY_NAME, encrypt(name))
+        }
+    }
+
     private fun hexToBytes(hex: String): ByteArray {
         val result = ByteArray(hex.length / 2)
         for (i in 0 until hex.length step 2) {

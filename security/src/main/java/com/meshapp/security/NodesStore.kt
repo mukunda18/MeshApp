@@ -4,12 +4,14 @@ import com.meshapp.model.MessageId
 import com.meshapp.model.NodeId
 import com.meshapp.model.PublicKey
 import com.meshapp.model.Signature
+import kotlinx.coroutines.flow.SharedFlow
 
 /**
  * Global store for node identity mapping.
  * Both Routing (for learning names) and Security (for encryption) depend on this.
  */
 interface NodesStore {
+    val nodeUpdates: SharedFlow<NodeId>
     fun addOrUpdateNode(nodeId: NodeId, name: String, publicKey: PublicKey)
     fun getPublicKey(nodeId: NodeId): PublicKey?
     fun getName(nodeId: NodeId): String?

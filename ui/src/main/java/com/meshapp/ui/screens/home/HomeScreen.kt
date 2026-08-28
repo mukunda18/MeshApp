@@ -29,9 +29,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,6 +48,7 @@ import com.meshapp.ui.theme.MeshBg1
 import com.meshapp.ui.theme.MeshBg2
 import com.meshapp.ui.theme.MeshBg3
 import com.meshapp.ui.theme.MeshBorder
+import com.meshapp.ui.theme.MeshDanger
 import com.meshapp.ui.theme.MeshGreen
 import com.meshapp.ui.theme.MeshGreenOnAccent
 import com.meshapp.ui.theme.MeshMuted
@@ -61,7 +61,7 @@ import com.meshapp.ui.viewmodel.HomeViewModel
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
-    onNavigateToNearbyNodes: () -> Unit,
+    onNodeClick: (HomeNodeUiState) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -97,6 +97,7 @@ fun HomeScreen(
             color = MeshMuted
         )
 
+
         Spacer(modifier = Modifier.height(MeshSpacing.xl))
 
         Row(
@@ -129,9 +130,6 @@ fun HomeScreen(
                 letterSpacing = 1.sp,
                 modifier = Modifier.weight(1f)
             )
-            TextButton(onClick = onNavigateToNearbyNodes) {
-                Text("See all", color = MeshGreen)
-            }
         }
 
         if (uiState.connectedNodes.isEmpty()) {
@@ -148,7 +146,7 @@ fun HomeScreen(
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = MeshSpacing.xs)
             ) {
                 items(uiState.connectedNodes.take(8), key = { it.nodeId }) { node ->
-                    PeerPreviewChip(node = node, onClick = onNavigateToNearbyNodes)
+                    PeerPreviewChip(node = node, onClick = { onNodeClick(node) })
                 }
             }
         }

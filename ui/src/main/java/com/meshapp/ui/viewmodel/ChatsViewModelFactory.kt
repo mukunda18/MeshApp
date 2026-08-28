@@ -5,14 +5,12 @@ import androidx.lifecycle.ViewModelProvider
 import com.meshapp.meshcontrol.MeshService
 import com.meshapp.messaging.MessagingService
 import com.meshapp.security.NodesStore
-import com.meshapp.voice.VoiceCallManager
 import com.meshapp.model.NodeId
 
 class ChatsViewModelFactory(
     private val messagingService: MessagingService,
     private val meshService: MeshService,
     private val nodesStore: NodesStore,
-    private val voiceCallManager: VoiceCallManager,
     private val ownNodeId: NodeId
 ) : ViewModelProvider.Factory {
 
@@ -23,7 +21,6 @@ class ChatsViewModelFactory(
                 messagingService = messagingService,
                 meshService = meshService,
                 nodesStore = nodesStore,
-                voiceCallManager = voiceCallManager,
                 ownNodeId = ownNodeId
             ) as T
         }

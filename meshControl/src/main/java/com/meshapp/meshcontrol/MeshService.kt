@@ -35,9 +35,10 @@ import kotlinx.coroutines.sync.withLock
  * implement MeshSocketFactory to create Context-bound sockets.
  */
 class MeshService(
-    private val config: MeshConfig,
+    val config: MeshConfig,
     private val socketFactory: MeshSocketFactory,
     private val nodesStore: NodesStore,
+    private val audioController: AudioController? = null,
     private val signer: PacketSigner? = null,
     private val verifier: PacketVerifier? = null
 ) {
@@ -160,6 +161,9 @@ class MeshService(
         _stateStream.value = MeshState.STOPPING
         MeshLogger.info("MeshService", "Stopping Mesh Service...")
 
+        // Ensure all audio sessions are closed and mic indicator is off
+        audioController?.stopAll()
+
         serviceScope?.cancel()
         serviceScope = null
 
@@ -176,6 +180,11 @@ class MeshService(
 
         _stateStream.value = MeshState.STOPPED
         MeshLogger.info("MeshService", "Mesh Service STOPPED")
+    }
+
+    /** Updates the display name used in HELLO broadcasts */
+    fun updateDisplayName(newName: String) {
+        routingModule?.updateDisplayName(newName)
     }
 
     fun sendMessage(destinationNodeID: NodeId, payload: Payload.Message, messageId: MessageId) {
@@ -219,13 +228,12 @@ class MeshService(
         }
     }
 
-    /** Sends a FILE_CHUNK payload via TCP, routed if necessary */
-    fun sendFileChunk(destinationNodeID: NodeId, payload: Payload.FileChunk) {
-        val rm = routingModule ?: return
-        val scope = serviceScope ?: return
-        scope.launch {
-            rm.sender.sendFileChunk(destinationNodeID, payload)
-        }
+    /** Sends a FILE_CHUNK payload via TCP, routed if necessary.
+     * Suspends until the chunk is written to the transport so callers can pace
+     * and retry based on the result. Returns true on successful hand-off. */
+    suspend fun sendFileChunk(destinationNodeID: NodeId, payload: Payload.FileChunk): Boolean {
+        val rm = routingModule ?: return false
+        return rm.sender.sendFileChunk(destinationNodeID, payload)
     }
 
     /** Triggers AODV discovery for a node (route + public key) */

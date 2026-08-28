@@ -16,15 +16,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.SignalWifi4Bar
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -54,47 +52,14 @@ import com.meshapp.ui.viewmodel.NetworkInterfacesViewModel
 
 @Composable
 fun NetworkInterfacesScreen(
-    viewModel: NetworkInterfacesViewModel = viewModel(),
-    onBack: () -> Unit,
-    onRefresh: () -> Unit = {}
+    viewModel: NetworkInterfacesViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val staInterface = uiState.interfaces.firstOrNull { isStaInterface(it.interfaceName) }
     val apInterface = uiState.interfaces.firstOrNull { isApInterface(it.interfaceName) }
 
     Scaffold(
-        containerColor = MeshBg0,
-        topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MeshBg0)
-                    .padding(horizontal = MeshSpacing.xs, vertical = MeshSpacing.xs),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Navigate back",
-                        tint = MeshTextPrimary
-                    )
-                }
-                Text(
-                    text = "Network Interfaces",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MeshTextPrimary,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f)
-                )
-                IconButton(onClick = onRefresh) {
-                    Icon(
-                        imageVector = Icons.Filled.Refresh,
-                        contentDescription = "Refresh interface status",
-                        tint = MeshGreen
-                    )
-                }
-            }
-        }
+        containerColor = MeshBg0
     ) { paddingValues ->
         LazyColumn(
             modifier = Modifier
@@ -214,33 +179,38 @@ fun NetworkInterfacesScreen(
 
             // Capability Indicator Card
             item {
+                val isSupported = uiState.isStaApSupported
+                val cardColor = if (isSupported) MeshGreen.copy(alpha = 0.08f) else Color(0x22E57373)
+                val borderColor = if (isSupported) MeshGreen.copy(alpha = 0.25f) else Color(0x55E57373)
+                val iconColor = if (isSupported) MeshGreen else Color(0xFFE57373)
+
                 Surface(
                     shape = MeshShapes.cardSmall,
-                    color = MeshGreen.copy(alpha = 0.08f),
+                    color = cardColor,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = MeshSpacing.lg)
-                        .border(1.dp, MeshGreen.copy(alpha = 0.25f), MeshShapes.cardSmall)
+                        .border(1.dp, borderColor, MeshShapes.cardSmall)
                 ) {
                     Row(
                         modifier = Modifier.padding(MeshSpacing.md),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.CheckCircle,
+                            imageVector = if (isSupported) Icons.Filled.CheckCircle else Icons.Filled.Info,
                             contentDescription = null,
-                            tint = MeshGreen,
+                            tint = iconColor,
                             modifier = Modifier.size(24.dp)
                         )
                         Column(modifier = Modifier.padding(start = MeshSpacing.md)) {
                             Text(
-                                text = "STA + AP Supported",
+                                text = if (isSupported) "STA + AP Supported" else "STA + AP Not Supported",
                                 color = MeshTextPrimary,
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = capabilitySubtitle(uiState.isStaApSupported, uiState.isLikelySupported),
+                                text = capabilitySubtitle(isSupported),
                                 color = MeshMuted,
                                 style = MaterialTheme.typography.bodySmall,
                                 modifier = Modifier.padding(top = 2.dp)
@@ -387,16 +357,16 @@ private fun isApInterface(name: String): Boolean {
     return value.contains("ap") || value.contains("softap") || value.contains("p2p")
 }
 
-private fun capabilitySubtitle(isStaApSupported: Boolean, isLikelySupported: Boolean): String {
-    return when {
-        isStaApSupported -> "Your device supports simultaneous mesh hosting and station connection modes."
-        isLikelySupported -> "Your hardware likely supports concurrent modes, but official support is not exposed."
-        else -> "This device currently reports no simultaneous station and access-point support."
+private fun capabilitySubtitle(isStaApSupported: Boolean): String {
+    return if (isStaApSupported) {
+        "Your device supports simultaneous mesh hosting and station connection modes."
+    } else {
+        "This device currently reports no simultaneous station and access-point support."
     }
 }
 
 @Preview(showBackground = true)
 @Composable
 fun NetworkInterfacesScreenPreview() {
-    NetworkInterfacesScreen(onBack = {})
+    NetworkInterfacesScreen()
 }

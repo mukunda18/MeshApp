@@ -6,18 +6,53 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import com.meshapp.model.NodeId
 import com.meshapp.model.PublicKey
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import java.util.concurrent.ConcurrentHashMap
 
 class SqlNodesStore(context: Context) : NodesStore {
     private val helper = NodesDatabaseHelper(context.applicationContext)
+    private val nameCache = ConcurrentHashMap<String, String>()
+    
+    private val _nodeUpdates = MutableSharedFlow<NodeId>(extraBufferCapacity = 16)
+    override val nodeUpdates: SharedFlow<NodeId> = _nodeUpdates.asSharedFlow()
+
+    init {
+        loadCache()
+    }
+
+    private fun loadCache() {
+        val db = helper.readableDatabase
+        db.query(
+            TABLE_NODES,
+            arrayOf(COL_NODE_ID, COL_NAME),
+            null, null, null, null, null
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val id = cursor.getString(cursor.getColumnIndexOrThrow(COL_NODE_ID))
+                val name = cursor.getString(cursor.getColumnIndexOrThrow(COL_NAME))
+                nameCache[id] = name
+            }
+        }
+    }
 
     override fun addOrUpdateNode(nodeId: NodeId, name: String, publicKey: PublicKey) {
         val db = helper.writableDatabase
+        val nodeIdStr = nodeId.toString()
+        val oldName = nameCache[nodeIdStr]
+        
         val values = ContentValues().apply {
-            put(COL_NODE_ID, nodeId.toString())
+            put(COL_NODE_ID, nodeIdStr)
             put(COL_NAME, name)
             put(COL_PUBLIC_KEY, publicKey.bytes)
         }
         db.insertWithOnConflict(TABLE_NODES, null, values, SQLiteDatabase.CONFLICT_REPLACE)
+        
+        if (oldName != name) {
+            nameCache[nodeIdStr] = name
+            _nodeUpdates.tryEmit(nodeId)
+        }
     }
 
     override fun getPublicKey(nodeId: NodeId): PublicKey? {
@@ -39,21 +74,7 @@ class SqlNodesStore(context: Context) : NodesStore {
     }
 
     override fun getName(nodeId: NodeId): String? {
-        val db = helper.readableDatabase
-        db.query(
-            TABLE_NODES,
-            arrayOf(COL_NAME),
-            "$COL_NODE_ID = ?",
-            arrayOf(nodeId.toString()),
-            null,
-            null,
-            null
-        ).use { cursor ->
-            if (cursor.moveToFirst()) {
-                return cursor.getString(cursor.getColumnIndexOrThrow(COL_NAME))
-            }
-        }
-        return null
+        return nameCache[nodeId.toString()]
     }
 
     override fun listNodes(): List<KnownNode> {
@@ -84,7 +105,7 @@ class SqlNodesStore(context: Context) : NodesStore {
 
     private fun hexToBytes(hex: String): ByteArray {
         val result = ByteArray(hex.length / 2)
-        for (i in 0 until hex.length step 2) {
+        for (i in hex.indices step 2) {
             val firstDigit = Character.digit(hex[i], 16)
             val secondDigit = Character.digit(hex[i + 1], 16)
             result[i / 2] = ((firstDigit shl 4) + secondDigit).toByte()

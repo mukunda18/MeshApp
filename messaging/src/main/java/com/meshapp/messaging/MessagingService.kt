@@ -1,21 +1,23 @@
 package com.meshapp.messaging
 
 import android.util.Log
+import com.meshapp.logger.MeshLogger
 import com.meshapp.meshcontrol.DeliveryState
 import com.meshapp.meshcontrol.MeshService
 import com.meshapp.model.CallSignal
 import com.meshapp.model.CallSignalProtocol
 import com.meshapp.model.ContentType
+import com.meshapp.model.FileSignal
+import com.meshapp.model.FileSignalProtocol
 import com.meshapp.model.MessageId
 import com.meshapp.model.MessageProtocol
 import com.meshapp.model.NodeId
 import com.meshapp.model.Payload
 import com.meshapp.model.SecureEnvelope
 import com.meshapp.model.Timestamp
-import com.meshapp.security.NodesStore
 import com.meshapp.model.randomMessageId
+import com.meshapp.security.NodesStore
 import com.meshapp.security.Security
-import com.meshapp.logger.MeshLogger
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -43,7 +45,7 @@ class MessagingService(
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
     private val _messagesStream = MutableSharedFlow<MessageUpdate>(
-        extraBufferCapacity = streamBufferCapacity
+        extraBufferCapacity = streamBufferCapacity,
     )
     val messagesStream: SharedFlow<MessageUpdate> = _messagesStream.asSharedFlow()
 
@@ -56,15 +58,19 @@ class MessagingService(
     )
     val callSignalsStream: SharedFlow<Pair<NodeId, CallSignal>> = _callSignalsStream.asSharedFlow()
 
-    private val _fileSignalsStream = MutableSharedFlow<Pair<NodeId, com.meshapp.model.FileSignal>>(
+    private val _fileSignalsStream = MutableSharedFlow<Pair<NodeId, FileSignal>>(
         extraBufferCapacity = streamBufferCapacity
     )
-    val fileSignalsStream: SharedFlow<Pair<NodeId, com.meshapp.model.FileSignal>> = _fileSignalsStream.asSharedFlow()
+    val fileSignalsStream: SharedFlow<Pair<NodeId, FileSignal>> = _fileSignalsStream.asSharedFlow()
 
     private val _conversationsStream = MutableStateFlow<List<ConversationSummary>>(emptyList())
     val conversationsStream: StateFlow<List<ConversationSummary>> = _conversationsStream.asStateFlow()
 
     private val outboundChannel = Channel<OutboundRequest>(Channel.UNLIMITED)
+    // Cooldown map for RREQ discovery per destination. Only accessed from the
+    // single outbound-processing coroutine, so no extra synchronization needed.
+    private val discoveryLastMs = mutableMapOf<NodeId, Long>()
+    private val discoveryRreqBackoffMs = 5_000L
 
     private var serviceJob: Job? = null
     private var serviceScope: CoroutineScope? = null
@@ -148,7 +154,7 @@ class MessagingService(
         MeshLogger.info("MessagingService", "Call signal ${signal.type} queued for $destination")
     }
 
-    fun sendFileSignal(destination: NodeId, signal: com.meshapp.model.FileSignal) {
+    fun sendFileSignal(destination: NodeId, signal: FileSignal) {
         val timestamp = Timestamp(System.currentTimeMillis())
         outboundChannel.trySend(OutboundRequest.FileSignalRequest(destination, signal, timestamp))
         MeshLogger.info("MessagingService", "File signal ${signal.type} queued for $destination")
@@ -163,7 +169,7 @@ class MessagingService(
         }
 
         // 1. Check for timeout (e.g., if the node is offline, and we can't find its key)
-        if (now - composeTime > identityResolutionTimeoutMs) {
+        if ((now - composeTime) > identityResolutionTimeoutMs) {
             Log.w("MessagingService", "Identity resolution timed out for ${request.destinationNodeId}")
             if (request is OutboundRequest.Chat) {
                 MeshLogger.messageDropped("MessagingService", "Identity resolution timed out for ${request.destinationNodeId}", "MsgId: ${request.message.messageId}")
@@ -176,7 +182,15 @@ class MessagingService(
         if (pubKey == null) {
             // Key missing: Trigger RREQ and put back in queue to retry
             MeshLogger.info("MessagingService", "Public key missing for ${request.destinationNodeId}, discovering...")
-            meshService.discoverNode(request.destinationNodeId)
+            val nowMs = System.currentTimeMillis()
+            val lastDiscovery = discoveryLastMs[request.destinationNodeId]
+            if (lastDiscovery == null || nowMs - lastDiscovery > discoveryRreqBackoffMs) {
+                MeshLogger.info("MessagingService", "Public key missing for ${request.destinationNodeId}, discovering...")
+                meshService.discoverNode(request.destinationNodeId)
+                discoveryLastMs[request.destinationNodeId] = nowMs
+            } else {
+                MeshLogger.info("MessagingService", "Public key missing for ${request.destinationNodeId}, discovery already in progress")
+            }
             
             // Unblock the main loop: delay and re-enqueue in the background
             serviceScope?.launch {
@@ -201,7 +215,7 @@ class MessagingService(
                 }
                 is OutboundRequest.FileSignalRequest -> {
                     val buf = ByteArray(2048) // File metadata might be larger
-                    val size = com.meshapp.model.FileSignalProtocol.write(buf, request.signal, 0)
+                    val size = FileSignalProtocol.write(buf, request.signal, 0)
                     Quad(buf.copyOfRange(0, size), ContentType.FILE_SIGNAL, randomMessageId(), request.timestamp)
                 }
             }
@@ -269,41 +283,48 @@ class MessagingService(
         try {
             val decoded = security.decode(serializeEnvelope(payload.envelope))
             
-            if (decoded.contentType == ContentType.CHAT) {
-                val contentString = decoded.content.decodeToString()
-                val message = Message(
-                    senderNodeId = decoded.senderNodeId,
-                    plaintextContent = contentString,
-                    composeTimestamp = decoded.timestamp,
-                    messageId = decoded.messageId,
-                    deliveryStatus = MessageDeliveryStatus.DELIVERED
-                )
-                MeshLogger.messageReceived("MessagingService", "Received message from $sourceNodeId", contentString)
-                try {
-                    conversationStore.appendMessage(sourceNodeId, message)
-                } catch (e: Exception) {
-                    // SQLiteException: Failed to save incoming message. 
-                    // We log it but continue so the stream update can still happen.
-                    Log.e("MessagingService", "Failed to save incoming message to store", e)
-                    MeshLogger.error("MessagingService", "Failed to save incoming message from $sourceNodeId to store", e.toString())
+            when (decoded.contentType) {
+                ContentType.CHAT -> {
+                    val contentString = decoded.content.decodeToString()
+                    val message = Message(
+                        senderNodeId = decoded.senderNodeId,
+                        plaintextContent = contentString,
+                        composeTimestamp = decoded.timestamp,
+                        messageId = decoded.messageId,
+                        deliveryStatus = MessageDeliveryStatus.DELIVERED
+                    )
+                    MeshLogger.messageReceived("MessagingService", "Received message from $sourceNodeId", contentString)
+                    try {
+                        conversationStore.appendMessage(sourceNodeId, message)
+                    } catch (e: Exception) {
+                        // SQLiteException: Failed to save incoming message. 
+                        // We log it but continue so the stream update can still happen.
+                        Log.e("MessagingService", "Failed to save incoming message to store", e)
+                        MeshLogger.error("MessagingService", "Failed to save incoming message from $sourceNodeId to store", e.toString())
+                    }
+                    emitMessageUpdate(sourceNodeId, message, MessageDirection.INCOMING)
+                    refreshConversations()
                 }
-                emitMessageUpdate(sourceNodeId, message, MessageDirection.INCOMING)
-                refreshConversations()
-            } else if (decoded.contentType == ContentType.CALL_SIGNAL) {
-                try {
-                    val signalRead = CallSignalProtocol.callSignal.read(decoded.content, 0)
-                    _callSignalsStream.tryEmit(sourceNodeId to signalRead.value)
-                    MeshLogger.info("MessagingService", "Received call signal ${signalRead.value.type} from $sourceNodeId")
-                } catch (e: Exception) {
-                    Log.e("MessagingService", "Failed to parse call signal from $sourceNodeId", e)
+                ContentType.CALL_SIGNAL -> {
+                    try {
+                        val signalRead = CallSignalProtocol.callSignal.read(decoded.content, 0)
+                        _callSignalsStream.tryEmit(sourceNodeId to signalRead.value)
+                        MeshLogger.info("MessagingService", "Received call signal ${signalRead.value.type} from $sourceNodeId")
+                    } catch (e: Exception) {
+                        Log.e("MessagingService", "Failed to parse call signal from $sourceNodeId", e)
+                    }
                 }
-            } else if (decoded.contentType == ContentType.FILE_SIGNAL) {
-                try {
-                    val signalRead = com.meshapp.model.FileSignalProtocol.read(decoded.content, 0)
-                    _fileSignalsStream.tryEmit(sourceNodeId to signalRead.value)
-                    MeshLogger.info("MessagingService", "Received file signal ${signalRead.value.type} from $sourceNodeId")
-                } catch (e: Exception) {
-                    Log.e("MessagingService", "Failed to parse file signal from $sourceNodeId", e)
+                ContentType.FILE_SIGNAL -> {
+                    try {
+                        val signalRead = FileSignalProtocol.read(decoded.content, 0)
+                        _fileSignalsStream.tryEmit(sourceNodeId to signalRead.value)
+                        MeshLogger.info("MessagingService", "Received file signal ${signalRead.value.type} from $sourceNodeId")
+                    } catch (e: Exception) {
+                        Log.e("MessagingService", "Failed to parse file signal from $sourceNodeId", e)
+                    }
+                }
+                else -> {
+                    // Ignore other content types
                 }
             }
         } catch (e: Exception) {
@@ -393,7 +414,7 @@ private sealed class OutboundRequest {
 
     data class FileSignalRequest(
         override val destinationNodeId: NodeId,
-        val signal: com.meshapp.model.FileSignal,
+        val signal: FileSignal,
         val timestamp: Timestamp
     ) : OutboundRequest()
 }

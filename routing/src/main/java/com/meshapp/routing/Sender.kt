@@ -2,6 +2,7 @@ package com.meshapp.routing
 
 import com.meshapp.model.Header
 import com.meshapp.model.HeaderProtocol
+import com.meshapp.model.HelloProtocol
 import com.meshapp.model.MessageId
 import com.meshapp.model.NodeId
 import com.meshapp.security.NodesStore
@@ -18,6 +19,7 @@ import com.meshapp.packetprocessor.PayloadSerializer
 import android.util.Log
 import com.meshapp.logger.MeshLogger
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -32,7 +34,7 @@ import kotlin.time.Duration.Companion.milliseconds
 class Sender(
     private val selfNodeId: NodeId,
     private val selfPublicKey: PublicKey,
-    private val selfName: String,
+    private var selfName: String,
     private val transport: MeshTransport,
     private val router: Router,
     private val peers: PeersManagement,
@@ -50,6 +52,10 @@ class Sender(
 
     private val pendingDiscovery = ConcurrentHashMap<NodeId, Long>()
 
+    // Rotating offset into the routed entries snapshot used to partition a routing table
+    // that exceeds MAX_HELLO_ROUTE_ENTRIES across successive HELLO broadcasts
+    private val routeChunkCursor = AtomicInteger(0)
+
     /** Adds a message to the back of the outbound queue */
     fun enqueue(messageId: MessageId, payload: Payload.Message, destinationNodeId: NodeId) {
         if (destinationNodeId == selfNodeId) {
@@ -60,8 +66,15 @@ class Sender(
         channel.trySend(QueuedMessage(messageId, payload, destinationNodeId))
     }
 
-    /** Builds and broadcasts a HELLO carrying the current valid route snapshot */
+    /**
+     * Builds and broadcasts a HELLO carrying a bounded snapshot of the current routing state
+     * Direct peer entries are always included since that set is small and safety critical
+     * Multi hop routed entries are capped and rotated across calls using routeChunkCursor
+     * so a routing table larger than the per packet cap is fully advertised over time
+     * without ever pushing a single HELLO close to the UDP MTU limit
+     */
     suspend fun broadcastHello(displayName: String) {
+        val maxEntries = HelloProtocol.MAX_HELLO_ROUTE_ENTRIES
         val directPeers = peers.getPeers()
         val directPeerIds = directPeers.map { it.nodeId }.toSet()
 
@@ -76,20 +89,42 @@ class Sender(
             }
         }
 
-        val routedEntries = router.getRoutes()
+        val cappedPeerEntries = if (peerEntries.size > maxEntries) {
+            MeshLogger.error(
+                "Sender",
+                "Direct peer count ${peerEntries.size} exceeds MAX_HELLO_ROUTE_ENTRIES $maxEntries, truncating to protect packet size"
+            )
+            peerEntries.take(maxEntries)
+        } else {
+            peerEntries
+        }
+
+        val remainingBudget = (maxEntries - cappedPeerEntries.size).coerceAtLeast(0)
+
+        val allRoutedRoutes = router.getRoutes()
             .filter { it.hopCount <= maxHopCount - 1 }
             .filter { it.destinationNodeId !in directPeerIds }
-            .mapNotNull { route ->
-                val pubKey = nodesStore.getPublicKey(route.destinationNodeId)
-                if (pubKey == null) {
-                    null
-                } else {
-                    val name = nodesStore.getName(route.destinationNodeId) ?: ""
-                    RouteEntry(route.destinationNodeId, route.hopCount, pubKey, Timestamp(route.routeTimestamp), name)
-                }
-            }
 
-        val combinedRoutes = peerEntries + routedEntries
+        val routedChunk = if (remainingBudget > 0 && allRoutedRoutes.isNotEmpty()) {
+            val offset = routeChunkCursor.getAndUpdate { current ->
+                (current + remainingBudget) % allRoutedRoutes.size
+            }
+            allRoutedRoutes.chunkFrom(offset, remainingBudget)
+        } else {
+            emptyList()
+        }
+
+        val routedEntries = routedChunk.mapNotNull { route ->
+            val pubKey = nodesStore.getPublicKey(route.destinationNodeId)
+            if (pubKey == null) {
+                null
+            } else {
+                val name = nodesStore.getName(route.destinationNodeId) ?: ""
+                RouteEntry(route.destinationNodeId, route.hopCount, pubKey, Timestamp(route.routeTimestamp), name)
+            }
+        }
+
+        val combinedRoutes = cappedPeerEntries + routedEntries
 
         transport.broadcastUdp(
             buildPacket(
@@ -101,7 +136,16 @@ class Sender(
                 payload = Payload.Hello(displayName, selfPublicKey, combinedRoutes)
             )
         )
-        MeshLogger.packetSent("Sender", "Broadcasted HELLO", "Display Name: $displayName, Routes: ${combinedRoutes.size}")
+        MeshLogger.packetSent(
+            "Sender",
+            "Broadcasted HELLO",
+            "Display Name: $displayName, Routes: ${combinedRoutes.size} of ${cappedPeerEntries.size + allRoutedRoutes.size} known"
+        )
+    }
+
+    /** Updates the name sent in RREQ/RREP packets mid-session */
+    fun updateSelfName(newName: String) {
+        selfName = newName
     }
 
     /** Builds and broadcasts a RERR listing each newly unreachable destination */
@@ -204,18 +248,20 @@ class Sender(
         }
     }
 
-    /** Sends a FILE_CHUNK payload via TCP, routed if necessary */
-    suspend fun sendFileChunk(destinationNodeID: NodeId, payload: Payload.FileChunk) {
+    /** Sends a FILE_CHUNK payload via TCP, routed if necessary.
+     * Returns true when the chunk was successfully handed to the transport,
+     * false when no route was found or the send failed, so callers can retry. */
+    suspend fun sendFileChunk(destinationNodeID: NodeId, payload: Payload.FileChunk): Boolean {
         val directIp = if (peers.isDirectPeer(destinationNodeID)) peers.resolveIp(destinationNodeID) else null
         val routedNextHop = router.lookup(destinationNodeID)
         val routedIp = routedNextHop?.let { peers.resolveIp(it) }
 
         val ip = directIp ?: routedIp ?: run {
             MeshLogger.error("Sender", "No route for FILE_CHUNK to $destinationNodeID")
-            return
+            return false
         }
 
-        try {
+        return try {
             val bytes = buildPacket(
                 type = HeaderProtocol.Type.FILE_CHUNK,
                 flags = 0, // No ENCRYPTED, no ACK_REQUESTED for chunks as per architecture doc
@@ -226,9 +272,11 @@ class Sender(
             )
             transport.sendTcp(bytes, ip)
             MeshLogger.packetSent("Sender", "Sent FILE_CHUNK ${payload.packet.chunkIndex} to $destinationNodeID", "IP: $ip")
+            true
         } catch (e: Exception) {
             Log.w("Sender", "Failed to send FILE_CHUNK to $ip", e)
             MeshLogger.error("Sender", "Failed to send FILE_CHUNK to $ip", e.toString())
+            false
         }
     }
 

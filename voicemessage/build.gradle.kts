@@ -17,6 +17,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
     implementation(project(":voice"))
+    implementation(project(":meshControl"))
     implementation(project(":logger"))
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
