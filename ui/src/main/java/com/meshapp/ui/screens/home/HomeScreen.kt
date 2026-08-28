@@ -12,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,8 +30,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,7 +39,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.meshapp.ui.components.EmptyState
 import com.meshapp.ui.components.ProfileAvatar
@@ -48,7 +48,6 @@ import com.meshapp.ui.theme.MeshBg1
 import com.meshapp.ui.theme.MeshBg2
 import com.meshapp.ui.theme.MeshBg3
 import com.meshapp.ui.theme.MeshBorder
-import com.meshapp.ui.theme.MeshDanger
 import com.meshapp.ui.theme.MeshGreen
 import com.meshapp.ui.theme.MeshGreenOnAccent
 import com.meshapp.ui.theme.MeshMuted
@@ -76,17 +75,20 @@ fun HomeScreen(
 
         MeshPowerControl(
             isOn = uiState.isMeshOn,
-            onToggle = { viewModel.toggleMesh() }
+            onToggle = viewModel::toggleMesh
         )
 
         Spacer(modifier = Modifier.height(MeshSpacing.md))
 
         Text(
-            text = if (uiState.isMeshOn) "MESH ACTIVE" else "MESH OFF",
+            text = if (uiState.isMeshOn) "Mesh active" else "Mesh off",
             style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            color = if (uiState.isMeshOn) MeshGreen else MeshMuted,
-            letterSpacing = 1.sp
+            fontWeight = FontWeight.SemiBold,
+            color = if (uiState.isMeshOn) {
+                MeshGreen
+            } else {
+                MeshTextSecondary
+            }
         )
 
         Spacer(modifier = Modifier.height(2.dp))
@@ -94,9 +96,10 @@ fun HomeScreen(
         Text(
             text = uiState.connectionStatus,
             style = MaterialTheme.typography.bodyMedium,
-            color = MeshMuted
+            color = MeshMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
-
 
         Spacer(modifier = Modifier.height(MeshSpacing.xl))
 
@@ -105,12 +108,15 @@ fun HomeScreen(
             horizontalArrangement = Arrangement.spacedBy(MeshSpacing.sm)
         ) {
             StatCard(
-                label = "PEERS",
-                value = uiState.connectedNodes.count { it.isOnline }.toString(),
+                label = "Peers",
+                value = uiState.connectedNodes
+                    .count { it.isOnline }
+                    .toString(),
                 modifier = Modifier.weight(1f)
             )
+
             StatCard(
-                label = "INTERFACES",
+                label = "Interfaces",
                 value = uiState.networkInterfaceCount.toString(),
                 modifier = Modifier.weight(1f)
             )
@@ -123,14 +129,15 @@ fun HomeScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "NEARBY",
+                text = "Nearby",
                 style = MaterialTheme.typography.labelLarge,
-                color = MeshGreen,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp,
+                color = MeshTextSecondary,
+                fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f)
             )
         }
+
+        Spacer(modifier = Modifier.height(MeshSpacing.xs))
 
         if (uiState.connectedNodes.isEmpty()) {
             EmptyState(
@@ -142,11 +149,19 @@ fun HomeScreen(
             )
         } else {
             LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(MeshSpacing.sm),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = MeshSpacing.xs)
+                horizontalArrangement = Arrangement.spacedBy(MeshSpacing.md),
+                contentPadding = PaddingValues(
+                    vertical = MeshSpacing.xxs
+                )
             ) {
-                items(uiState.connectedNodes.take(8), key = { it.nodeId }) { node ->
-                    PeerPreviewChip(node = node, onClick = { onNodeClick(node) })
+                items(
+                    items = uiState.connectedNodes.take(8),
+                    key = { it.nodeId }
+                ) { node ->
+                    PeerPreviewChip(
+                        node = node,
+                        onClick = { onNodeClick(node) }
+                    )
                 }
             }
         }
@@ -163,16 +178,22 @@ private fun MeshPowerControl(
     modifier: Modifier = Modifier
 ) {
     Box(
-        modifier = modifier.size(180.dp),
+        modifier = modifier.size(168.dp),
         contentAlignment = Alignment.Center
     ) {
         if (isOn) {
-            val transition = rememberInfiniteTransition(label = "mesh-power-pulse")
+            val transition = rememberInfiniteTransition(
+                label = "mesh-power-pulse"
+            )
+
             val pulse by transition.animateFloat(
-                initialValue = 0.92f,
-                targetValue = 1.18f,
+                initialValue = 0.96f,
+                targetValue = 1.08f,
                 animationSpec = infiniteRepeatable(
-                    animation = tween(1800, easing = FastOutSlowInEasing),
+                    animation = tween(
+                        durationMillis = 2200,
+                        easing = FastOutSlowInEasing
+                    ),
                     repeatMode = RepeatMode.Reverse
                 ),
                 label = "mesh-power-pulse-scale"
@@ -180,22 +201,11 @@ private fun MeshPowerControl(
 
             Box(
                 modifier = Modifier
-                    .size(180.dp)
+                    .size(150.dp)
                     .graphicsLayer {
                         scaleX = pulse
                         scaleY = pulse
-                        alpha = 0.16f
-                    }
-                    .clip(CircleShape)
-                    .background(MeshGreen)
-            )
-            Box(
-                modifier = Modifier
-                    .size(150.dp)
-                    .graphicsLayer {
-                        scaleX = pulse * 0.94f
-                        scaleY = pulse * 0.94f
-                        alpha = 0.20f
+                        alpha = 0.10f
                     }
                     .clip(CircleShape)
                     .background(MeshGreen)
@@ -204,18 +214,32 @@ private fun MeshPowerControl(
 
         Box(
             modifier = Modifier
-                .size(128.dp)
+                .size(120.dp)
                 .clip(CircleShape)
-                .background(if (isOn) MeshGreen else MeshBg2)
-                .border(2.dp, if (isOn) MeshGreen else MeshBorder, CircleShape)
+                .background(
+                    if (isOn) MeshGreen else MeshBg2
+                )
+                .border(
+                    width = 1.dp,
+                    color = if (isOn) MeshGreen else MeshBorder,
+                    shape = CircleShape
+                )
                 .clickable(onClick = onToggle),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.Filled.PowerSettingsNew,
-                contentDescription = if (isOn) "Turn mesh off" else "Turn mesh on",
-                tint = if (isOn) MeshGreenOnAccent else MeshMuted,
-                modifier = Modifier.size(48.dp)
+                contentDescription = if (isOn) {
+                    "Turn mesh off"
+                } else {
+                    "Turn mesh on"
+                },
+                tint = if (isOn) {
+                    MeshGreenOnAccent
+                } else {
+                    MeshMuted
+                },
+                modifier = Modifier.size(44.dp)
             )
         }
     }
@@ -228,14 +252,14 @@ private fun StatCard(
     modifier: Modifier = Modifier
 ) {
     Surface(
-        shape = MeshShapes.cardSmall,
-        color = MeshBg1,
-        modifier = modifier.border(1.dp, MeshBorder, MeshShapes.cardSmall)
+        modifier = modifier,
+        shape = MeshShapes.card,
+        color = MeshBg1
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(MeshSpacing.md),
+                .padding(vertical = MeshSpacing.md),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
@@ -244,12 +268,13 @@ private fun StatCard(
                 color = MeshTextPrimary,
                 fontWeight = FontWeight.Bold
             )
+
             Spacer(modifier = Modifier.height(2.dp))
+
             Text(
                 text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MeshMuted,
-                letterSpacing = 1.sp
+                style = MaterialTheme.typography.labelMedium,
+                color = MeshMuted
             )
         }
     }
@@ -271,15 +296,22 @@ private fun PeerPreviewChip(
             ProfileAvatar(
                 initials = node.avatarInitials,
                 size = 52.dp,
-                containerColor = if (node.isOnline) MeshGreen else MeshBg3
+                containerColor = if (node.isOnline) {
+                    MeshGreen
+                } else {
+                    MeshBg3
+                }
             )
+
             StatusDot(
                 isOnline = node.isOnline,
                 size = 12.dp,
                 modifier = Modifier.align(Alignment.BottomEnd)
             )
         }
-        Spacer(modifier = Modifier.height(4.dp))
+
+        Spacer(modifier = Modifier.height(6.dp))
+
         Text(
             text = node.name,
             style = MaterialTheme.typography.labelSmall,

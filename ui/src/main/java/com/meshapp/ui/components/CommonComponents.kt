@@ -1,5 +1,6 @@
 package com.meshapp.ui.components
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -7,7 +8,9 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,6 +24,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -29,8 +33,6 @@ import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.SignalWifiStatusbarConnectedNoInternet4
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -44,25 +46,28 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.meshapp.ui.state.ConversationMessageUiState
 import com.meshapp.ui.state.NodeCardState
+import com.meshapp.ui.theme.MeshBg0
+import com.meshapp.ui.theme.MeshBg1
 import com.meshapp.ui.theme.MeshBg2
-import com.meshapp.ui.theme.MeshBg3
-import com.meshapp.ui.theme.MeshBorder
 import com.meshapp.ui.theme.MeshBubbleInbound
-import com.meshapp.ui.theme.MeshBubbleInboundBorder
 import com.meshapp.ui.theme.MeshBubbleOutbound
-import com.meshapp.ui.theme.MeshBubbleOutboundBorder
 import com.meshapp.ui.theme.MeshGreen
+import com.meshapp.ui.theme.MeshGreenMuted
 import com.meshapp.ui.theme.MeshGreenOnAccent
 import com.meshapp.ui.theme.MeshMuted
 import com.meshapp.ui.theme.MeshOffline
@@ -70,46 +75,84 @@ import com.meshapp.ui.theme.MeshRadius
 import com.meshapp.ui.theme.MeshShapes
 import com.meshapp.ui.theme.MeshSpacing
 import com.meshapp.ui.theme.MeshTextPrimary
+import com.meshapp.ui.theme.MeshTextSecondary
 
-/**
- * A circular initials avatar, used for both self and peer identities across the app.
- */
+object MeshMotion {
+    const val fast = 120
+    const val medium = 200
+    const val slow = 320
+    val easing = FastOutSlowInEasing
+}
+
+object MeshAvatarSize {
+    val small: Dp = 32.dp
+    val medium: Dp = 40.dp
+    val large: Dp = 48.dp
+    val extraLarge: Dp = 56.dp
+}
+
 @Composable
 fun ProfileAvatar(
     initials: String,
     modifier: Modifier = Modifier,
-    size: androidx.compose.ui.unit.Dp = 40.dp,
-    containerColor: Color = MeshGreen
+    size: Dp = MeshAvatarSize.medium,
+    containerColor: Color = MeshGreen,
+    isSelf: Boolean = false,
+    showRing: Boolean = false
 ) {
+    val textSize = (size.value * 0.36f).sp
+    val ringColor = if (isSelf) MeshGreen else MeshMuted.copy(alpha = 0.5f)
+
     Box(
         modifier = modifier
             .size(size)
             .clip(CircleShape)
+            .then(
+                if (isSelf || showRing) {
+                    Modifier.border(1.5.dp, ringColor, CircleShape)
+                } else {
+                    Modifier
+                }
+            )
+            .padding(if (isSelf || showRing) 2.dp else 0.dp)
+            .clip(CircleShape)
             .background(containerColor),
         contentAlignment = Alignment.Center
     ) {
-        Text(initials, color = MeshGreenOnAccent, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text(
+            text = initials,
+            color = MeshGreenOnAccent,
+            fontWeight = FontWeight.SemiBold,
+            style = TextStyle(fontSize = textSize)
+        )
     }
 }
 
-/**
- * Small dot + label used to show a peer's live connection state. A soft pulse on the
- * dot communicates "actively broadcasting" without being distracting.
- */
 @Composable
-fun OnlineIndicator(isOnline: Boolean, modifier: Modifier = Modifier) {
-    val color by animateColorAsState(if (isOnline) MeshGreen else MeshOffline, label = "status-color")
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier) {
+fun OnlineIndicator(
+    isOnline: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val color by animateColorAsState(
+        targetValue = if (isOnline) MeshGreen else MeshTextSecondary,
+        animationSpec = tween(MeshMotion.medium),
+        label = "status-color"
+    )
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+    ) {
         StatusDot(isOnline = isOnline)
-        Spacer(modifier = Modifier.size(6.dp))
-        Text(if (isOnline) "Online" else "Offline", style = MaterialTheme.typography.labelMedium, color = color)
+        Spacer(modifier = Modifier.size(MeshSpacing.xxs))
+        Text(
+            text = if (isOnline) "Online" else "Offline",
+            style = MaterialTheme.typography.labelMedium,
+            color = color
+        )
     }
 }
 
-/**
- * The animated presence dot on its own, reused by avatars, list rows, and headers
- * so every "is this peer reachable right now" signal looks identical.
- */
 @Composable
 fun StatusDot(
     isOnline: Boolean,
@@ -118,35 +161,41 @@ fun StatusDot(
 ) {
     val color by animateColorAsState(
         targetValue = if (isOnline) MeshGreen else MeshOffline,
+        animationSpec = tween(MeshMotion.medium),
         label = "dot-color"
     )
 
     if (isOnline) {
         val transition = rememberInfiniteTransition(label = "presence-pulse")
         val pulse by transition.animateFloat(
-            initialValue = 0.9f,
-            targetValue = 1.6f,
+            initialValue = 0.95f,
+            targetValue = 1.35f,
             animationSpec = infiniteRepeatable(
-                animation = tween(1600, easing = FastOutSlowInEasing),
+                animation = tween(
+                    1800,
+                    easing = MeshMotion.easing
+                ),
                 repeatMode = RepeatMode.Reverse
             ),
             label = "presence-pulse-scale"
         )
 
-        Box(modifier = modifier.size(size), contentAlignment = Alignment.Center) {
-            // Pulse outer halo using graphicsLayer for zero layout invalidation
+        Box(
+            modifier = modifier.size(size),
+            contentAlignment = Alignment.Center
+        ) {
             Box(
                 modifier = Modifier
                     .size(size)
                     .graphicsLayer {
                         scaleX = pulse
                         scaleY = pulse
-                        alpha = 0.22f
+                        alpha = 0.14f
                     }
                     .clip(CircleShape)
                     .background(color)
             )
-            // Solid center dot
+
             Box(
                 modifier = Modifier
                     .size(size)
@@ -164,60 +213,107 @@ fun StatusDot(
     }
 }
 
-/**
- * A small pill-shaped status/label chip, e.g. "MESH ONLINE", "NETWORK SECURE",
- * or per-node signal labels. Consolidates what used to be one-off Surface+Text blocks.
- */
+enum class MeshChipSize {
+    Dense,
+    Regular
+}
+
 @Composable
 fun MeshStatusChip(
     text: String,
     modifier: Modifier = Modifier,
     color: Color = MeshGreen,
-    filled: Boolean = false
+    filled: Boolean = false,
+    size: MeshChipSize = MeshChipSize.Regular
 ) {
+    val horizontalPadding =
+        if (size == MeshChipSize.Dense) MeshSpacing.xs else MeshSpacing.sm
+
+    val verticalPadding =
+        if (size == MeshChipSize.Dense) 2.dp else MeshSpacing.xxs
+
     Surface(
         shape = MeshShapes.chip,
-        color = if (filled) color else color.copy(alpha = 0.14f),
+        color = if (filled) color else color.copy(alpha = 0.12f),
         modifier = modifier
     ) {
         Text(
             text = text,
             color = if (filled) MeshGreenOnAccent else color,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = if (filled) FontWeight.Bold else FontWeight.SemiBold,
+            modifier = Modifier.padding(
+                horizontal = horizontalPadding,
+                vertical = verticalPadding
+            )
         )
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MeshTopBar(title: String, subtitle: String? = null, onBack: (() -> Unit)? = null, trailing: @Composable () -> Unit = {}) {
-    TopAppBar(
-        title = {
-            Column {
-                Text(title, style = MaterialTheme.typography.titleLarge, color = MeshTextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (!subtitle.isNullOrBlank()) {
-                    Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MeshMuted)
+fun MeshTopBar(
+    title: String,
+    subtitle: String? = null,
+    onBack: (() -> Unit)? = null,
+    showDivider: Boolean = false,
+    trailing: @Composable () -> Unit = {}
+) {
+    Column {
+        TopAppBar(
+            title = {
+                Column {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MeshTextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    if (!subtitle.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MeshMuted
+                        )
+                    }
                 }
-            }
-        },
-        navigationIcon = {
-            if (onBack != null) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = MeshTextPrimary)
+            },
+            navigationIcon = {
+                if (onBack != null) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = MeshTextPrimary
+                        )
+                    }
                 }
-            }
-        },
-        actions = { trailing() },
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-    )
+            },
+            actions = {
+                trailing()
+            },
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = Color.Transparent
+            )
+        )
+
+        if (showDivider) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(MeshBg2)
+            )
+        }
+    }
 }
 
-/**
- * Shared bottom navigation chrome. [MeshFooterNavigation] and [BottomNavigationBar] both
- * delegate here so every screen's nav bar matches pixel-for-pixel; only the item set differs.
- */
 @Composable
 private fun MeshNavigationBar(
     currentRoute: String,
@@ -225,49 +321,101 @@ private fun MeshNavigationBar(
     onChats: () -> Unit,
     onProfile: (() -> Unit)? = null
 ) {
-    NavigationBar(
-        containerColor = MeshBg2,
-        tonalElevation = 0.dp
-    ) {
-        val colors = NavigationBarItemDefaults.colors(
-            selectedIconColor = MeshGreen,
-            selectedTextColor = MeshGreen,
-            indicatorColor = MeshGreen.copy(alpha = 0.14f),
-            unselectedIconColor = MeshMuted,
-            unselectedTextColor = MeshMuted
+    Column {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(MeshBg2)
         )
-        NavigationBarItem(
-            selected = currentRoute == "home",
-            onClick = onHome,
-            icon = { Icon(Icons.Filled.Home, contentDescription = null) },
-            label = { Text("Home") },
-            colors = colors
-        )
-        NavigationBarItem(
-            selected = currentRoute == "chats",
-            onClick = onChats,
-            icon = { Icon(Icons.Filled.ChatBubble, contentDescription = null) },
-            label = { Text("Chats") },
-            colors = colors
-        )
-        if (onProfile != null) {
+
+        NavigationBar(
+            containerColor = MeshBg0,
+            tonalElevation = 0.dp
+        ) {
+            val colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = MeshGreen,
+                selectedTextColor = MeshGreen,
+                indicatorColor = MeshGreen.copy(alpha = 0.10f),
+                unselectedIconColor = MeshMuted,
+                unselectedTextColor = MeshMuted
+            )
+
             NavigationBarItem(
-                selected = currentRoute == "profile",
-                onClick = onProfile,
-                icon = { Icon(Icons.Filled.Person, contentDescription = null) },
-                label = { Text("Profile") },
+                selected = currentRoute == "home",
+                onClick = onHome,
+                icon = {
+                    Icon(
+                        imageVector = Icons.Filled.Home,
+                        contentDescription = "Home",
+                        modifier = Modifier.size(22.dp)
+                    )
+                },
+                label = {
+                    Text(
+                        text = "Home",
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                },
                 colors = colors
             )
+
+            NavigationBarItem(
+                selected = currentRoute == "chats",
+                onClick = onChats,
+                icon = {
+                    Icon(
+                        imageVector = Icons.Filled.ChatBubble,
+                        contentDescription = "Chats",
+                        modifier = Modifier.size(22.dp)
+                    )
+                },
+                label = {
+                    Text(
+                        text = "Chats",
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                },
+                colors = colors
+            )
+
+            if (onProfile != null) {
+                NavigationBarItem(
+                    selected = currentRoute == "profile",
+                    onClick = onProfile,
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Filled.Person,
+                            contentDescription = "Profile",
+                            modifier = Modifier.size(22.dp)
+                        )
+                    },
+                    label = {
+                        Text(
+                            text = "Profile",
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    },
+                    colors = colors
+                )
+            }
         }
     }
 }
 
 @Composable
-fun BottomNavigationBar(currentRoute: String, onNavigate: (String) -> Unit) {
+fun BottomNavigationBar(
+    currentRoute: String,
+    onNavigate: (String) -> Unit
+) {
     MeshNavigationBar(
         currentRoute = currentRoute,
-        onHome = { onNavigate("home") },
-        onChats = { onNavigate("chats") }
+        onHome = {
+            onNavigate("home")
+        },
+        onChats = {
+            onNavigate("chats")
+        }
     )
 }
 
@@ -287,123 +435,265 @@ fun MeshFooterNavigation(
 }
 
 @Composable
-fun NodeCard(node: NodeCardState, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Card(
+fun NodeCard(
+    node: NodeCardState,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = MeshShapes.card,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MeshBorder),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            .clip(MeshShapes.card)
+            .background(MeshBg1)
+            .clickable(onClick = onClick)
+            .padding(MeshSpacing.md)
     ) {
-        Row(
-            modifier = Modifier.padding(MeshSpacing.md),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            ProfileAvatar(initials = node.avatarInitials, size = 48.dp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box {
+                ProfileAvatar(
+                    initials = node.avatarInitials,
+                    size = MeshAvatarSize.large
+                )
+
+                StatusDot(
+                    isOnline = node.isOnline,
+                    size = 11.dp,
+                    modifier = Modifier.align(Alignment.BottomEnd)
+                )
+            }
+
             Spacer(modifier = Modifier.size(MeshSpacing.sm))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(node.name, style = MaterialTheme.typography.titleMedium, color = MeshTextPrimary, fontWeight = FontWeight.SemiBold)
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.Top
+
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = node.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MeshTextPrimary,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                Spacer(modifier = Modifier.height(3.dp))
+
+                Text(
+                    text = node.lastMessagePreview
+                        ?.takeIf { it.isNotBlank() }
+                        ?: "No messages yet",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MeshMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            if (!node.lastMessageTimestamp.isNullOrBlank() || node.unreadCount > 0) {
+                Spacer(modifier = Modifier.size(MeshSpacing.sm))
+
+                Column(
+                    horizontalAlignment = Alignment.End
                 ) {
-                    if (!node.lastMessagePreview.isNullOrBlank()) {
+                    if (!node.lastMessageTimestamp.isNullOrBlank()) {
                         Text(
-                            node.lastMessagePreview,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MeshMuted,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
+                            text = node.lastMessageTimestamp,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MeshMuted
                         )
-                    } else {
-                        Spacer(modifier = Modifier.weight(1f))
                     }
 
-                    if (!node.lastMessageTimestamp.isNullOrBlank() || node.unreadCount > 0) {
-                        Column(
-                            horizontalAlignment = Alignment.End,
-                            modifier = Modifier.padding(start = 8.dp)
-                        ) {
-                            if (!node.lastMessageTimestamp.isNullOrBlank()) {
-                                Text(
-                                    node.lastMessageTimestamp,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MeshMuted
-                                )
-                            }
-                            if (node.unreadCount > 0) {
-                                Spacer(modifier = Modifier.height(2.dp))
-                                MeshStatusChip(text = node.unreadCount.toString(), color = MeshGreen)
-                            }
-                        }
+                    if (node.unreadCount > 0) {
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        MeshStatusChip(
+                            text = node.unreadCount.toString(),
+                            color = MeshGreen,
+                            filled = true,
+                            size = MeshChipSize.Dense
+                        )
                     }
                 }
             }
-            OnlineIndicator(isOnline = node.isOnline)
         }
     }
 }
 
+enum class ChatBubbleGroupPosition {
+    Single,
+    First,
+    Middle,
+    Last
+}
+
+private fun chatBubbleShape(
+    isOutgoing: Boolean,
+    groupPosition: ChatBubbleGroupPosition
+): RoundedCornerShape {
+    val big = MeshRadius.lg
+    val small = MeshRadius.sm
+
+    val isTopOfGroup =
+        groupPosition == ChatBubbleGroupPosition.Single ||
+                groupPosition == ChatBubbleGroupPosition.First
+
+    val isBottomOfGroup =
+        groupPosition == ChatBubbleGroupPosition.Single ||
+                groupPosition == ChatBubbleGroupPosition.Last
+
+    return if (isOutgoing) {
+        RoundedCornerShape(
+            topStart = big,
+            topEnd = if (isTopOfGroup) big else small,
+            bottomEnd = if (isBottomOfGroup) small else big,
+            bottomStart = big
+        )
+    } else {
+        RoundedCornerShape(
+            topStart = if (isTopOfGroup) big else small,
+            topEnd = big,
+            bottomEnd = big,
+            bottomStart = if (isBottomOfGroup) small else big
+        )
+    }
+}
+
 @Composable
-fun ChatBubble(message: ConversationMessageUiState, modifier: Modifier = Modifier) {
-    val alignment = if (message.isOutgoing) Alignment.End else Alignment.Start
-    val bubbleColor = if (message.isOutgoing) MeshBubbleOutbound else MeshBubbleInbound
-    val borderColor = if (message.isOutgoing) MeshBubbleOutboundBorder else MeshBubbleInboundBorder
-    Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = alignment) {
+fun ChatBubble(
+    message: ConversationMessageUiState,
+    modifier: Modifier = Modifier,
+    groupPosition: ChatBubbleGroupPosition = ChatBubbleGroupPosition.Single,
+    showTimestamp: Boolean =
+        groupPosition == ChatBubbleGroupPosition.Single ||
+                groupPosition == ChatBubbleGroupPosition.Last,
+    content: (@Composable () -> Unit)? = null
+) {
+    val alignment =
+        if (message.isOutgoing) Alignment.End else Alignment.Start
+
+    val bubbleColor =
+        if (message.isOutgoing) MeshBubbleOutbound else MeshBubbleInbound
+
+    val shape =
+        chatBubbleShape(message.isOutgoing, groupPosition)
+
+    val topPadding =
+        if (
+            groupPosition == ChatBubbleGroupPosition.Single ||
+            groupPosition == ChatBubbleGroupPosition.First
+        ) {
+            MeshSpacing.md
+        } else {
+            MeshSpacing.xxs
+        }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = topPadding),
+        horizontalAlignment = alignment
+    ) {
         Box(
             modifier = Modifier
-                .padding(vertical = 4.dp)
-                .background(bubbleColor, RoundedCornerShape(MeshRadius.md))
-                .border(1.dp, borderColor, RoundedCornerShape(MeshRadius.md))
-                .padding(horizontal = 14.dp, vertical = 10.dp)
+                .widthIn(max = 280.dp)
+                .clip(shape)
+                .background(bubbleColor)
+                .padding(
+                    horizontal = MeshSpacing.sm,
+                    vertical = MeshSpacing.xs
+                )
         ) {
-            Column(horizontalAlignment = Alignment.Start) {
-                Text(message.text, color = MeshTextPrimary)
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(message.timestamp, style = MaterialTheme.typography.labelSmall, color = MeshMuted)
-                    if (!message.deliveryStatusLabel.isNullOrBlank()) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(message.deliveryStatusLabel, style = MaterialTheme.typography.labelSmall, color = MeshMuted)
-                    }
+            content?.invoke() ?: Text(
+                text = message.text,
+                color = MeshTextPrimary,
+                style = MaterialTheme.typography.bodyLarge
+            )
+        }
+
+        if (showTimestamp) {
+            Row(
+                modifier = Modifier.padding(
+                    top = 3.dp,
+                    start = MeshSpacing.xxs,
+                    end = MeshSpacing.xxs
+                ),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = message.timestamp,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MeshTextSecondary
+                )
+
+                if (!message.deliveryStatusLabel.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.width(MeshSpacing.xxs))
+
+                    Text(
+                        text = message.deliveryStatusLabel,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MeshTextSecondary
+                    )
                 }
             }
         }
     }
 }
 
-/**
- * Generic "nothing here yet" placeholder shared by empty chat lists, peer lists, etc.
- * Uses a muted, low-emphasis wifi icon so it doubles as a subtle P2P visual cue.
- */
 @Composable
-fun EmptyState(title: String, subtitle: String, modifier: Modifier = Modifier) {
+fun EmptyState(
+    title: String,
+    subtitle: String,
+    modifier: Modifier = Modifier,
+    icon: ImageVector =
+        Icons.Filled.SignalWifiStatusbarConnectedNoInternet4
+) {
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Box(
-            modifier = Modifier
-                .size(64.dp)
-                .clip(CircleShape)
-                .background(MeshBg3),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                Icons.Filled.SignalWifiStatusbarConnectedNoInternet4,
-                contentDescription = null,
-                tint = MeshMuted,
-                modifier = Modifier.size(28.dp)
+        AnimatedContent(
+            targetState = icon,
+            transitionSpec = {
+                fadeIn(tween(MeshMotion.medium)) togetherWith
+                        fadeOut(tween(MeshMotion.fast))
+            },
+            label = "empty-state-icon"
+        ) { animatedIcon ->
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(MeshGreenMuted.copy(alpha = 0.4f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = animatedIcon,
+                    contentDescription = null,
+                    tint = MeshMuted.copy(alpha = 0.8f),
+                    modifier = Modifier.size(26.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(MeshSpacing.md))
+
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            color = MeshTextPrimary,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center
+        )
+
+        if (subtitle.isNotBlank()) {
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MeshMuted,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.widthIn(max = 260.dp)
             )
         }
-        Spacer(modifier = Modifier.height(MeshSpacing.md))
-        Text(title, style = MaterialTheme.typography.titleMedium, color = MeshTextPrimary, fontWeight = FontWeight.SemiBold)
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MeshMuted)
     }
 }
