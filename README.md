@@ -8,7 +8,7 @@ MeshApp is a decentralized, peer-to-peer (P2P) messaging and real-time media str
 
 *   **Reliability**: Enforced via an AODV (Ad-hoc On-demand Distance Vector) routing engine and reliable TCP unicast primitives for deterministic data delivery.
 *   **Security**: Cryptographically secured through End-to-End Encryption (E2EE) utilizing Elliptic Curve Diffie-Hellman (ECDH) key exchange, AES-256-GCM for authenticated confidentiality, and ECDSA for digital signatures.
-*   **Low-Latency Media**: Optimized real-time voice streaming using the Opus audio codec over UDP with dynamic jitter buffering and packet loss concealment.
+*   **Low-Latency Media**: Optimized real-time voice streaming using a lightweight G.711 $\mu$-law audio codec over UDP with dynamic sequence-indexed jitter buffering and soft-limiting DSP.
 *   **Transparency**: Protocol semantics and network state are exposed via reactive Kotlin Flows for real-time introspection and UI reconciliation.
 *   **Decentralization**: An architecturally flat network topology where every node acts as both a host and a router/relay, eliminating single points of failure (SPOFs).
 
@@ -25,14 +25,14 @@ The system adheres to a **Layered Modular Architecture** ensuring strict separat
 | **`:meshControl`** | Central orchestration engine managing the convergence of transport, routing, audio coordination, and cryptographic layers. |
 | **`:messaging`** | Domain-specific chat logic, message deduplication, cryptographic delivery tracking, and transactional SQLite persistence. |
 | **`:routing`** | Reactive path discovery (AODV), peer adjacency management, routing table partitioning, and recursive route error invalidation. |
-| **`:security`** | Cryptographic core: Android Keystore P-256 keypair management, shared secret derivation (ECDH), AES-GCM encryption, and ECDSA signatures. |
-| **`:transport`** | Network I/O abstraction: UDP broadcast for discovery/voice and TCP unicast for reliable session delivery. |
+| **`:security`** | Cryptographic core: P-256 keypair identity management with Android Keystore master key protection, shared secret derivation (ECDH), AES-GCM encryption, and ECDSA signatures. |
+| **`:transport`** | Network I/O abstraction: UDP broadcast for discovery/routing, UDP unicast for voice streaming, and TCP unicast for reliable session delivery. |
 | **`:packetProcessor`** | Binary serialization engine: Deterministic wire-format encoding and decoding. |
 | **`:model`** | Unified domain primitives: `NodeId`, `MessageId`, and strongly-typed protocol packet structures. |
 | **`:logger`** | Centralized diagnostics utility for protocol event logging, network telemetry, and debugging. |
 | **`:filetransfer`** | Encrypted file offers, chunked streaming over TCP, adaptive timeouts, SHA-256 checksums, and transfer state tracking. |
-| **`:voice`** | Real-time full-duplex encrypted voice calls, Opus 16 kHz codec, jitter buffering, PLC, DSP soft limiting, and loopback diagnostics. |
-| **`:voicemessage`** | Voice-message recording, Opus compression, local storage, audio playback, and chat conversation integration. |
+| **`:voice`** | Real-time full-duplex encrypted voice calls, pure-Kotlin G.711 $\mu$-law 16 kHz codec, jitter buffering, DSP soft limiting, and loopback diagnostics. |
+| **`:voicemessage`** | Voice-message recording, G.711 $\mu$-law compression, local `.mulaw` file storage, audio playback, and chat conversation integration via chunked file transfer. |
 
 ---
 
@@ -47,20 +47,20 @@ The system adheres to a **Layered Modular Architecture** ensuring strict separat
 - **Peer Directory**: Displays discovered peers, online statuses, custom display names, and route hop counts.
 
 ### 2. Real-Time Encrypted Voice Calls
-- **Full-Duplex Audio**: Low-latency interactive voice calling over UDP.
-- **High-Fidelity Opus Codec**: 16 kHz mono sampling, 20 ms frames (320 samples / 640 bytes PCM), compressed at 16 kbps via Android `MediaCodec`.
+- **Full-Duplex Audio**: Low-latency interactive voice calling over UDP unicast.
+- **Lightweight G.711 $\mu$-Law Codec**: 16 kHz mono sampling, 20 ms frames (320 samples / 640 bytes 16-bit PCM), compressed 50% into 320-byte 8-bit $\mu$-law frames (pure Kotlin with zero native dependencies).
 - **Per-Call Key Agreement**: Ephemeral ECDH key agreement during call setup deriving directional AES-GCM encryption keys.
-- **Jitter Buffer & Packet Loss Concealment (PLC)**: Adaptive jitter buffering (pre-buffer ~80 ms, cap ~200 ms) with repetition-decay PLC for smooth playback over lossy links.
-- **Latency & Backpressure Management**: Bounded audio stream queues with drop-oldest overflow policy and sequence tracking to prevent latency buildup.
-- **Hardware & DSP Optimizations**: Hardware Acoustic Echo Cancellation (AEC), Noise Suppression (NS), Automatic Gain Control (AGC), and a software soft-knee limiter (`tanh`) to eliminate clipping distortion.
+- **Sequence-Indexed Jitter Buffer**: Adaptive jitter buffering (initial ~60 ms cushion, ~120 ms latency ceiling) with sequence-loss jump protection to prevent latency accumulation over lossy links.
+- **Hardware & DSP Optimizations**: Hardware Acoustic Echo Cancellation (AEC), Noise Suppression (NS), Automatic Gain Control (AGC), software noise gating, and a software soft-knee limiter (`tanh`) to eliminate digital clipping distortion.
 - **In-Band Signaling**: Encrypted call setup and teardown (`OFFER`, `RINGING`, `ACCEPT`, `REJECT`, `BUSY`, `CANCEL`, `HANGUP`).
 - **Diagnostic Loopback**: Local mic-to-speaker loopback mode with 3-second delay to test capture, DSP, and playback paths.
 
 ### 3. Voice Messages
 - **Microphone Recording**: Push-to-record 16 kHz mono voice notes.
-- **Opus File Storage**: Frames compressed and saved locally in a length-prefixed binary format with duration metadata.
+- **Canonical $\mu$-Law Storage**: Frames compressed via `VoiceCodec` and saved locally as `.mulaw` files (`voice_note_<epochMillis>_<durationMs>ms.mulaw`).
+- **P2P Transfer Pipeline**: Transmitted reliably across the mesh using the `:filetransfer` chunked TCP pipeline (`FILE_CHUNK`).
 - **Integrated Playback**: Dedicated audio player streaming decoded frames to communication audio tracks.
-- **Chat Integration**: Voice messages are sent and rendered seamlessly in chat threads alongside text messages.
+- **Chat Integration**: Voice messages are sent and rendered seamlessly as interactive audio bubbles in chat threads.
 
 ### 4. File Transfer
 - **Structured Signaling**: Encrypted negotiation (`OFFER`, `ACCEPT`, `REJECT`, `CANCEL`, `COMPLETE`) carried within secure message envelopes.
@@ -132,7 +132,7 @@ Every packet transmitted over the mesh begins with a mandatory 122-byte header:
 | `0x04` | **RREP** | UDP / TCP | Route Reply sent back along the reverse path with public key and hop count. |
 | `0x05` | **ACK** | TCP Unicast | Cryptographically signed delivery acknowledgement. |
 | `0x06` | **RERR** | UDP Broadcast | Route Error packet propagating broken link notifications. |
-| `0x07` | **VOICE** | UDP Unicast | Encrypted Opus audio frames for interactive calls. |
+| `0x07` | **VOICE** | UDP Unicast | Encrypted G.711 $\mu$-law audio frames for interactive calls. |
 | `0x08` | **FILE_CHUNK** | TCP Unicast | Binary chunk packets for file transfer assembly. |
 
 ### 3. Secure Envelope Layout
@@ -155,7 +155,8 @@ Used for all `0x02: MESSAGE` packets:
 MeshApp implements zero-trust end-to-end security designed for open wireless environments:
 
 1. **Identity & Key Generation**:
-   - Each node generates a **NIST P-256 (secp256r1)** keypair stored securely in the hardware-backed **Android Keystore**.
+   - Each node generates a **NIST P-256 (secp256r1)** keypair.
+   - The persistent identity is encrypted using **AES-256-GCM** via a hardware-backed master key securely managed in the **Android Keystore**.
    - A node's permanent identifier (`NodeId`) is derived from the **SHA-256 hash** of its static public key.
 2. **End-to-End Encryption (E2EE)**:
    - Senders generate an ephemeral P-256 keypair for each message transmission.
@@ -186,7 +187,7 @@ The `:routing` module implements a reactive mesh routing protocol:
 - **UI Framework**: Jetpack Compose with Material 3
 - **Concurrency & Streams**: Kotlin Coroutines, StateFlow, SharedFlow, Channels
 - **Dependency Injection**: **Manual Dependency Injection (Pure DI)** via centralized Composition Root (`AppContainer`)
-- **Audio Processing**: Android `MediaCodec` (Opus), `AudioRecord`, `AudioTrack`, `AcousticEchoCanceler`, `NoiseSuppressor`, `AutomaticGainControl`
+- **Audio Processing**: Pure-Kotlin G.711 $\mu$-law codec, `AudioRecord`, `AudioTrack`, `AcousticEchoCanceler`, `NoiseSuppressor`, `AutomaticGainControl`, software noise gate, software `tanh` limiter
 - **Network Primitives**: Low-level socket orchestration using `DatagramSocket` (UDP broadcast/voice) and `ServerSocket`/`Socket` (TCP unicast/files)
 - **Persistence**: Transactional SQLite with asynchronous DAO abstractions
 - **Build System**: Gradle Kotlin DSL with multi-module isolation
@@ -200,8 +201,8 @@ The project utilizes an **Incremental Process Model** characterized by iterative
 2.  **Orchestration Plane**: State management, reactive messaging logic, and audio session coordination.
 3.  **Foundation Layer**: Transport primitives, TCP/UDP sockets, and deterministic binary framing.
 4.  **Topology Synthesis**: Autonomous AODV routing, route table partitioning, and proactive peer discovery.
-5.  **Security Integration**: Hardware-backed identity, ephemeral ECDH key agreement, and end-to-end cryptographic encapsulation.
-6.  **Media Streaming**: Real-time Opus voice calling, jitter handling, and chunked file transfer pipelines.
+5.  **Security Integration**: Hardware-backed identity protection, ephemeral ECDH key agreement, and end-to-end cryptographic encapsulation.
+6.  **Media Streaming**: Real-time G.711 $\mu$-law voice calling, jitter handling, and chunked file transfer pipelines.
 
 ---
 
@@ -210,8 +211,8 @@ The project utilizes an **Incremental Process Model** characterized by iterative
 ### Prerequisites
 - Android Studio Ladybug (2024.2.1) or newer
 - JDK 17+
-- Android SDK 34+
-- Two or more physical Android devices running Android 8.0 (API 26) or higher
+- Android SDK 30+ (compileSdk / targetSdk 37, minSdk 30)
+- Two or more physical Android devices running Android 11.0 (API 30) or higher
 
 ### Installation & Setup
 
@@ -233,9 +234,3 @@ The project utilizes an **Incremental Process Model** characterized by iterative
    - Grant necessary permissions (Audio recording, Notifications, Nearby Wi-Fi devices).
    - Nodes will autonomously discover each other via HELLO broadcasts.
    - Start 1-on-1 encrypted text chats, stream live voice calls, record audio notes, or transfer files across the mesh.
-
----
-
-## License
-
-This project is licensed under the Apache License 2.0. See the `LICENSE` file for details.
