@@ -239,6 +239,8 @@ class VoiceSessionManager(
                 val packet = voicePayload.packet
                 if (!packet.callId.bytes.contentEquals(callId.bytes)) return@collect
 
+                if (packet.sequenceNumber < expectedSequence.get()) return@collect
+
                 val decrypted = callCrypto.decrypt(packet.sequenceNumber, packet.encodedAudio)
                     ?: return@collect
                 val pcm = codec.decode(decrypted)
