@@ -36,11 +36,16 @@ object FileChunker {
         }
     }
 
-    /** Helper to write a specific chunk to a file at the correct offset */
+    /** Writes a chunk using an already open handle, no open or close per call */
+    fun writeChunkTo(raf: RandomAccessFile, chunkIndex: Int, chunkSize: Int, data: ByteArray) {
+        raf.seek(chunkIndex.toLong() * chunkSize)
+        raf.write(data)
+    }
+
+    /** Single shot helper, opens and closes the file for one chunk write */
     fun writeChunk(file: File, chunkIndex: Int, chunkSize: Int, data: ByteArray) {
         RandomAccessFile(file, "rw").use { raf ->
-            raf.seek(chunkIndex.toLong() * chunkSize)
-            raf.write(data)
+            writeChunkTo(raf, chunkIndex, chunkSize, data)
         }
     }
 }
