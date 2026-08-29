@@ -1,24 +1,28 @@
 package com.meshapp.ui.screens.voice
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -32,7 +36,6 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,15 +51,17 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.meshapp.ui.components.MeshMotion
 import com.meshapp.ui.theme.MeshBg0
 import com.meshapp.ui.theme.MeshBg2
 import com.meshapp.ui.theme.MeshBg3
 import com.meshapp.ui.theme.MeshDanger
 import com.meshapp.ui.theme.MeshGreen
+import com.meshapp.ui.theme.MeshGreenMuted
 import com.meshapp.ui.theme.MeshGreenOnAccent
 import com.meshapp.ui.theme.MeshMuted
 import com.meshapp.ui.theme.MeshShapes
+import com.meshapp.ui.theme.MeshSpacing
 import com.meshapp.ui.theme.MeshTextPrimary
 import com.meshapp.voice.CallState
 import kotlinx.coroutines.delay
@@ -85,13 +90,19 @@ fun VoiceCallOverlay(
         else -> ""
     }
 
-    val isLive = state is CallState.Active || state is CallState.Ringing || state is CallState.Dialing
+    val isLive =
+        state is CallState.Active ||
+                state is CallState.Ringing ||
+                state is CallState.Dialing
 
-    // Live call duration timer
-    var activeCallDurationSeconds by remember { mutableLongStateOf(0L) }
+    var activeCallDurationSeconds by remember {
+        mutableLongStateOf(0L)
+    }
+
     LaunchedEffect(state) {
         if (state is CallState.Active) {
             activeCallDurationSeconds = 0L
+
             while (true) {
                 delay(1000L)
                 activeCallDurationSeconds++
@@ -100,34 +111,43 @@ fun VoiceCallOverlay(
     }
 
     val statusText = when (state) {
-        is CallState.Dialing -> "Calling..."
-        is CallState.Ringing -> "Incoming Call"
+        is CallState.Dialing -> "Calling"
+
+        is CallState.Ringing -> "Incoming call"
+
         is CallState.Active -> {
             val mins = activeCallDurationSeconds / 60
             val secs = activeCallDurationSeconds % 60
             "%02d:%02d".format(mins, secs)
         }
-        is CallState.Ended -> "Call Ended"
+
+        is CallState.Ended -> "Call ended"
+
         else -> ""
     }
+
+    val statusColor =
+        if (state is CallState.Active) MeshGreen else MeshMuted
+
+    val statusChipColor =
+        if (state is CallState.Active) MeshGreenMuted else MeshBg3
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MeshBg0.copy(alpha = 0.98f))
+            .background(MeshBg0)
             .statusBarsPadding()
-            .padding(24.dp)
+            .padding(MeshSpacing.md)
     ) {
-        // Top Minimize Bar Action
         IconButton(
             onClick = onMinimize,
             modifier = Modifier.align(Alignment.TopStart)
         ) {
             Icon(
                 imageVector = Icons.Default.ExpandMore,
-                contentDescription = "Minimize Call",
+                contentDescription = "Minimize call",
                 tint = MeshMuted,
-                modifier = Modifier.size(32.dp)
+                modifier = Modifier.size(28.dp)
             )
         }
 
@@ -136,84 +156,52 @@ fun VoiceCallOverlay(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Pulse Avatar Container
-            Box(contentAlignment = Alignment.Center) {
-                if (isLive) {
-                    val transition = rememberInfiniteTransition(label = "call-pulse")
-                    val pulseScale by transition.animateFloat(
-                        initialValue = 1.0f,
-                        targetValue = 1.25f,
-                        animationSpec = infiniteRepeatable(
-                            animation = tween(1600, easing = FastOutSlowInEasing),
-                            repeatMode = RepeatMode.Reverse
-                        ),
-                        label = "pulseScale"
-                    )
+            CallAvatar(
+                peerLabel = peerLabel,
+                isLive = isLive
+            )
 
-                    Box(
-                        modifier = Modifier
-                            .size(160.dp)
-                            .drawBehind {
-                                // Outer Ring
-                                drawCircle(
-                                    color = MeshGreen.copy(alpha = 0.10f),
-                                    radius = (size.minDimension / 2f) * pulseScale * 1.12f,
-                                    style = Stroke(width = 1.5.dp.toPx())
-                                )
-                                // Inner Ring
-                                drawCircle(
-                                    color = MeshGreen.copy(alpha = 0.22f),
-                                    radius = (size.minDimension / 2f) * pulseScale,
-                                    style = Stroke(width = 2.dp.toPx())
-                                )
-                            }
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .size(128.dp)
-                        .clip(CircleShape)
-                        .background(MeshBg2),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = peerLabel.take(1).uppercase(),
-                        color = MeshGreen,
-                        style = MaterialTheme.typography.displayMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(MeshSpacing.lg))
 
             Text(
                 text = peerLabel,
                 color = MeshTextPrimary,
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.Bold
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.SemiBold
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(MeshSpacing.sm))
 
-            Surface(
-                shape = MeshShapes.chip,
-                color = if (state is CallState.Active) MeshGreen.copy(alpha = 0.15f) else MeshBg3
-            ) {
-                Text(
-                    text = statusText,
-                    color = if (state is CallState.Active) MeshGreen else MeshMuted,
-                    style = MaterialTheme.typography.bodyLarge,
-                    letterSpacing = 1.2.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                )
+            AnimatedContent(
+                targetState = statusText,
+                transitionSpec = {
+                    fadeIn(
+                        tween(MeshMotion.medium)
+                    ) togetherWith fadeOut(
+                        tween(MeshMotion.fast)
+                    )
+                },
+                label = "call-status"
+            ) { text ->
+                Surface(
+                    shape = MeshShapes.chip,
+                    color = statusChipColor
+                ) {
+                    Text(
+                        text = text,
+                        color = statusColor,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(
+                            horizontal = MeshSpacing.md,
+                            vertical = MeshSpacing.xs
+                        )
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.height(64.dp))
+            Spacer(modifier = Modifier.height(MeshSpacing.xxl))
 
-            // Action Controls
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
@@ -228,6 +216,7 @@ fun VoiceCallOverlay(
                             onClick = onCancel
                         )
                     }
+
                     is CallState.Ringing -> {
                         CallActionButton(
                             icon = Icons.Default.CallEnd,
@@ -235,6 +224,7 @@ fun VoiceCallOverlay(
                             color = MeshDanger,
                             onClick = onReject
                         )
+
                         CallActionButton(
                             icon = Icons.Default.Call,
                             label = "Answer",
@@ -242,34 +232,82 @@ fun VoiceCallOverlay(
                             onClick = onAccept
                         )
                     }
+
                     is CallState.Active -> {
                         CallActionButton(
                             icon = Icons.Default.CallEnd,
-                            label = "End Call",
+                            label = "End call",
                             color = MeshDanger,
                             onClick = onHangup
                         )
                     }
-                    is CallState.Ended -> {
-                        // Auto-dismiss state
-                    }
-                    else -> {}
+
+                    is CallState.Ended -> Unit
+
+                    else -> Unit
                 }
             }
+        }
+    }
+}
 
-            Spacer(modifier = Modifier.height(40.dp))
+@Composable
+private fun CallAvatar(
+    peerLabel: String,
+    isLive: Boolean
+) {
+    Box(
+        contentAlignment = Alignment.Center
+    ) {
+        if (isLive) {
+            val transition = rememberInfiniteTransition(
+                label = "call-pulse"
+            )
 
-            TextButton(
-                onClick = onMinimize,
-                modifier = Modifier.padding(8.dp)
-            ) {
-                Text(
-                    text = "Minimize Overlay",
-                    color = MeshMuted,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Medium
-                )
-            }
+            val pulseScale by transition.animateFloat(
+                initialValue = 1.0f,
+                targetValue = 1.15f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(
+                        1800,
+                        easing = FastOutSlowInEasing
+                    ),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "pulse-scale"
+            )
+
+            Box(
+                modifier = Modifier
+                    .size(152.dp)
+                    .drawBehind {
+                        drawCircle(
+                            color = MeshGreen.copy(alpha = 0.16f),
+                            radius =
+                                (size.minDimension / 2f) * pulseScale,
+                            style = Stroke(
+                                width = 1.5.dp.toPx()
+                            )
+                        )
+                    }
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .size(132.dp)
+                .clip(CircleShape)
+                .background(MeshBg2),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = peerLabel
+                    .take(1)
+                    .uppercase(),
+                color = MeshGreen,
+                style = MaterialTheme.typography.displaySmall,
+                fontWeight = FontWeight.SemiBold
+            )
         }
     }
 }
@@ -282,12 +320,11 @@ private fun CallActionButton(
     onClick: () -> Unit
 ) {
     Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable(onClick = onClick)
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         FilledIconButton(
             onClick = onClick,
-            modifier = Modifier.size(72.dp),
+            modifier = Modifier.size(64.dp),
             colors = IconButtonDefaults.filledIconButtonColors(
                 containerColor = color,
                 contentColor = MeshGreenOnAccent
@@ -296,10 +333,12 @@ private fun CallActionButton(
             Icon(
                 imageVector = icon,
                 contentDescription = label,
-                modifier = Modifier.size(34.dp)
+                modifier = Modifier.size(28.dp)
             )
         }
-        Spacer(modifier = Modifier.height(8.dp))
+
+        Spacer(modifier = Modifier.height(MeshSpacing.xs))
+
         Text(
             text = label,
             color = MeshTextPrimary,

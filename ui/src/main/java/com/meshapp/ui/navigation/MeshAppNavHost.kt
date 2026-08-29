@@ -1,14 +1,29 @@
 package com.meshapp.ui.navigation
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.List
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Router
@@ -19,6 +34,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
@@ -30,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
@@ -55,6 +72,8 @@ import com.meshapp.ui.screens.profile.ProfileScreen
 import com.meshapp.ui.screens.voice.VoiceCallOverlay
 import com.meshapp.ui.theme.MeshAppTheme
 import com.meshapp.ui.theme.MeshBg0
+import com.meshapp.ui.theme.MeshBg2
+import com.meshapp.ui.theme.MeshBorder
 import com.meshapp.ui.theme.MeshGreen
 import com.meshapp.ui.theme.MeshGreenOnAccent
 import com.meshapp.ui.theme.MeshShapes
@@ -94,81 +113,96 @@ fun MeshAppNavHost(
             containerColor = MeshBg0,
             topBar = {
                 if (currentRoute != conversationRoute) {
-                    CenterAlignedTopAppBar(
-                        title = {
-                            Text(
-                                text = getTopBarTitle(currentRoute),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MeshTextPrimary
-                            )
-                        },
-                        navigationIcon = {
-                            if (!isRootTab) {
-                                IconButton(onClick = { navController.popBackStack() }) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                        contentDescription = "Navigate Back",
-                                        tint = MeshTextPrimary
-                                    )
-                                }
-                            }
-                        },
-                        actions = {
-                            if (isRootTab || currentRoute == MeshRoutes.PROFILE) {
-                                Box {
-                                    IconButton(onClick = { showQuickActions = true }) {
-                                        ProfileAvatar(
-                                            initials = uiState.profile.avatarInitials,
-                                            size = 32.dp
+                    Column {
+                        CenterAlignedTopAppBar(
+                            title = {
+                                Text(
+                                    text = getTopBarTitle(currentRoute),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MeshTextPrimary
+                                )
+                            },
+                            navigationIcon = {
+                                if (!isRootTab) {
+                                    IconButton(onClick = { navController.popBackStack() }) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                            contentDescription = "Navigate Back",
+                                            tint = MeshTextPrimary
                                         )
                                     }
-                                    if (isRootTab) {
-                                        DropdownMenu(
-                                            expanded = showQuickActions,
-                                            onDismissRequest = { showQuickActions = false }
-                                        ) {
-                                            DropdownMenuItem(
-                                                text = { Text("My Node Profile") },
-                                                leadingIcon = { Icon(Icons.Outlined.Person, contentDescription = null) },
-                                                onClick = {
-                                                    showQuickActions = false
-                                                    navController.navigate(MeshRoutes.PROFILE)
-                                                }
+                                }
+                            },
+                            actions = {
+                                if (isRootTab || currentRoute == MeshRoutes.PROFILE) {
+                                    Box {
+                                        IconButton(onClick = { showQuickActions = true }) {
+                                            ProfileAvatar(
+                                                initials = uiState.profile.avatarInitials,
+                                                size = 32.dp,
+                                                showRing = true
                                             )
-                                            DropdownMenuItem(
-                                                text = { Text("Network Interfaces") },
-                                                leadingIcon = { Icon(Icons.Outlined.Router, contentDescription = null) },
-                                                onClick = {
-                                                    showQuickActions = false
-                                                    navController.navigate(MeshRoutes.NETWORK_INTERFACES)
-                                                }
-                                            )
-                                            DropdownMenuItem(
-                                                text = { Text("System Logs") },
-                                                leadingIcon = { Icon(Icons.AutoMirrored.Outlined.List, contentDescription = null) },
-                                                onClick = {
-                                                    showQuickActions = false
-                                                    navController.navigate(MeshRoutes.LOGS)
-                                                }
-                                            )
-                                            DropdownMenuItem(
-                                                text = { Text("About Mesh") },
-                                                leadingIcon = { Icon(Icons.Outlined.Info, contentDescription = null) },
-                                                onClick = {
-                                                    showQuickActions = false
-                                                    navController.navigate(MeshRoutes.ABOUT)
-                                                }
-                                            )
+                                        }
+                                        if (isRootTab) {
+                                            DropdownMenu(
+                                                expanded = showQuickActions,
+                                                onDismissRequest = { showQuickActions = false },
+                                                containerColor = MeshBg2,
+                                                shape = MeshShapes.card
+                                            ) {
+                                                DropdownMenuItem(
+                                                    text = { Text("My Node Profile", color = MeshTextPrimary) },
+                                                    leadingIcon = { Icon(Icons.Outlined.Person, contentDescription = null, tint = MeshGreen) },
+                                                    colors = MenuDefaults.itemColors(textColor = MeshTextPrimary),
+                                                    onClick = {
+                                                        showQuickActions = false
+                                                        navController.navigate(MeshRoutes.PROFILE)
+                                                    }
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text("Network Interfaces", color = MeshTextPrimary) },
+                                                    leadingIcon = { Icon(Icons.Outlined.Router, contentDescription = null, tint = MeshGreen) },
+                                                    colors = MenuDefaults.itemColors(textColor = MeshTextPrimary),
+                                                    onClick = {
+                                                        showQuickActions = false
+                                                        navController.navigate(MeshRoutes.NETWORK_INTERFACES)
+                                                    }
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text("System Logs", color = MeshTextPrimary) },
+                                                    leadingIcon = { Icon(Icons.AutoMirrored.Outlined.List, contentDescription = null, tint = MeshGreen) },
+                                                    colors = MenuDefaults.itemColors(textColor = MeshTextPrimary),
+                                                    onClick = {
+                                                        showQuickActions = false
+                                                        navController.navigate(MeshRoutes.LOGS)
+                                                    }
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text("About Mesh", color = MeshTextPrimary) },
+                                                    leadingIcon = { Icon(Icons.Outlined.Info, contentDescription = null, tint = MeshGreen) },
+                                                    colors = MenuDefaults.itemColors(textColor = MeshTextPrimary),
+                                                    onClick = {
+                                                        showQuickActions = false
+                                                        navController.navigate(MeshRoutes.ABOUT)
+                                                    }
+                                                )
+                                            }
                                         }
                                     }
                                 }
-                            }
-                        },
-                        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                            containerColor = MeshBg0
+                            },
+                            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                                containerColor = MeshBg0
+                            )
                         )
-                    )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(MeshBorder)
+                        )
+                    }
                 }
             },
             bottomBar = {
@@ -259,7 +293,7 @@ fun MeshAppNavHost(
                     }
                 }
 
-                // Active Voice Call Overlay
+                // active voice call overlay
                 VoiceCallOverlay(
                     state = uiState.voiceCallState,
                     isMinimized = uiState.isCallMinimized,
@@ -273,28 +307,66 @@ fun MeshAppNavHost(
                     onMinimize = { homeViewModel.minimizeCall() }
                 )
 
-                // Minimized Call Return Pill
+                // minimized call return pill
                 if (uiState.isCallMinimized && uiState.voiceCallState !is CallState.Idle) {
-                    Box(
+                    MinimizedCallPill(
                         modifier = Modifier
                             .align(Alignment.TopCenter)
                             .statusBarsPadding()
-                            .padding(top = MeshSpacing.xs)
-                            .clip(MeshShapes.chip)
-                            .background(MeshGreen)
-                            .clickable { homeViewModel.maximizeCall() }
-                            .padding(horizontal = MeshSpacing.md, vertical = MeshSpacing.xs)
-                    ) {
-                        Text(
-                            text = "Back to Call",
-                            color = MeshGreenOnAccent,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                            .padding(top = MeshSpacing.xs),
+                        onClick = { homeViewModel.maximizeCall() }
+                    )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun MinimizedCallPill(
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "call-pill-pulse")
+    val dotAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(700, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "call-pill-dot-alpha"
+    )
+
+    Row(
+        modifier = modifier
+            .clip(MeshShapes.chip)
+            .background(MeshGreen)
+            .clickable(onClick = onClick)
+            .padding(horizontal = MeshSpacing.md, vertical = MeshSpacing.xs),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .graphicsLayer { alpha = dotAlpha }
+                .clip(CircleShape)
+                .background(MeshGreenOnAccent)
+        )
+        Spacer(modifier = Modifier.width(MeshSpacing.xs))
+        Icon(
+            imageVector = Icons.Filled.Call,
+            contentDescription = null,
+            tint = MeshGreenOnAccent,
+            modifier = Modifier.size(16.dp)
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = "Back to Call",
+            color = MeshGreenOnAccent,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
 

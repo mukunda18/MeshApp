@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
+import java.io.RandomAccessFile
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -31,8 +32,20 @@ class FileTransferService(
         private const val CHUNK_SEND_MAX_ATTEMPTS = 3
         private const val CHUNK_RETRY_BASE_DELAY_MS = 300L
         private const val MAX_CONSECUTIVE_CHUNK_FAILURES = 5
-        private const val COMPLETE_WAIT_TIMEOUT_MS = 30_000L
         private const val CHUNK_PACING_DELAY_MS = 10L
+
+        // completion wait now scales with chunk count instead of a flat value
+        // base covers small files, per chunk term covers network plus hash time
+        // on the receiver, max caps it so a broken peer cannot hang forever
+        private const val COMPLETE_WAIT_BASE_MS = 30_000L
+        private const val COMPLETE_WAIT_PER_CHUNK_MS = 50L
+        private const val COMPLETE_WAIT_MAX_MS = 600_000L
+
+        // local disk write retry for the receiver side
+        // a couple of quick retries absorb a transient io hiccup on a chunk
+        // instead of silently dropping it and stalling the whole transfer
+        private const val CHUNK_WRITE_MAX_ATTEMPTS = 3
+        private const val CHUNK_WRITE_RETRY_DELAY_MS = 100L
     }
 
     // Recreated on every start() so stop/start cycles fully work.
@@ -51,6 +64,12 @@ class FileTransferService(
     // Signal/job maps accessed from multiple threads: concurrent structures.
     private val offerRetryJobs = ConcurrentHashMap<MessageId, Job>()
     private val completionSignals = ConcurrentHashMap<MessageId, CompletableDeferred<Boolean>>()
+
+    // one open file handle per incoming transfer instead of open close per chunk
+    // one write lock per transfer so writes to the same file stay ordered
+    // without holding recordMutex while the disk io happens
+    private val receiveFileHandles = ConcurrentHashMap<MessageId, RandomAccessFile>()
+    private val receiveWriteLocks = ConcurrentHashMap<MessageId, Mutex>()
 
     private val incomingDir = File(context.filesDir, "file_transfer/incoming").apply {
         if (!exists()) mkdirs()
@@ -99,6 +118,7 @@ class FileTransferService(
         offerRetryJobs.clear()
         completionSignals.values.forEach { it.complete(false) }
         completionSignals.clear()
+        closeAllReceiveHandles()
         scope?.cancel()
         scope = null
         MeshLogger.info(TAG, "FileTransferService STOPPED")
@@ -116,34 +136,44 @@ class FileTransferService(
             return
         }
 
-        val transferId = randomMessageId()
-        val chunkSize = CHUNK_SIZE_BYTES
-        val totalChunks = ((file.length() + chunkSize - 1) / chunkSize).toInt()
-        val checksum = FileChecksum.sha256Hex(file)
+        val s = scope
+        if (s == null) {
+            MeshLogger.error(TAG, "sendFile called before start")
+            return
+        }
 
-        val metadata = FileTransferMetadata(
-            filename = file.name,
-            size = file.length(),
-            checksum = checksum,
-            chunkSize = chunkSize,
-            totalChunks = totalChunks,
-            senderNodeId = ownNodeId,
-            createdAt = System.currentTimeMillis()
-        )
+        // hashing a large file is slow, run it off the caller thread
+        // instead of blocking whoever called sendFile such as the ui thread
+        s.launch {
+            val transferId = randomMessageId()
+            val chunkSize = CHUNK_SIZE_BYTES
+            val totalChunks = ((file.length() + chunkSize - 1) / chunkSize).toInt()
+            val checksum = withContext(dispatcher) { FileChecksum.sha256Hex(file) }
 
-        val record = FileTransferRecord(
-            transferId = transferId,
-            metadata = metadata,
-            status = FileTransferStatus.OFFER_SENT,
-            peerNodeId = destinationNodeId,
-            isIncoming = false,
-            sourcePath = file.absolutePath
-        )
+            val metadata = FileTransferMetadata(
+                filename = file.name,
+                size = file.length(),
+                checksum = checksum,
+                chunkSize = chunkSize,
+                totalChunks = totalChunks,
+                senderNodeId = ownNodeId,
+                createdAt = System.currentTimeMillis()
+            )
 
-        store.save(record)
-        _events.tryEmit(FileTransferEvent.OfferSent(record))
+            val record = FileTransferRecord(
+                transferId = transferId,
+                metadata = metadata,
+                status = FileTransferStatus.OFFER_SENT,
+                peerNodeId = destinationNodeId,
+                isIncoming = false,
+                sourcePath = file.absolutePath
+            )
 
-        sendFileOffer(destinationNodeId, record)
+            store.save(record)
+            _events.tryEmit(FileTransferEvent.OfferSent(record))
+
+            sendFileOffer(destinationNodeId, record)
+        }
     }
 
     private fun sendFileOffer(destinationNodeId: NodeId, record: FileTransferRecord) {
@@ -341,15 +371,20 @@ class FileTransferService(
 
         MeshLogger.info(TAG, "All ${streamedChunks} chunks sent for ${record.transferId}, awaiting receiver confirmation")
 
+        // wait longer for bigger transfers, capped so a dead peer still fails eventually
+        val totalChunks = record.metadata.totalChunks.toLong()
+        val timeoutMs = (COMPLETE_WAIT_BASE_MS + COMPLETE_WAIT_PER_CHUNK_MS * totalChunks)
+            .coerceAtMost(COMPLETE_WAIT_MAX_MS)
+
         val confirmed = completionSignals[record.transferId]
         val completeOk = if (confirmed != null) {
-            withTimeoutOrNull(COMPLETE_WAIT_TIMEOUT_MS.milliseconds) { confirmed.await() } ?: false
+            withTimeoutOrNull(timeoutMs.milliseconds) { confirmed.await() } ?: false
         } else {
             false
         }
 
         if (!completeOk && record.status == FileTransferStatus.TRANSFERRING) {
-            failSend(record, "Receiver did not confirm completion")
+            failSend(record, "Receiver did not confirm completion within ${timeoutMs}ms")
         }
         completionSignals.remove(record.transferId)
     }
@@ -368,10 +403,32 @@ class FileTransferService(
         sendSignal(record.peerNodeId, record.transferId, FileSignalType.CANCEL)
     }
 
-    private suspend fun handleIncomingChunk(packet: FileChunkPacket) {
-        var completed = false
-        var target: FileTransferRecord? = null
+    private suspend fun failReceive(record: FileTransferRecord, reason: String) {
+        recordMutex.withLock {
+            if (record.status in setOf(
+                    FileTransferStatus.COMPLETED,
+                    FileTransferStatus.FAILED,
+                    FileTransferStatus.CANCELLED,
+                    FileTransferStatus.REJECTED
+                )
+            ) return@withLock
+            record.status = FileTransferStatus.FAILED
+            store.save(record)
+        }
+        closeReceiveHandle(record.transferId)
+        _events.emit(FileTransferEvent.Failed(record, reason))
+        MeshLogger.error(TAG, "Transfer ${record.transferId} failed: ${reason}")
+        sendSignal(record.peerNodeId, record.transferId, FileSignalType.CANCEL)
+    }
 
+    private suspend fun handleIncomingChunk(packet: FileChunkPacket) {
+        var target: FileTransferRecord? = null
+        var shouldWrite = false
+        var outputPath: String? = null
+        var chunkSize = 0
+
+        // short critical section only for validation and status transition
+        // the actual disk write happens after this lock is released
         recordMutex.withLock {
             val r = store.get(packet.transferId, true) ?: return@withLock
             target = r
@@ -391,25 +448,92 @@ class FileTransferService(
                 else -> return@withLock // terminal states: ignore stray chunks
             }
 
-            withContext(Dispatchers.IO) {
-                try {
-                    val out = File(r.outputPath ?: return@withContext)
-                    FileChunker.writeChunk(out, packet.chunkIndex, r.metadata.chunkSize, packet.data)
-                    r.receivedChunks.add(packet.chunkIndex)
-                    r.bytesTransferred += packet.data.size
-                    store.save(r)
-                } catch (e: Exception) {
-                    MeshLogger.error(TAG, "Failed to write chunk ${packet.chunkIndex}", e.toString())
-                }
-            }
-
-            if (r.receivedChunks.size >= r.metadata.totalChunks) completed = true
-            _events.emit(FileTransferEvent.ProgressUpdated(r))
+            outputPath = r.outputPath
+            chunkSize = r.metadata.chunkSize
+            shouldWrite = true
         }
+
+        if (!shouldWrite) return
+        val r = target ?: return
+        val path = outputPath ?: return
+
+        // write is serialized per transfer only, not against every other
+        // record in the store, and keeps one file handle open for the
+        // whole transfer instead of open and close on every chunk
+        val writeOk = writeChunkWithRetry(r.transferId, path, packet.chunkIndex, chunkSize, packet.data)
+
+        if (!writeOk) {
+            failReceive(r, "Local write error on chunk ${packet.chunkIndex}")
+            return
+        }
+
+        var completed = false
+        recordMutex.withLock {
+            r.receivedChunks.add(packet.chunkIndex)
+            r.bytesTransferred += packet.data.size
+            store.save(r)
+            if (r.receivedChunks.size >= r.metadata.totalChunks) completed = true
+        }
+        _events.emit(FileTransferEvent.ProgressUpdated(r))
 
         if (completed) {
-            target?.let { verifyAndComplete(it) }
+            closeReceiveHandle(r.transferId)
+            verifyAndComplete(r)
         }
+    }
+
+    private suspend fun writeChunkWithRetry(
+        transferId: MessageId,
+        outputPath: String,
+        chunkIndex: Int,
+        chunkSize: Int,
+        data: ByteArray
+    ): Boolean {
+        return try {
+            writeLockFor(transferId).withLock {
+                withContext(Dispatchers.IO) {
+                    val raf = receiveFileHandles.getOrPut(transferId) {
+                        RandomAccessFile(File(outputPath), "rw")
+                    }
+                    var lastError: Exception? = null
+                    var attempt = 0
+                    while (attempt < CHUNK_WRITE_MAX_ATTEMPTS) {
+                        try {
+                            FileChunker.writeChunkTo(raf, chunkIndex, chunkSize, data)
+                            lastError = null
+                            break
+                        } catch (e: Exception) {
+                            lastError = e
+                            attempt++
+                            if (attempt < CHUNK_WRITE_MAX_ATTEMPTS) delay(CHUNK_WRITE_RETRY_DELAY_MS)
+                        }
+                    }
+                    lastError?.let { throw it }
+                }
+            }
+            true
+        } catch (e: Exception) {
+            MeshLogger.error(TAG, "Failed to write chunk ${chunkIndex} for ${transferId} after retries", e.toString())
+            false
+        }
+    }
+
+    private fun writeLockFor(transferId: MessageId): Mutex =
+        receiveWriteLocks.getOrPut(transferId) { Mutex() }
+
+    private fun closeReceiveHandle(transferId: MessageId) {
+        receiveFileHandles.remove(transferId)?.let {
+            try {
+                it.close()
+            } catch (e: Exception) {
+                MeshLogger.error(TAG, "Error closing handle for ${transferId}", e.toString())
+            }
+        }
+        receiveWriteLocks.remove(transferId)
+    }
+
+    private fun closeAllReceiveHandles() {
+        receiveFileHandles.keys.toList().forEach { closeReceiveHandle(it) }
     }
 
     private suspend fun verifyAndComplete(record: FileTransferRecord) {
@@ -488,6 +612,7 @@ class FileTransferService(
             store.save(record)
             changed = true
         }
+        closeReceiveHandle(signal.transferId)
         if (changed) {
             _events.emit(FileTransferEvent.Cancelled(record))
         }
