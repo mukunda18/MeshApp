@@ -1,5 +1,9 @@
 package com.meshapp.ui.navigation
 
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -237,7 +241,55 @@ fun MeshAppNavHost(
                 NavHost(
                     navController = navController,
                     startDestination = MeshRoutes.HOME,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    enterTransition = {
+                        if (isRootTabRoute(initialState.destination.route) &&
+                            isRootTabRoute(targetState.destination.route)
+                        ) {
+                            fadeIn(tween(140))
+                        } else {
+                            fadeIn(tween(140)) + slideInHorizontally(
+                                animationSpec = tween(160, easing = FastOutSlowInEasing),
+                                initialOffsetX = { it / 16 }
+                            )
+                        }
+                    },
+                    exitTransition = {
+                        if (isRootTabRoute(initialState.destination.route) &&
+                            isRootTabRoute(targetState.destination.route)
+                        ) {
+                            fadeOut(tween(100))
+                        } else {
+                            fadeOut(tween(100)) + slideOutHorizontally(
+                                animationSpec = tween(120, easing = FastOutSlowInEasing),
+                                targetOffsetX = { -it / 24 }
+                            )
+                        }
+                    },
+                    popEnterTransition = {
+                        if (isRootTabRoute(initialState.destination.route) &&
+                            isRootTabRoute(targetState.destination.route)
+                        ) {
+                            fadeIn(tween(140))
+                        } else {
+                            fadeIn(tween(140)) + slideInHorizontally(
+                                animationSpec = tween(160, easing = FastOutSlowInEasing),
+                                initialOffsetX = { -it / 16 }
+                            )
+                        }
+                    },
+                    popExitTransition = {
+                        if (isRootTabRoute(initialState.destination.route) &&
+                            isRootTabRoute(targetState.destination.route)
+                        ) {
+                            fadeOut(tween(100))
+                        } else {
+                            fadeOut(tween(100)) + slideOutHorizontally(
+                                animationSpec = tween(120, easing = FastOutSlowInEasing),
+                                targetOffsetX = { it / 24 }
+                            )
+                        }
+                    }
                 ) {
                     composable(MeshRoutes.HOME) {
                         HomeScreen(
@@ -371,6 +423,11 @@ fun MeshAppNavHost(
             }
         }
     }
+}
+
+private fun isRootTabRoute(route: String?): Boolean {
+    val baseRoute = route?.substringBefore("/")
+    return baseRoute == MeshRoutes.HOME || baseRoute == MeshRoutes.CHATS
 }
 
 @Composable

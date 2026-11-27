@@ -49,7 +49,8 @@ data class NodeCardState(
 data class ConversationUiState(
     val node: NodeCardState,
     val messages: List<ConversationMessageUiState> = emptyList(),
-    val playingTransferId: String? = null
+    val playingTransferId: String? = null,
+    val voicePlaybackProgress: Float = 0f
 )
 
 data class ConversationMessageUiState(

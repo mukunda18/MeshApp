@@ -11,6 +11,7 @@ import com.meshapp.voice.VoiceCodec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -26,22 +27,27 @@ class VoiceMessagePlayer(
 ) {
     private var audioTrack: AudioTrack? = null
     private var playbackJob: Job? = null
+    private val trackLock = Any()
     private val scope = CoroutineScope(Dispatchers.IO)
 
     val isPlaying: Boolean
         get() = playbackJob?.isActive == true
 
-    fun play(file: File, onComplete: () -> Unit = {}) {
+    fun play(
+        file: File,
+        onProgress: (Float) -> Unit = {},
+        onComplete: () -> Unit = {}
+    ): Boolean {
         if (isPlaying) stop()
         if (!file.exists()) {
             MeshLogger.error("VoiceMessagePlayer", "File does not exist: ${file.absolutePath}")
-            return
+            return false
         }
 
         val started = audioController.startSession(AudioSessionType.VOICE_MESSAGE, mode = settings.audioMode) {
             stop()
         }
-        if (!started) return
+        if (!started) return false
 
         val minBufferSize = AudioTrack.getMinBufferSize(
             VoiceCodec.SAMPLE_RATE,
@@ -66,36 +72,108 @@ class VoiceMessagePlayer(
             .setBufferSizeInBytes(maxOf(minBufferSize, VoiceCodec.BYTES_PER_FRAME * 4))
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
-        audioTrack = track
+        synchronized(trackLock) { audioTrack = track }
         track.play()
 
         playbackJob = scope.launch {
-            file.inputStream().use { input ->
-                val compressedFrame = ByteArray(VoiceCodec.COMPRESSED_FRAME_SIZE)
-                while (isPlaying) {
-                    val bytesRead = input.read(compressedFrame)
-                    if (bytesRead != VoiceCodec.COMPRESSED_FRAME_SIZE) break
-                    val pcm = codec.decode(compressedFrame)
-                    track.write(pcm, 0, pcm.size)
+            var completed = false
+            try {
+                val totalSamples = file.length() / VoiceCodec.COMPRESSED_FRAME_SIZE *
+                    VoiceCodec.SAMPLES_PER_FRAME
+                var samplesWritten = 0L
+
+                file.inputStream().use { input ->
+                    val compressedFrame = ByteArray(VoiceCodec.COMPRESSED_FRAME_SIZE)
+                    while (isPlaying) {
+                        var frameBytesRead = 0
+                        while (frameBytesRead < compressedFrame.size) {
+                            val bytesRead = input.read(
+                                compressedFrame,
+                                frameBytesRead,
+                                compressedFrame.size - frameBytesRead
+                            )
+                            if (bytesRead < 0) break
+                            frameBytesRead += bytesRead
+                        }
+                        if (frameBytesRead != compressedFrame.size) break
+
+                        val pcm = codec.decode(compressedFrame)
+                        var pcmBytesWritten = 0
+                        while (pcmBytesWritten < pcm.size && isPlaying) {
+                            val bytesWritten = track.write(
+                                pcm,
+                                pcmBytesWritten,
+                                pcm.size - pcmBytesWritten,
+                                AudioTrack.WRITE_BLOCKING
+                            )
+                            if (bytesWritten <= 0) {
+                                MeshLogger.error(
+                                    "VoiceMessagePlayer",
+                                    "AudioTrack write failed: $bytesWritten"
+                                )
+                                break
+                            }
+                            pcmBytesWritten += bytesWritten
+                            samplesWritten += bytesWritten / 2
+                            val playedSamples = track.playbackHeadPosition.toLong() and 0xFFFFFFFFL
+                            onProgress(
+                                (playedSamples.toFloat() / totalSamples.coerceAtLeast(1L))
+                                    .coerceIn(0f, 1f)
+                            )
+                        }
+                        if (pcmBytesWritten != pcm.size) break
+                    }
+                }
+
+                while (isPlaying && samplesWritten > 0L) {
+                    val playedSamples = track.playbackHeadPosition.toLong() and 0xFFFFFFFFL
+                    onProgress((playedSamples.toFloat() / totalSamples.coerceAtLeast(1L)).coerceIn(0f, 1f))
+                    if (playedSamples >= samplesWritten) {
+                        completed = true
+                        break
+                    }
+                    if (track.playState != AudioTrack.PLAYSTATE_PLAYING) break
+                    delay(20)
                 }
             }
-            track.stop()
-            track.release()
-            audioTrack = null
-            audioController.stopSession(AudioSessionType.VOICE_MESSAGE)
-            onComplete()
+            finally {
+                releaseTrack(track)
+                audioController.stopSession(AudioSessionType.VOICE_MESSAGE)
+                if (completed) {
+                    onProgress(1f)
+                    onComplete()
+                }
+            }
         }
+        return true
     }
 
     fun stop() {
         playbackJob?.cancel()
         playbackJob = null
-        audioTrack?.apply {
-            runCatching { stop() }
-            release()
+        val track = synchronized(trackLock) {
+            audioTrack.also { audioTrack = null }
         }
-        audioTrack = null
+        track?.let {
+            runCatching { it.stop() }
+            it.release()
+        }
         audioController.stopSession(AudioSessionType.VOICE_MESSAGE)
+    }
+
+    private fun releaseTrack(track: AudioTrack) {
+        val shouldRelease = synchronized(trackLock) {
+            if (audioTrack === track) {
+                audioTrack = null
+                true
+            } else {
+                false
+            }
+        }
+        if (shouldRelease) {
+            runCatching { track.stop() }
+            track.release()
+        }
     }
 
     fun release() {

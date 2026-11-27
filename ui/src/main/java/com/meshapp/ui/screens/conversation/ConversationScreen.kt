@@ -13,9 +13,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -352,6 +350,7 @@ fun ConversationScreen(
                                         groupPosition = entry.groupPosition,
                                         showTimestamp = isEdgeOfGroup,
                                         isPlaying = uiState.playingTransferId == entry.message.fileTransfer?.transferId,
+                                        voicePlaybackProgress = uiState.voicePlaybackProgress,
                                         onFileClick = { viewModel.openFile(context, it) },
                                         onVoiceMessagePlayToggle = { transfer -> viewModel.toggleVoicePlayback(transfer) },
                                         modifier = Modifier.padding(bottom = if (isEdgeOfGroup) MeshSpacing.md else MeshSpacing.xxs)
@@ -628,6 +627,7 @@ private fun ConversationBubble(
     groupPosition: ChatBubbleGroupPosition,
     showTimestamp: Boolean,
     isPlaying: Boolean,
+    voicePlaybackProgress: Float,
     onFileClick: (FileTransferUiState) -> Unit,
     onVoiceMessagePlayToggle: (FileTransferUiState) -> Unit,
     modifier: Modifier = Modifier
@@ -682,7 +682,12 @@ private fun ConversationBubble(
                             transitionSpec = { (fadeIn(tween(MeshMotion.medium)) + scaleIn(tween(MeshMotion.medium), initialScale = 0.96f)) togetherWith fadeOut(tween(MeshMotion.fast)) },
                             label = "file-content"
                         ) {
-                            FileTransferContent(transfer = fileTransfer, isPlaying = isPlaying, onPlayToggle = { onVoiceMessagePlayToggle(fileTransfer) })
+                            FileTransferContent(
+                                transfer = fileTransfer,
+                                isPlaying = isPlaying,
+                                playbackProgress = voicePlaybackProgress,
+                                onPlayToggle = { onVoiceMessagePlayToggle(fileTransfer) }
+                            )
                         }
                     } else {
                         if (isSelectable) {
@@ -785,10 +790,11 @@ private fun DeliveryStatusIcon(status: MessageDeliveryStatus?) {
 private fun FileTransferContent(
     transfer: FileTransferUiState,
     isPlaying: Boolean,
+    playbackProgress: Float,
     onPlayToggle: () -> Unit
 ) {
     when {
-        transfer.isVoiceMessage -> VoiceMessageContent(transfer, isPlaying, onPlayToggle)
+        transfer.isVoiceMessage -> VoiceMessageContent(transfer, isPlaying, playbackProgress, onPlayToggle)
         isImageFile(transfer.filename) || isVideoFile(transfer.filename) -> MediaMessageContent(transfer)
         else -> GenericFileContent(transfer)
     }
@@ -799,6 +805,7 @@ private fun FileTransferContent(
 private fun VoiceMessageContent(
     transfer: FileTransferUiState,
     isPlaying: Boolean,
+    playbackProgress: Float,
     onPlayToggle: () -> Unit
 ) {
     val barCount = 22
@@ -806,22 +813,6 @@ private fun VoiceMessageContent(
         val rnd = Random(transfer.transferId.hashCode())
         List(barCount) { 0.28f + rnd.nextFloat() * 0.72f }
     }
-    val playbackProgress = remember(transfer.transferId) { Animatable(0f) }
-    LaunchedEffect(isPlaying, transfer.transferId, transfer.durationMs) {
-        if (isPlaying) {
-            playbackProgress.snapTo(0f)
-            playbackProgress.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(
-                    durationMillis = transfer.durationMs.coerceIn(1L, Int.MAX_VALUE.toLong()).toInt(),
-                    easing = LinearEasing
-                )
-            )
-        } else {
-            playbackProgress.snapTo(0f)
-        }
-    }
-
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier.size(44.dp),
@@ -865,7 +856,7 @@ private fun VoiceMessageContent(
                 ) {
                     bars.forEachIndexed { index, barHeight ->
                         val hasPlayed = isPlaying &&
-                            index.toFloat() / barCount < playbackProgress.value
+                            index.toFloat() / barCount < playbackProgress
                         Box(
                             modifier = Modifier
                                 .weight(1f)
@@ -880,7 +871,7 @@ private fun VoiceMessageContent(
                 if (isPlaying) {
                     Box(
                         modifier = Modifier
-                            .offset(x = maxWidth * playbackProgress.value.coerceAtMost(0.98f))
+                            .offset(x = maxWidth * playbackProgress.coerceIn(0f, 0.98f))
                             .width(2.dp)
                             .fillMaxHeight()
                             .background(MeshGreen)
@@ -891,7 +882,7 @@ private fun VoiceMessageContent(
             Text(
                 text = "%.0fs".format(
                     if (isPlaying) {
-                        transfer.durationMs * playbackProgress.value / 1000f
+                        transfer.durationMs * playbackProgress / 1000f
                     } else {
                         transfer.durationMs / 1000f
                     }

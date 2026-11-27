@@ -178,9 +178,13 @@ class ConversationViewModel(
         voiceMessageRecorder.cancel()
     }
 
-    fun playVoiceMessage(fileUiState: FileTransferUiState, onComplete: () -> Unit = {}) {
-        val path = fileUiState.localPath ?: return
-        voiceMessagePlayer.play(File(path), onComplete)
+    fun playVoiceMessage(
+        fileUiState: FileTransferUiState,
+        onProgress: (Float) -> Unit = {},
+        onComplete: () -> Unit = {}
+    ): Boolean {
+        val path = fileUiState.localPath ?: return false
+        return voiceMessagePlayer.play(File(path), onProgress, onComplete)
     }
 
     private fun getFileName(context: Context, uri: Uri): String? {
@@ -379,14 +383,34 @@ class ConversationViewModel(
         val currentlyPlaying = _uiState.value.playingTransferId
         if (currentlyPlaying == transfer.transferId) {
             voiceMessagePlayer.stop()
-            _uiState.update { it.copy(playingTransferId = null) }
+            _uiState.update { it.copy(playingTransferId = null, voicePlaybackProgress = 0f) }
         } else {
-            playVoiceMessage(transfer) {
-                _uiState.update { state ->
-                    if (state.playingTransferId == transfer.transferId) state.copy(playingTransferId = null) else state
+            val started = playVoiceMessage(
+                fileUiState = transfer,
+                onProgress = { progress ->
+                    _uiState.update { state ->
+                        if (state.playingTransferId == transfer.transferId) {
+                            state.copy(voicePlaybackProgress = progress)
+                        } else {
+                            state
+                        }
+                    }
+                },
+                onComplete = {
+                    _uiState.update { state ->
+                        if (state.playingTransferId == transfer.transferId) {
+                            state.copy(playingTransferId = null, voicePlaybackProgress = 0f)
+                        } else {
+                            state
+                        }
+                    }
+                }
+            )
+            if (started) {
+                _uiState.update {
+                    it.copy(playingTransferId = transfer.transferId, voicePlaybackProgress = 0f)
                 }
             }
-            _uiState.update { it.copy(playingTransferId = transfer.transferId) }
         }
     }
 }
