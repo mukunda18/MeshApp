@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -67,7 +68,14 @@ class MeshService(
     private val _incomingMessageStream = MutableSharedFlow<Pair<NodeId, Payload.Message>>(extraBufferCapacity = 64)
     val incomingMessageStream: SharedFlow<Pair<NodeId, Payload.Message>> = _incomingMessageStream.asSharedFlow()
 
-    private val _incomingVoiceStream = MutableSharedFlow<Pair<NodeId, Payload.Voice>>(extraBufferCapacity = 256)
+    // Voice is real-time data: retaining seconds of old audio creates audible latency
+    // when processing or playback temporarily falls behind. Drop the oldest frame
+    // instead of allowing an unbounded-looking backlog to accumulate.
+    private val _incomingVoiceStream = MutableSharedFlow<Pair<NodeId, Payload.Voice>>(
+        replay = 0,
+        extraBufferCapacity = 16, // 16 x 20 ms = 320 ms maximum flow backlog
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
     val incomingVoiceStream: SharedFlow<Pair<NodeId, Payload.Voice>> = _incomingVoiceStream.asSharedFlow()
 
     private val _incomingFileChunkStream = MutableSharedFlow<Pair<NodeId, Payload.FileChunk>>(extraBufferCapacity = 256)
