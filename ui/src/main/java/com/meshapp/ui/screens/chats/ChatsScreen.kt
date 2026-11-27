@@ -33,6 +33,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.meshapp.ui.components.EmptyState
 import com.meshapp.ui.components.NodeCard
 import com.meshapp.ui.state.NodeCardState
+import com.meshapp.ui.theme.MeshBorder
 import com.meshapp.ui.theme.MeshBg2
 import com.meshapp.ui.theme.MeshGreen
 import com.meshapp.ui.theme.MeshGreenMuted
@@ -112,7 +113,7 @@ fun ChatsScreen(
                 if (showSections) {
                     item(key = "section_online") {
                         SectionLabel(
-                            text = "Online",
+                            text = "Reachable",
                             count = onlineNodes.size
                         )
                     }
@@ -131,7 +132,7 @@ fun ChatsScreen(
                 if (showSections) {
                     item(key = "section_offline") {
                         SectionLabel(
-                            text = "Offline",
+                            text = "Unavailable",
                             count = offlineNodes.size
                         )
                     }
@@ -232,8 +233,8 @@ private fun ChatsSearchField(
         colors = OutlinedTextFieldDefaults.colors(
             focusedContainerColor = MeshBg2,
             unfocusedContainerColor = MeshBg2,
-            focusedBorderColor = MeshGreen.copy(alpha = 0.4f),
-            unfocusedBorderColor = MeshBg2,
+            focusedBorderColor = MeshGreen,
+            unfocusedBorderColor = MeshBorder,
             focusedTextColor = MeshTextPrimary,
             unfocusedTextColor = MeshTextPrimary,
             cursorColor = MeshGreen

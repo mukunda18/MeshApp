@@ -43,7 +43,10 @@ import com.meshapp.ui.theme.MeshBg0
 import com.meshapp.ui.theme.MeshBg1
 import com.meshapp.ui.theme.MeshBg2
 import com.meshapp.ui.theme.MeshBorder
+import com.meshapp.ui.theme.MeshDanger
+import com.meshapp.ui.theme.MeshDangerMuted
 import com.meshapp.ui.theme.MeshGreen
+import com.meshapp.ui.theme.MeshGreenMuted
 import com.meshapp.ui.theme.MeshMuted
 import com.meshapp.ui.theme.MeshShapes
 import com.meshapp.ui.theme.MeshSpacing
@@ -87,7 +90,7 @@ fun NetworkInterfacesScreen(
                         Surface(
                             shape = MeshShapes.cardSmall,
                             color = MeshGreen.copy(alpha = 0.12f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, MeshGreen.copy(alpha = 0.24f)),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MeshGreen),
                             modifier = Modifier.size(48.dp)
                         ) {
                             Icon(
@@ -180,9 +183,9 @@ fun NetworkInterfacesScreen(
             // Capability Indicator Card
             item {
                 val isSupported = uiState.isStaApSupported
-                val cardColor = if (isSupported) MeshGreen.copy(alpha = 0.08f) else Color(0x22E57373)
-                val borderColor = if (isSupported) MeshGreen.copy(alpha = 0.25f) else Color(0x55E57373)
-                val iconColor = if (isSupported) MeshGreen else Color(0xFFE57373)
+                val cardColor = if (isSupported) MeshGreenMuted else MeshDangerMuted
+                val borderColor = if (isSupported) MeshGreen else MeshDanger
+                val iconColor = if (isSupported) MeshGreen else MeshDanger
 
                 Surface(
                     shape = MeshShapes.cardSmall,
@@ -282,7 +285,7 @@ private fun InterfaceDetailCard(
                         fontWeight = FontWeight.Bold
                     )
                 }
-                HorizontalDivider(color = MeshBorder.copy(alpha = 0.5f), thickness = 1.dp)
+                HorizontalDivider(color = MeshBorder, thickness = 1.dp)
                 InterfaceRow(label = "STATUS") {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -301,7 +304,7 @@ private fun InterfaceDetailCard(
                         )
                     }
                 }
-                HorizontalDivider(color = MeshBorder.copy(alpha = 0.5f), thickness = 1.dp)
+                HorizontalDivider(color = MeshBorder, thickness = 1.dp)
                 InterfaceRow(label = thirdLabel, value = thirdValue)
             }
         }

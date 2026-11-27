@@ -79,6 +79,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Slideshow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.TableChart
@@ -94,7 +95,9 @@ import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -136,6 +139,7 @@ import com.meshapp.ui.components.ProfileAvatar
 import com.meshapp.ui.components.StatusDot
 import com.meshapp.ui.state.ConversationMessageUiState
 import com.meshapp.ui.state.FileTransferUiState
+import com.meshapp.ui.theme.MeshBorder
 import com.meshapp.ui.theme.MeshBg0
 import com.meshapp.ui.theme.MeshBg2
 import com.meshapp.ui.theme.MeshBg3
@@ -333,6 +337,9 @@ fun ConversationScreen(
                                 }
                                 val isEdgeOfGroup = entry.groupPosition == ChatBubbleGroupPosition.Single ||
                                         entry.groupPosition == ChatBubbleGroupPosition.Last
+                                val shouldShowMessageStatus = isEdgeOfGroup ||
+                                        entry.message.deliveryStatus == MessageDeliveryStatus.QUEUED ||
+                                        entry.message.deliveryStatus == MessageDeliveryStatus.FAILED
                                 AnimatedVisibility(
                                     visible = visible,
                                     enter = fadeIn(tween(MeshMotion.medium)) + slideInVertically(
@@ -346,11 +353,13 @@ fun ConversationScreen(
                                     ConversationBubble(
                                         message = entry.message,
                                         groupPosition = entry.groupPosition,
-                                        showTimestamp = isEdgeOfGroup,
+                                        showTimestamp = shouldShowMessageStatus,
                                         isPlaying = uiState.playingTransferId == entry.message.fileTransfer?.transferId,
+                                        voicePlaybackProgress = uiState.voicePlaybackProgress,
                                         onFileClick = { viewModel.openFile(context, it) },
                                         onVoiceMessagePlayToggle = { transfer -> viewModel.toggleVoicePlayback(transfer) },
-                                        modifier = Modifier.padding(bottom = if (isEdgeOfGroup) MeshSpacing.md else MeshSpacing.xxs)
+                                        onResend = { viewModel.sendMessage(entry.message.text) },
+                                        modifier = Modifier.padding(bottom = if (shouldShowMessageStatus) MeshSpacing.md else MeshSpacing.xxs)
                                     )
                                 }
                             }
@@ -599,7 +608,7 @@ private fun ConversationTopBar(
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = if (isOnline) "Online" else "Offline",
+                text = if (isOnline) "Reachable on mesh" else "Not reachable right now",
                 color = if (isOnline) MeshGreen else MeshOffline,
                 style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.padding(top = 1.dp)
@@ -624,8 +633,10 @@ private fun ConversationBubble(
     groupPosition: ChatBubbleGroupPosition,
     showTimestamp: Boolean,
     isPlaying: Boolean,
+    voicePlaybackProgress: Float,
     onFileClick: (FileTransferUiState) -> Unit,
     onVoiceMessagePlayToggle: (FileTransferUiState) -> Unit,
+    onResend: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val alignment = if (message.isOutgoing) Alignment.End else Alignment.Start
@@ -640,6 +651,7 @@ private fun ConversationBubble(
     var showMenu by remember(message.id) { mutableStateOf(false) }
     var isSelectable by remember(message.id) { mutableStateOf(false) }
     var fullscreenImagePath by remember(message.id) { mutableStateOf<String?>(null) }
+    var isResending by remember(message.id) { mutableStateOf(false) }
     val clipboardManager = LocalClipboardManager.current
 
     Column(
@@ -678,7 +690,12 @@ private fun ConversationBubble(
                             transitionSpec = { (fadeIn(tween(MeshMotion.medium)) + scaleIn(tween(MeshMotion.medium), initialScale = 0.96f)) togetherWith fadeOut(tween(MeshMotion.fast)) },
                             label = "file-content"
                         ) {
-                            FileTransferContent(transfer = fileTransfer, isPlaying = isPlaying, onPlayToggle = { onVoiceMessagePlayToggle(fileTransfer) })
+                            FileTransferContent(
+                                transfer = fileTransfer,
+                                isPlaying = isPlaying,
+                                playbackProgress = voicePlaybackProgress,
+                                onPlayToggle = { onVoiceMessagePlayToggle(fileTransfer) }
+                            )
                         }
                     } else {
                         if (isSelectable) {
@@ -747,6 +764,32 @@ private fun ConversationBubble(
                 }
             }
         }
+
+        if (message.isOutgoing && message.deliveryStatus == MessageDeliveryStatus.FAILED) {
+            Row(
+                modifier = Modifier.padding(top = 2.dp, start = MeshSpacing.xxs, end = MeshSpacing.xxs),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Not delivered",
+                    color = MeshDanger,
+                    style = MaterialTheme.typography.labelSmall
+                )
+                TextButton(
+                    enabled = !isResending,
+                    onClick = {
+                        isResending = true
+                        onResend()
+                    }
+                ) {
+                    Text(
+                        text = if (isResending) "Sending..." else "Send again",
+                        color = MeshDanger,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
+        }
     }
 
     fullscreenImagePath?.let { path ->
@@ -757,10 +800,12 @@ private fun ConversationBubble(
 @Composable
 private fun DeliveryStatusIcon(status: MessageDeliveryStatus?) {
     if (status == null) return
-    val (icon, iconColor) = when (status) {
-        MessageDeliveryStatus.QUEUED, MessageDeliveryStatus.SENT -> Icons.Filled.Done to MeshTextSecondary
-        MessageDeliveryStatus.DELIVERED, MessageDeliveryStatus.READ -> Icons.Filled.DoneAll to MeshGreen
-        MessageDeliveryStatus.FAILED -> Icons.Filled.ErrorOutline to MeshDanger
+    val (icon, iconColor, description) = when (status) {
+        MessageDeliveryStatus.QUEUED -> Triple(Icons.Filled.Schedule, MeshTextSecondary, "Queued")
+        MessageDeliveryStatus.SENT -> Triple(Icons.Filled.Done, MeshTextSecondary, "Sent")
+        MessageDeliveryStatus.DELIVERED -> Triple(Icons.Filled.DoneAll, MeshGreen, "Delivered")
+        MessageDeliveryStatus.READ -> Triple(Icons.Filled.DoneAll, MeshGreen, "Read")
+        MessageDeliveryStatus.FAILED -> Triple(Icons.Filled.ErrorOutline, MeshDanger, "Not delivered")
     }
 
     AnimatedContent(
@@ -770,7 +815,7 @@ private fun DeliveryStatusIcon(status: MessageDeliveryStatus?) {
     ) { animatedIcon ->
         Icon(
             imageVector = animatedIcon,
-            contentDescription = null,
+            contentDescription = description,
             tint = iconColor,
             modifier = Modifier.size(14.dp)
         )
@@ -781,10 +826,11 @@ private fun DeliveryStatusIcon(status: MessageDeliveryStatus?) {
 private fun FileTransferContent(
     transfer: FileTransferUiState,
     isPlaying: Boolean,
+    playbackProgress: Float,
     onPlayToggle: () -> Unit
 ) {
     when {
-        transfer.isVoiceMessage -> VoiceMessageContent(transfer, isPlaying, onPlayToggle)
+        transfer.isVoiceMessage -> VoiceMessageContent(transfer, isPlaying, playbackProgress, onPlayToggle)
         isImageFile(transfer.filename) || isVideoFile(transfer.filename) -> MediaMessageContent(transfer)
         else -> GenericFileContent(transfer)
     }
@@ -795,6 +841,7 @@ private fun FileTransferContent(
 private fun VoiceMessageContent(
     transfer: FileTransferUiState,
     isPlaying: Boolean,
+    playbackProgress: Float,
     onPlayToggle: () -> Unit
 ) {
     val barCount = 22
@@ -802,45 +849,11 @@ private fun VoiceMessageContent(
         val rnd = Random(transfer.transferId.hashCode())
         List(barCount) { 0.28f + rnd.nextFloat() * 0.72f }
     }
-
-    val infiniteTransition = rememberInfiniteTransition(label = "voice-pulse")
-    val ringScale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.3f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1100, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "ring-scale"
-    )
-    val barShimmer by infiniteTransition.animateFloat(
-        initialValue = 0.55f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(650, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "bar-shimmer"
-    )
-
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier.size(44.dp),
             contentAlignment = Alignment.Center
         ) {
-            if (isPlaying) {
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .graphicsLayer {
-                            scaleX = ringScale
-                            scaleY = ringScale
-                            alpha = (1f - (ringScale - 1f) / 0.3f).coerceIn(0f, 1f)
-                        }
-                        .clip(CircleShape)
-                        .background(MeshGreen.copy(alpha = 0.35f))
-                )
-            }
             Box(
                 modifier = Modifier
                     .size(38.dp)
@@ -867,27 +880,49 @@ private fun VoiceMessageContent(
         Spacer(modifier = Modifier.size(MeshSpacing.sm))
 
         Column {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            BoxWithConstraints(
                 modifier = Modifier
                     .height(24.dp)
                     .width(96.dp)
             ) {
-                bars.forEach { barHeight ->
-                    val barColor = if (isPlaying) MeshGreen.copy(alpha = barShimmer) else MeshMuted.copy(alpha = 0.5f)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    bars.forEachIndexed { index, barHeight ->
+                        val hasPlayed = isPlaying &&
+                            index.toFloat() / barCount < playbackProgress
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(barHeight)
+                                .clip(RoundedCornerShape(1.dp))
+                                .background(
+                                    if (hasPlayed) MeshGreen else MeshMuted
+                                )
+                        )
+                    }
+                }
+                if (isPlaying) {
                     Box(
                         modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(barHeight)
-                            .clip(RoundedCornerShape(1.dp))
-                            .background(barColor)
+                            .offset(x = maxWidth * playbackProgress.coerceIn(0f, 0.98f))
+                            .width(2.dp)
+                            .fillMaxHeight()
+                            .background(MeshGreen)
                     )
                 }
             }
             Spacer(modifier = Modifier.height(3.dp))
             Text(
-                text = "%.0fs".format(transfer.durationMs / 1000f),
+                text = "%.0fs".format(
+                    if (isPlaying) {
+                        transfer.durationMs * playbackProgress / 1000f
+                    } else {
+                        transfer.durationMs / 1000f
+                    }
+                ),
                 color = MeshTextSecondary,
                 style = MaterialTheme.typography.labelSmall
             )
@@ -939,12 +974,20 @@ private fun MediaMessageContent(transfer: FileTransferUiState) {
                     .background(Color.Black.copy(alpha = 0.35f)),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(
-                    progress = { if (isTransferring) transfer.progress else 0f },
-                    color = Color.White,
-                    trackColor = Color.White.copy(alpha = 0.25f),
-                    modifier = Modifier.size(28.dp)
-                )
+                Surface(
+                    shape = CircleShape,
+                    color = MeshBg0,
+                    modifier = Modifier.size(44.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(
+                            progress = { if (isTransferring) transfer.progress else 0f },
+                            color = MeshGreen,
+                            trackColor = MeshBorder,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
             }
         } else if (isVideo && thumbnail != null) {
             Box(
@@ -952,7 +995,7 @@ private fun MediaMessageContent(transfer: FileTransferUiState) {
                     .size(40.dp)
                     .align(Alignment.Center)
                     .clip(CircleShape)
-                    .background(Color.Black.copy(alpha = 0.45f)),
+                    .background(Color.Black.copy(alpha = 0.65f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -971,12 +1014,20 @@ private fun MediaMessageContent(transfer: FileTransferUiState) {
                     .background(Color.Black.copy(alpha = 0.45f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Filled.ErrorOutline,
-                    contentDescription = "Failed",
-                    tint = MeshDanger,
-                    modifier = Modifier.size(28.dp)
-                )
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    modifier = Modifier.size(44.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Filled.ErrorOutline,
+                            contentDescription = "Failed",
+                            tint = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
             }
         }
     }
@@ -1275,8 +1326,8 @@ private fun MessageTextField(
         colors = OutlinedTextFieldDefaults.colors(
             focusedContainerColor = MeshBg2,
             unfocusedContainerColor = MeshBg2,
-            focusedBorderColor = MeshGreen.copy(alpha = 0.4f),
-            unfocusedBorderColor = MeshBg2,
+            focusedBorderColor = MeshGreen,
+            unfocusedBorderColor = MeshBorder,
             focusedTextColor = MeshTextPrimary,
             unfocusedTextColor = MeshTextPrimary
         ),

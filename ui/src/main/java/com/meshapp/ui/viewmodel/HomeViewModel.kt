@@ -37,7 +37,8 @@ class HomeViewModel(
     private val nodesStore: NodesStore,
     appName: String,
     deviceName: String,
-    nodeId: String
+    nodeId: String,
+    showFirstRunNameDialog: Boolean = false
 ) : AndroidViewModel(application) {
     private val networkInfo = NetworkInfo(application)
 
@@ -51,6 +52,7 @@ class HomeViewModel(
                 nodeId = nodeId,
                 avatarInitials = initialsFrom(deviceName)
             ),
+            showFirstRunNameDialog = showFirstRunNameDialog,
             isStaApSupported = networkInfo.isStaApSupported(),
             isStaApLikelySupported = networkInfo.isLikelySupported(),
             networkInterfaceCount = 0
@@ -123,6 +125,16 @@ class HomeViewModel(
                 )
             )
         }
+    }
+
+    fun completeFirstRunNameSetup(name: String? = null) {
+        name?.trim()?.takeIf { it.isNotEmpty() }?.let(::updateName)
+        getApplication<Application>()
+            .getSharedPreferences(FIRST_RUN_PREFERENCES, Application.MODE_PRIVATE)
+            .edit()
+            .putBoolean(FIRST_RUN_NAME_PENDING, false)
+            .apply()
+        _uiState.update { it.copy(showFirstRunNameDialog = false) }
     }
 
     private fun observeVoiceCallState() {
@@ -223,10 +235,10 @@ class HomeViewModel(
 
     private fun connectionStatus(meshState: MeshState, activePeers: Int): String {
         return when {
-            meshState != MeshState.RUNNING -> "Mesh is offline"
-            activePeers == 0 -> "Running - no nearby nodes"
-            activePeers == 1 -> "Running - 1 nearby node"
-            else -> "Running - $activePeers nearby nodes"
+            meshState != MeshState.RUNNING -> "Mesh is off. Turn it on to connect."
+            activePeers == 0 -> "Mesh is on. Waiting for nearby devices."
+            activePeers == 1 -> "1 nearby device connected"
+            else -> "$activePeers nearby devices connected"
         }
     }
 
@@ -241,5 +253,10 @@ class HomeViewModel(
 
     private fun shortId(nodeId: String): String {
         return if (nodeId.length <= 8) nodeId else "${nodeId.take(8)}..."
+    }
+
+    private companion object {
+        const val FIRST_RUN_PREFERENCES = "meshapp_first_run"
+        const val FIRST_RUN_NAME_PENDING = "name_setup_pending"
     }
 }

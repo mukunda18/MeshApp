@@ -10,14 +10,19 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.media.AudioAttributes
+import android.media.Ringtone
+import android.media.RingtoneManager
 import android.os.Build
 import android.os.IBinder
+import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.meshapp.logger.MeshLogger
-import com.meshapp.voice.VoiceSimulator
-import com.meshapp.voice.CallState
 import com.meshapp.meshcontrol.AudioSessionType
-import androidx.core.app.NotificationCompat
+import com.meshapp.messaging.MessageDirection
+import com.meshapp.messaging.MessageUpdate
+import com.meshapp.voice.CallState
+import com.meshapp.voice.VoiceSimulator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,9 +38,11 @@ class MeshForegroundService : Service() {
 
     private lateinit var voiceSimulator: VoiceSimulator
     private var fullScreenPresentedCallId: String? = null
+    private var incomingCallRingtone: Ringtone? = null
 
     override fun onCreate() {
         super.onCreate()
+        serviceRunning = true
         val app = application as MeshApplication
         // We use the shared container to get the AudioController for the simulator
         val audioController = app.container.audioController
@@ -70,7 +77,22 @@ class MeshForegroundService : Service() {
                 if (state is CallState.Idle) {
                     fullScreenPresentedCallId = null
                 }
+                updateIncomingCallRingtone(state)
                 updateNotification()
+            }
+        }
+
+        app.applicationScope.launch {
+            val container = app.awaitContainer()
+            container.messagingService.messagesStream.collect { update ->
+                if (update.direction != MessageDirection.INCOMING) return@collect
+                if (!app.uiVisible.value) {
+                    launch(Dispatchers.IO) {
+                        if (!app.uiVisible.value) {
+                            postIncomingMessageNotification(container, update)
+                        }
+                    }
+                }
             }
         }
     }
@@ -97,6 +119,12 @@ class MeshForegroundService : Service() {
             ACTION_STOP_VOICE_SIM -> {
                 voiceSimulator.stop()
                 _isVoiceSimActive.value = false
+                updateNotification()
+            }
+            ACTION_REFRESH_NOTIFICATION -> {
+                val container = if (app.isContainerReady) app.container else null
+                val state = container?.voiceCallManager?.callState?.value ?: CallState.Idle
+                updateIncomingCallRingtone(state)
                 updateNotification()
             }
             ACTION_CALL_ACCEPT -> {
@@ -156,6 +184,7 @@ class MeshForegroundService : Service() {
     private fun stopMeshAndSelf() {
         MeshLogger.info("ForegroundService", "Stopping Mesh Foreground Service...")
         _isVoiceSimActive.value = false
+        stopIncomingCallRingtone()
         val app = application as MeshApplication
         if (app.isContainerReady) {
             app.applicationScope.launch(Dispatchers.Default) {
@@ -174,6 +203,8 @@ class MeshForegroundService : Service() {
 
     override fun onDestroy() {
         _isVoiceSimActive.value = false
+        serviceRunning = false
+        stopIncomingCallRingtone()
         val app = application as MeshApplication
         if (app.isContainerReady) {
             app.applicationScope.launch(Dispatchers.Default) {
@@ -200,17 +231,51 @@ class MeshForegroundService : Service() {
             description = "Keeps the mesh network running in the background"
         }
 
-        val callChannel = NotificationChannel(
+        val callControlsChannel = NotificationChannel(
             CALL_CHANNEL_ID,
             "Calls",
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
             description = "Incoming and active call controls"
+            setSound(null, null)
+            enableVibration(false)
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
 
+        val messageAlertChannel = NotificationChannel(
+            MESSAGE_ALERT_CHANNEL_ID,
+            "Messages",
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            description = "Sound for incoming messages"
+            setSound(
+                RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+            )
+        }
+
+        val silentMessageAlertChannel = NotificationChannel(
+            SILENT_MESSAGE_ALERT_CHANNEL_ID,
+            "Messages (silent)",
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            description = "Silent incoming message notifications"
+            setSound(null, null)
+            enableVibration(false)
+        }
+
         getSystemService(NotificationManager::class.java)
-            .createNotificationChannels(listOf(meshChannel, callChannel))
+            .createNotificationChannels(
+                listOf(
+                    meshChannel,
+                    callControlsChannel,
+                    messageAlertChannel,
+                    silentMessageAlertChannel
+                )
+            )
     }
 
     private fun buildNotification(): Notification {
@@ -301,6 +366,64 @@ class MeshForegroundService : Service() {
         return builder.build()
     }
 
+    private fun updateIncomingCallRingtone(state: CallState) {
+        if (state is CallState.Ringing && SoundPreferences(this).areCallRingtonesEnabled()) {
+            if (incomingCallRingtone?.isPlaying == true) return
+            val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE) ?: return
+            val ringtone = RingtoneManager.getRingtone(this, soundUri) ?: return
+            ringtone.audioAttributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+            ringtone.isLooping = true
+            ringtone.play()
+            incomingCallRingtone = ringtone
+        } else {
+            stopIncomingCallRingtone()
+        }
+    }
+
+    private fun stopIncomingCallRingtone() {
+        incomingCallRingtone?.stop()
+        incomingCallRingtone = null
+    }
+
+    private fun postIncomingMessageNotification(
+        container: AppContainer,
+        update: MessageUpdate
+    ) {
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        if (!notificationManager.areNotificationsEnabled()) return
+
+        val soundEnabled = SoundPreferences(this).areMessageSoundsEnabled()
+        val channelId = if (soundEnabled) MESSAGE_ALERT_CHANNEL_ID else SILENT_MESSAGE_ALERT_CHANNEL_ID
+        val peerName = container.nodesStore.getName(update.nodeID)
+            ?: update.nodeID.toString().take(8)
+        val notificationId = update.message.messageId.hashCode()
+        val openAppIntent = PendingIntent.getActivity(
+            this,
+            notificationId,
+            Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(peerName)
+            .setContentText("New message")
+            .setContentIntent(openAppIntent)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(false)
+            .build()
+        notificationManager.notify(notificationId, notification)
+    }
+
     private fun shouldLaunchFullScreen(callState: CallState): Boolean {
         val callId = when (callState) {
             is CallState.Ringing -> callState.callId.toString()
@@ -323,8 +446,11 @@ class MeshForegroundService : Service() {
 
     companion object {
         private const val MESH_CHANNEL_ID = "mesh_foreground_channel"
-        private const val CALL_CHANNEL_ID = "mesh_call_channel"
+        private const val CALL_CHANNEL_ID = "mesh_call_controls_v3"
+        private const val MESSAGE_ALERT_CHANNEL_ID = "mesh_message_alerts_v1"
+        private const val SILENT_MESSAGE_ALERT_CHANNEL_ID = "mesh_message_alerts_silent_v1"
         private const val NOTIFICATION_ID = 1001
+        private const val ACTION_REFRESH_NOTIFICATION = "com.minor.meshapp.action.REFRESH_NOTIFICATION"
 
         const val ACTION_START = "com.minor.meshapp.action.START_MESH"
         const val ACTION_STOP = "com.minor.meshapp.action.STOP_MESH"
@@ -337,6 +463,16 @@ class MeshForegroundService : Service() {
 
         private val _isVoiceSimActive = MutableStateFlow(false)
         val isVoiceSimActive = _isVoiceSimActive.asStateFlow()
+        @Volatile
+        private var serviceRunning = false
+
+        fun refreshNotification(context: Context) {
+            if (!serviceRunning) return
+            val intent = Intent(context, MeshForegroundService::class.java).apply {
+                action = ACTION_REFRESH_NOTIFICATION
+            }
+            context.startService(intent)
+        }
 
         /** Starts the mesh: launches the foreground service and shows the notification. */
         fun start(context: Context) {

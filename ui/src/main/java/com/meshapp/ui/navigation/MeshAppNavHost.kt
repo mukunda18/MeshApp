@@ -1,5 +1,9 @@
 package com.meshapp.ui.navigation
 
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -27,6 +31,7 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Router
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -35,13 +40,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuDefaults
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,6 +78,7 @@ import com.meshapp.ui.screens.home.HomeScreen
 import com.meshapp.ui.screens.networkinterfaces.NetworkInterfacesScreen
 import com.meshapp.ui.screens.profile.ProfileScreen
 import com.meshapp.ui.screens.voice.VoiceCallOverlay
+import com.meshapp.ui.state.SoundFeedbackSettings
 import com.meshapp.ui.theme.MeshAppTheme
 import com.meshapp.ui.theme.MeshBg0
 import com.meshapp.ui.theme.MeshBg2
@@ -78,7 +87,9 @@ import com.meshapp.ui.theme.MeshGreen
 import com.meshapp.ui.theme.MeshGreenOnAccent
 import com.meshapp.ui.theme.MeshShapes
 import com.meshapp.ui.theme.MeshSpacing
+import com.meshapp.ui.theme.MeshThemeMode
 import com.meshapp.ui.theme.MeshTextPrimary
+import com.meshapp.ui.theme.MeshTextSecondary
 import com.meshapp.ui.viewmodel.ChatsViewModel
 import com.meshapp.ui.viewmodel.ConversationViewModel
 import com.meshapp.ui.viewmodel.HomeViewModel
@@ -89,9 +100,13 @@ import com.meshapp.voice.CallState
 fun MeshAppNavHost(
     homeViewModelFactory: ViewModelProvider.Factory? = null,
     chatsViewModelFactory: ViewModelProvider.Factory? = null,
-    conversationViewModelFactory: ViewModelProvider.Factory? = null
+    conversationViewModelFactory: ViewModelProvider.Factory? = null,
+    themeMode: MeshThemeMode = MeshThemeMode.System,
+    onThemeModeChanged: (MeshThemeMode) -> Unit = {},
+    soundSettings: SoundFeedbackSettings = SoundFeedbackSettings(),
+    onSoundSettingsChanged: (SoundFeedbackSettings) -> Unit = {}
 ) {
-    MeshAppTheme {
+    MeshAppTheme(themeMode = themeMode) {
         val navController = rememberNavController()
         val backStackEntry by navController.currentBackStackEntryAsState()
 
@@ -104,6 +119,7 @@ fun MeshAppNavHost(
             viewModel()
         }
         val uiState by homeViewModel.uiState.collectAsStateWithLifecycle()
+        var firstRunName by rememberSaveable { mutableStateOf("") }
 
         val isRootTab = currentRoute in listOf(MeshRoutes.HOME, MeshRoutes.CHATS)
 
@@ -135,7 +151,7 @@ fun MeshAppNavHost(
                                 }
                             },
                             actions = {
-                                if (isRootTab || currentRoute == MeshRoutes.PROFILE) {
+                                if (isRootTab) {
                                     Box {
                                         IconButton(onClick = { showQuickActions = true }) {
                                             ProfileAvatar(
@@ -228,7 +244,55 @@ fun MeshAppNavHost(
                 NavHost(
                     navController = navController,
                     startDestination = MeshRoutes.HOME,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    enterTransition = {
+                        if (isRootTabRoute(initialState.destination.route) &&
+                            isRootTabRoute(targetState.destination.route)
+                        ) {
+                            fadeIn(tween(140))
+                        } else {
+                            fadeIn(tween(140)) + slideInHorizontally(
+                                animationSpec = tween(160, easing = FastOutSlowInEasing),
+                                initialOffsetX = { it / 16 }
+                            )
+                        }
+                    },
+                    exitTransition = {
+                        if (isRootTabRoute(initialState.destination.route) &&
+                            isRootTabRoute(targetState.destination.route)
+                        ) {
+                            fadeOut(tween(100))
+                        } else {
+                            fadeOut(tween(100)) + slideOutHorizontally(
+                                animationSpec = tween(120, easing = FastOutSlowInEasing),
+                                targetOffsetX = { -it / 24 }
+                            )
+                        }
+                    },
+                    popEnterTransition = {
+                        if (isRootTabRoute(initialState.destination.route) &&
+                            isRootTabRoute(targetState.destination.route)
+                        ) {
+                            fadeIn(tween(140))
+                        } else {
+                            fadeIn(tween(140)) + slideInHorizontally(
+                                animationSpec = tween(160, easing = FastOutSlowInEasing),
+                                initialOffsetX = { -it / 16 }
+                            )
+                        }
+                    },
+                    popExitTransition = {
+                        if (isRootTabRoute(initialState.destination.route) &&
+                            isRootTabRoute(targetState.destination.route)
+                        ) {
+                            fadeOut(tween(100))
+                        } else {
+                            fadeOut(tween(100)) + slideOutHorizontally(
+                                animationSpec = tween(120, easing = FastOutSlowInEasing),
+                                targetOffsetX = { it / 24 }
+                            )
+                        }
+                    }
                 ) {
                     composable(MeshRoutes.HOME) {
                         HomeScreen(
@@ -244,10 +308,12 @@ fun MeshAppNavHost(
                     composable(MeshRoutes.PROFILE) {
                         ProfileScreen(
                             viewModel = homeViewModel,
-                            onNavigateHome = { navController.navigateToHomeRoot() },
-                            onNavigateChats = { navController.navigateToTab(MeshRoutes.CHATS) },
                             onNavigateNetworkInterfaces = { navController.navigate(MeshRoutes.NETWORK_INTERFACES) },
-                            onNavigateAbout = { navController.navigate(MeshRoutes.ABOUT) }
+                            onNavigateAbout = { navController.navigate(MeshRoutes.ABOUT) },
+                            themeMode = themeMode,
+                            onThemeModeChanged = onThemeModeChanged,
+                            soundSettings = soundSettings,
+                            onSoundSettingsChanged = onSoundSettingsChanged
                         )
                     }
                     composable(MeshRoutes.CHATS) {
@@ -307,6 +373,46 @@ fun MeshAppNavHost(
                     onMinimize = { homeViewModel.minimizeCall() }
                 )
 
+                if (uiState.showFirstRunNameDialog) {
+                    AlertDialog(
+                        onDismissRequest = { homeViewModel.completeFirstRunNameSetup() },
+                        title = { Text("Enter your name") },
+                        text = {
+                            Column {
+                                Text(
+                                    text = "This name is shown to nearby nodes. You can change it anytime in Profile.",
+                                    color = MeshTextSecondary,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Spacer(modifier = Modifier.height(MeshSpacing.sm))
+                                OutlinedTextField(
+                                    value = firstRunName,
+                                    onValueChange = { firstRunName = it },
+                                    label = { Text("Your name") },
+                                    singleLine = true
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(
+                                enabled = firstRunName.isNotBlank(),
+                                onClick = {
+                                    homeViewModel.completeFirstRunNameSetup(firstRunName)
+                                }
+                            ) {
+                                Text("Continue")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = { homeViewModel.completeFirstRunNameSetup() }
+                            ) {
+                                Text("Use default")
+                            }
+                        }
+                    )
+                }
+
                 // minimized call return pill
                 if (uiState.isCallMinimized && uiState.voiceCallState !is CallState.Idle) {
                     MinimizedCallPill(
@@ -320,6 +426,11 @@ fun MeshAppNavHost(
             }
         }
     }
+}
+
+private fun isRootTabRoute(route: String?): Boolean {
+    val baseRoute = route?.substringBefore("/")
+    return baseRoute == MeshRoutes.HOME || baseRoute == MeshRoutes.CHATS
 }
 
 @Composable

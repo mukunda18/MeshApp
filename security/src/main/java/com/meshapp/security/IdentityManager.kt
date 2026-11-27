@@ -39,6 +39,8 @@ class IdentityManager(
         }
     }
 
+    fun hasStoredIdentity(): Boolean = identityStore.getIdentity() != null
+
     fun updateName(newName: String) {
         identityStore.updateName(newName)
     }

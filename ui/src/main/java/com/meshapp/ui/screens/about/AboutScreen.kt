@@ -192,6 +192,7 @@ private fun BreathingLogo(modifier: Modifier = Modifier) {
         ),
         label = "logo-glow-scale"
     )
+    val glowColor = MeshGreen.copy(alpha = 0.16f)
 
     Box(
         modifier = modifier
@@ -201,7 +202,7 @@ private fun BreathingLogo(modifier: Modifier = Modifier) {
                 scaleY = glowScale
             }
             .drawBehind {
-                drawCircle(color = MeshGreen.copy(alpha = 0.16f), radius = size.minDimension / 2.1f)
+                drawCircle(color = glowColor, radius = size.minDimension / 2.1f)
             },
         contentAlignment = Alignment.Center
     ) {
@@ -221,10 +222,10 @@ private fun BreathingLogo(modifier: Modifier = Modifier) {
 
 @Composable
 private fun MeshIconGlyph(modifier: Modifier = Modifier) {
+    val lineColor = MeshGreen
+    val dotColor = MeshGreen
     Box(
         modifier = modifier.drawBehind {
-            val lineColor = MeshGreen
-            val dotColor = MeshGreen
             val r = 4.dp.toPx()
             val x1 = size.width * 0.2f
             val x2 = size.width * 0.5f

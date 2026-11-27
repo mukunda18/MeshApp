@@ -42,9 +42,7 @@ class VoicePerformanceTest {
         )
     }
 
-    // =========================================================================
     // 1. LATENCY BENCHMARKING
-    // =========================================================================
 
     @Test
     fun `benchmark processing latency for full audio pipeline`() {
@@ -70,16 +68,14 @@ class VoicePerformanceTest {
         val avgMsPerFrame = (totalNano / 1_000_000.0) / iterations
 
         println("==================================================")
-        println("📊 LATENCY BENCHMARK RESULTS")
+        println("LATENCY BENCHMARK RESULTS")
         println("Average processing latency per 20ms frame: ${String.format("%.4f", avgMsPerFrame)} ms")
         println("==================================================")
 
         assertTrue("Pipeline processing latency ($avgMsPerFrame ms) is too slow!", avgMsPerFrame < 1.0)
     }
 
-    // =========================================================================
     // 2. AUDIO DISTORTION & QUALITY METRICS (SNR)
-    // =========================================================================
 
     @Test
     fun `measure Signal-to-Noise Ratio (SNR) for codec output`() {
@@ -91,16 +87,14 @@ class VoicePerformanceTest {
         val snrDb = calculateSNR(originalPcm, decodedPcm)
 
         println("==================================================")
-        println("📊 AUDIO QUALITY METRICS")
+        println("AUDIO QUALITY METRICS")
         println("Codec Signal-to-Noise Ratio (SNR): ${String.format("%.2f", snrDb)} dB")
         println("==================================================")
 
         assertTrue("Audio SNR ($snrDb dB) is below acceptable speech clarity threshold!", snrDb > 30.0)
     }
 
-    // =========================================================================
     // 3. AMPLIFIER GAIN & SOFT-CLIPPER DISTORTION TEST
-    // =========================================================================
 
     @Test
     fun `test gain filter prevents hard clipping harmonic distortion`() {
@@ -124,7 +118,7 @@ class VoicePerformanceTest {
         }
 
         println("==================================================")
-        println("📊 GAIN & SOFT-CLIPPER METRICS")
+        println("GAIN & SOFT-CLIPPER METRICS")
         println("Max Output Sample Amplitude: $maxAmplitude / 32767")
         println("Hard Clipped Samples Count: $clippedSamplesCount")
         println("==================================================")
@@ -132,9 +126,7 @@ class VoicePerformanceTest {
         assertTrue("Output sample overflowed 16-bit limits!", maxAmplitude <= 32767)
     }
 
-    // =========================================================================
     // 4. JITTER BUFFER & OUT-OF-ORDER PACKET RE-ORDERING
-    // =========================================================================
 
     @Test
     fun `simulate Out-Of-Order packets and Jitter Buffer re-ordering`() {
@@ -168,7 +160,7 @@ class VoicePerformanceTest {
         }
 
         println("==================================================")
-        println("📊 JITTER BUFFER RESILIENCE")
+        println("JITTER BUFFER RESILIENCE")
         println("Scrambled Packets Input: ${scrambledPackets.map { it.first }}")
         println("Re-ordered Sequence: $frameCount / $frameCount packets restored correctly")
         println("==================================================")
@@ -180,9 +172,7 @@ class VoicePerformanceTest {
         }
     }
 
-    // =========================================================================
     // 5. PACKET LOSS RESILIENCE (PLC / CONCEALMENT SIMULATION)
-    // =========================================================================
 
     @Test
     fun `simulate 10 percent packet loss resilience and recovery`() {
@@ -215,7 +205,7 @@ class VoicePerformanceTest {
         }
 
         println("==================================================")
-        println("📊 PACKET LOSS RECOVERY METRICS")
+        println("PACKET LOSS RECOVERY METRICS")
         println("Total Packets Sent: $totalPackets")
         println("Packets Decoded Successfully: $successfulDecodes")
         println("Loss Concealment Frames Inserted: $concealedFramesInserted (10% Simulated Loss)")
@@ -225,9 +215,7 @@ class VoicePerformanceTest {
         assertEquals(10, concealedFramesInserted)
     }
 
-    // =========================================================================
     // HELPER MATHEMATICAL & FILTER FUNCTIONS
-    // =========================================================================
 
     private fun generateSineWavePCM(frequency: Double, amplitude: Int): ByteArray {
         val out = ByteArray(VoiceCodec.BYTES_PER_FRAME)

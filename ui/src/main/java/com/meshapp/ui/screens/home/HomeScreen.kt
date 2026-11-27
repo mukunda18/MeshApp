@@ -174,7 +174,11 @@ fun HomeScreen(
             if (isEmpty) {
                 EmptyState(
                     title = "No nodes nearby",
-                    subtitle = "Turn the mesh on and stay close to other devices to connect.",
+                    subtitle = if (uiState.isMeshOn) {
+                        "Mesh is on. Make sure nearby devices also have MeshApp running with the mesh enabled."
+                    } else {
+                        "Turn on the mesh to discover nearby devices."
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = MeshSpacing.lg)

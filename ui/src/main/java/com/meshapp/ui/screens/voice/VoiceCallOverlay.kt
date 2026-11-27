@@ -263,6 +263,7 @@ private fun CallAvatar(
             val transition = rememberInfiniteTransition(
                 label = "call-pulse"
             )
+            val pulseColor = MeshGreen.copy(alpha = 0.16f)
 
             val pulseScale by transition.animateFloat(
                 initialValue = 1.0f,
@@ -282,7 +283,7 @@ private fun CallAvatar(
                     .size(152.dp)
                     .drawBehind {
                         drawCircle(
-                            color = MeshGreen.copy(alpha = 0.16f),
+                            color = pulseColor,
                             radius =
                                 (size.minDimension / 2f) * pulseScale,
                             style = Stroke(
