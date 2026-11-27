@@ -66,6 +66,7 @@ import com.meshapp.ui.theme.MeshBg1
 import com.meshapp.ui.theme.MeshBg2
 import com.meshapp.ui.theme.MeshBubbleInbound
 import com.meshapp.ui.theme.MeshBubbleOutbound
+import com.meshapp.ui.theme.MeshBorderStrong
 import com.meshapp.ui.theme.MeshGreen
 import com.meshapp.ui.theme.MeshGreenMuted
 import com.meshapp.ui.theme.MeshGreenOnAccent
@@ -101,7 +102,7 @@ fun ProfileAvatar(
     showRing: Boolean = false
 ) {
     val textSize = (size.value * 0.36f).sp
-    val ringColor = if (isSelf) MeshGreen else MeshMuted.copy(alpha = 0.5f)
+    val ringColor = if (isSelf) MeshGreen else MeshBorderStrong
 
     Box(
         modifier = modifier
@@ -239,7 +240,15 @@ fun MeshStatusChip(
     ) {
         Text(
             text = text,
-            color = if (filled) MeshGreenOnAccent else color,
+            color = if (filled) {
+                if (color == MaterialTheme.colorScheme.error) {
+                    MaterialTheme.colorScheme.onError
+                } else {
+                    MaterialTheme.colorScheme.onPrimary
+                }
+            } else {
+                color
+            },
             style = MaterialTheme.typography.labelSmall,
             fontWeight = if (filled) FontWeight.Bold else FontWeight.SemiBold,
             modifier = Modifier.padding(
@@ -668,7 +677,7 @@ fun EmptyState(
                 Icon(
                     imageVector = animatedIcon,
                     contentDescription = null,
-                    tint = MeshMuted.copy(alpha = 0.8f),
+                    tint = MeshMuted,
                     modifier = Modifier.size(26.dp)
                 )
             }

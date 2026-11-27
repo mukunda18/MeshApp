@@ -82,6 +82,7 @@ import com.meshapp.ui.theme.MeshGreen
 import com.meshapp.ui.theme.MeshGreenOnAccent
 import com.meshapp.ui.theme.MeshShapes
 import com.meshapp.ui.theme.MeshSpacing
+import com.meshapp.ui.theme.MeshThemeMode
 import com.meshapp.ui.theme.MeshTextPrimary
 import com.meshapp.ui.theme.MeshTextSecondary
 import com.meshapp.ui.viewmodel.ChatsViewModel
@@ -94,9 +95,11 @@ import com.meshapp.voice.CallState
 fun MeshAppNavHost(
     homeViewModelFactory: ViewModelProvider.Factory? = null,
     chatsViewModelFactory: ViewModelProvider.Factory? = null,
-    conversationViewModelFactory: ViewModelProvider.Factory? = null
+    conversationViewModelFactory: ViewModelProvider.Factory? = null,
+    themeMode: MeshThemeMode = MeshThemeMode.System,
+    onThemeModeChanged: (MeshThemeMode) -> Unit = {}
 ) {
-    MeshAppTheme {
+    MeshAppTheme(themeMode = themeMode) {
         val navController = rememberNavController()
         val backStackEntry by navController.currentBackStackEntryAsState()
 
@@ -253,7 +256,9 @@ fun MeshAppNavHost(
                             onNavigateHome = { navController.navigateToHomeRoot() },
                             onNavigateChats = { navController.navigateToTab(MeshRoutes.CHATS) },
                             onNavigateNetworkInterfaces = { navController.navigate(MeshRoutes.NETWORK_INTERFACES) },
-                            onNavigateAbout = { navController.navigate(MeshRoutes.ABOUT) }
+                            onNavigateAbout = { navController.navigate(MeshRoutes.ABOUT) },
+                            themeMode = themeMode,
+                            onThemeModeChanged = onThemeModeChanged
                         )
                     }
                     composable(MeshRoutes.CHATS) {

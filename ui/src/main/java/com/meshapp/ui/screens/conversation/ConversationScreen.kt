@@ -96,6 +96,7 @@ import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -138,6 +139,7 @@ import com.meshapp.ui.components.ProfileAvatar
 import com.meshapp.ui.components.StatusDot
 import com.meshapp.ui.state.ConversationMessageUiState
 import com.meshapp.ui.state.FileTransferUiState
+import com.meshapp.ui.theme.MeshBorder
 import com.meshapp.ui.theme.MeshBg0
 import com.meshapp.ui.theme.MeshBg2
 import com.meshapp.ui.theme.MeshBg3
@@ -870,7 +872,7 @@ private fun VoiceMessageContent(
                                 .fillMaxHeight(barHeight)
                                 .clip(RoundedCornerShape(1.dp))
                                 .background(
-                                    if (hasPlayed) MeshGreen else MeshMuted.copy(alpha = 0.5f)
+                                    if (hasPlayed) MeshGreen else MeshMuted
                                 )
                         )
                     }
@@ -945,12 +947,20 @@ private fun MediaMessageContent(transfer: FileTransferUiState) {
                     .background(Color.Black.copy(alpha = 0.35f)),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(
-                    progress = { if (isTransferring) transfer.progress else 0f },
-                    color = Color.White,
-                    trackColor = Color.White.copy(alpha = 0.25f),
-                    modifier = Modifier.size(28.dp)
-                )
+                Surface(
+                    shape = CircleShape,
+                    color = MeshBg0,
+                    modifier = Modifier.size(44.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(
+                            progress = { if (isTransferring) transfer.progress else 0f },
+                            color = MeshGreen,
+                            trackColor = MeshBorder,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
             }
         } else if (isVideo && thumbnail != null) {
             Box(
@@ -958,7 +968,7 @@ private fun MediaMessageContent(transfer: FileTransferUiState) {
                     .size(40.dp)
                     .align(Alignment.Center)
                     .clip(CircleShape)
-                    .background(Color.Black.copy(alpha = 0.45f)),
+                    .background(Color.Black.copy(alpha = 0.65f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -977,12 +987,20 @@ private fun MediaMessageContent(transfer: FileTransferUiState) {
                     .background(Color.Black.copy(alpha = 0.45f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Filled.ErrorOutline,
-                    contentDescription = "Failed",
-                    tint = MeshDanger,
-                    modifier = Modifier.size(28.dp)
-                )
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    modifier = Modifier.size(44.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Filled.ErrorOutline,
+                            contentDescription = "Failed",
+                            tint = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
             }
         }
     }
@@ -1281,8 +1299,8 @@ private fun MessageTextField(
         colors = OutlinedTextFieldDefaults.colors(
             focusedContainerColor = MeshBg2,
             unfocusedContainerColor = MeshBg2,
-            focusedBorderColor = MeshGreen.copy(alpha = 0.4f),
-            unfocusedBorderColor = MeshBg2,
+            focusedBorderColor = MeshGreen,
+            unfocusedBorderColor = MeshBorder,
             focusedTextColor = MeshTextPrimary,
             unfocusedTextColor = MeshTextPrimary
         ),

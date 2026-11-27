@@ -14,8 +14,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DeviceHub
 import androidx.compose.material.icons.filled.Info
@@ -25,6 +27,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -38,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -55,6 +59,7 @@ import com.meshapp.ui.theme.MeshGreenOnAccent
 import com.meshapp.ui.theme.MeshMuted
 import com.meshapp.ui.theme.MeshShapes
 import com.meshapp.ui.theme.MeshSpacing
+import com.meshapp.ui.theme.MeshThemeMode
 import com.meshapp.ui.theme.MeshTextPrimary
 import com.meshapp.ui.viewmodel.HomeViewModel
 
@@ -64,10 +69,13 @@ fun ProfileScreen(
     onNavigateHome: () -> Unit,
     onNavigateChats: () -> Unit,
     onNavigateNetworkInterfaces: () -> Unit,
-    onNavigateAbout: () -> Unit
+    onNavigateAbout: () -> Unit,
+    themeMode: MeshThemeMode = MeshThemeMode.System,
+    onThemeModeChanged: (MeshThemeMode) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showEditNameDialog by remember { mutableStateOf(false) }
+    var showThemeDialog by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf("") }
 
     Scaffold(
@@ -187,6 +195,10 @@ fun ProfileScreen(
                         .padding(bottom = MeshSpacing.sm)
                 ) {
                     Column {
+                        OptionRow("Theme: ${themeMode.label}", Icons.Filled.Palette) {
+                            showThemeDialog = true
+                        }
+                        DividerLine()
                         OptionRow("Network Interfaces", Icons.Filled.Router, onNavigateNetworkInterfaces)
                         DividerLine()
                         OptionRow("About", Icons.Filled.Info, onNavigateAbout)
@@ -244,6 +256,47 @@ fun ProfileScreen(
             containerColor = MeshBg1
         )
     }
+
+    if (showThemeDialog) {
+        AlertDialog(
+            onDismissRequest = { showThemeDialog = false },
+            title = { Text("Theme", color = MeshTextPrimary) },
+            text = {
+                Column {
+                    MeshThemeMode.entries.forEach { mode ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .selectable(
+                                    selected = themeMode == mode,
+                                    onClick = { onThemeModeChanged(mode) },
+                                    role = Role.RadioButton
+                                )
+                                .padding(vertical = MeshSpacing.xxs),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = themeMode == mode,
+                                onClick = null
+                            )
+                            Text(
+                                text = mode.label,
+                                color = MeshTextPrimary,
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.padding(start = MeshSpacing.xs)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showThemeDialog = false }) {
+                    Text("Done", color = MeshGreen)
+                }
+            },
+            containerColor = MeshBg1
+        )
+    }
 }
 
 @Composable
@@ -296,7 +349,7 @@ private fun InfoRow(
                 Icon(
                     imageVector = Icons.Filled.ChevronRight,
                     contentDescription = null,
-                    tint = MeshMuted.copy(alpha = 0.5f),
+                    tint = MeshMuted,
                     modifier = Modifier.size(16.dp).padding(start = 4.dp)
                 )
             }

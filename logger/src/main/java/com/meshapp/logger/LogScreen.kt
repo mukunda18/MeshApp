@@ -41,11 +41,11 @@ fun LogScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .background(Color(0xFF121212))
+                .background(MaterialTheme.colorScheme.background)
         ) {
             items(logs.reversed(), key = { it.id }) { entry ->
                 LogItem(entry)
-                HorizontalDivider(color = Color.DarkGray)
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
         }
     }
@@ -53,6 +53,7 @@ fun LogScreen(
 
 @Composable
 fun LogItem(entry: LogEntry) {
+    val colors = logTypeColors(entry.type)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -64,13 +65,13 @@ fun LogItem(entry: LogEntry) {
         ) {
             Text(
                 text = entry.formatTime(),
-                color = Color.Gray,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp,
                 fontFamily = FontFamily.Monospace
             )
             Spacer(modifier = Modifier.width(8.dp))
             Surface(
-                color = getLogTypeColor(entry.type),
+                color = colors.first,
                 shape = MaterialTheme.shapes.extraSmall
             ) {
                 Text(
@@ -78,13 +79,13 @@ fun LogItem(entry: LogEntry) {
                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = colors.second
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = entry.tag,
-                color = Color.LightGray,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontWeight = FontWeight.Bold,
                 fontSize = 12.sp
             )
@@ -92,14 +93,14 @@ fun LogItem(entry: LogEntry) {
         Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = entry.message,
-            color = Color.White,
+            color = MaterialTheme.colorScheme.onSurface,
             fontSize = 14.sp
         )
         if (entry.details != null) {
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = entry.details,
-                color = Color.Cyan.copy(alpha = 0.7f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp,
                 fontFamily = FontFamily.Monospace
             )
@@ -107,15 +108,17 @@ fun LogItem(entry: LogEntry) {
     }
 }
 
-fun getLogTypeColor(type: LogType): Color {
+@Composable
+private fun logTypeColors(type: LogType): Pair<Color, Color> {
+    val scheme = MaterialTheme.colorScheme
     return when (type) {
-        LogType.PACKET_RECEIVED -> Color(0xFF4CAF50)
-        LogType.PACKET_SENT -> Color(0xFF2196F3)
-        LogType.MESSAGE_RECEIVED -> Color(0xFF8BC34A)
-        LogType.MESSAGE_SENT -> Color(0xFF03A9F4)
-        LogType.MESSAGE_DROPPED -> Color(0xFFF44336)
-        LogType.MESSAGE_QUEUED -> Color(0xFFFF9800)
-        LogType.INFO -> Color(0xFF9E9E9E)
-        LogType.ERROR -> Color(0xFFD32F2F)
+        LogType.PACKET_RECEIVED -> scheme.primaryContainer to scheme.onPrimaryContainer
+        LogType.PACKET_SENT -> scheme.secondaryContainer to scheme.onSecondaryContainer
+        LogType.MESSAGE_RECEIVED -> scheme.tertiaryContainer to scheme.onTertiaryContainer
+        LogType.MESSAGE_SENT -> scheme.secondary to scheme.onSecondary
+        LogType.MESSAGE_DROPPED -> scheme.error to scheme.onError
+        LogType.MESSAGE_QUEUED -> scheme.tertiary to scheme.onTertiary
+        LogType.INFO -> scheme.surfaceVariant to scheme.onSurfaceVariant
+        LogType.ERROR -> scheme.errorContainer to scheme.onErrorContainer
     }
 }
