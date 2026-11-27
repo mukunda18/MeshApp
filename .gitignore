@@ -1,6 +1,4 @@
-# ==========================================
 # Built-in / Environment / Secrets
-# ==========================================
 local.properties
 keystore.properties
 signing.properties
@@ -11,9 +9,7 @@ signing.properties
 *.key
 *.bks
 
-# ==========================================
 # Build Outputs & Caches
-# ==========================================
 .gradle/
 build/
 **/build/
@@ -26,9 +22,7 @@ captures/
 *.hprof
 *.log
 
-# ==========================================
 # IDE Configuration Files
-# ==========================================
 *.iml
 .vscode/
 
@@ -38,9 +32,7 @@ captures/
 !.idea/copyright/
 !.idea/inspectionProfiles/
 
-# ==========================================
 # OS Specific Files
-# ==========================================
 .DS_Store
 .DS_Store?
 ._*
