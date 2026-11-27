@@ -78,6 +78,7 @@ import com.meshapp.ui.screens.home.HomeScreen
 import com.meshapp.ui.screens.networkinterfaces.NetworkInterfacesScreen
 import com.meshapp.ui.screens.profile.ProfileScreen
 import com.meshapp.ui.screens.voice.VoiceCallOverlay
+import com.meshapp.ui.state.SoundFeedbackSettings
 import com.meshapp.ui.theme.MeshAppTheme
 import com.meshapp.ui.theme.MeshBg0
 import com.meshapp.ui.theme.MeshBg2
@@ -101,7 +102,9 @@ fun MeshAppNavHost(
     chatsViewModelFactory: ViewModelProvider.Factory? = null,
     conversationViewModelFactory: ViewModelProvider.Factory? = null,
     themeMode: MeshThemeMode = MeshThemeMode.System,
-    onThemeModeChanged: (MeshThemeMode) -> Unit = {}
+    onThemeModeChanged: (MeshThemeMode) -> Unit = {},
+    soundSettings: SoundFeedbackSettings = SoundFeedbackSettings(),
+    onSoundSettingsChanged: (SoundFeedbackSettings) -> Unit = {}
 ) {
     MeshAppTheme(themeMode = themeMode) {
         val navController = rememberNavController()
@@ -148,7 +151,7 @@ fun MeshAppNavHost(
                                 }
                             },
                             actions = {
-                                if (isRootTab || currentRoute == MeshRoutes.PROFILE) {
+                                if (isRootTab) {
                                     Box {
                                         IconButton(onClick = { showQuickActions = true }) {
                                             ProfileAvatar(
@@ -305,12 +308,12 @@ fun MeshAppNavHost(
                     composable(MeshRoutes.PROFILE) {
                         ProfileScreen(
                             viewModel = homeViewModel,
-                            onNavigateHome = { navController.navigateToHomeRoot() },
-                            onNavigateChats = { navController.navigateToTab(MeshRoutes.CHATS) },
                             onNavigateNetworkInterfaces = { navController.navigate(MeshRoutes.NETWORK_INTERFACES) },
                             onNavigateAbout = { navController.navigate(MeshRoutes.ABOUT) },
                             themeMode = themeMode,
-                            onThemeModeChanged = onThemeModeChanged
+                            onThemeModeChanged = onThemeModeChanged,
+                            soundSettings = soundSettings,
+                            onSoundSettingsChanged = onSoundSettingsChanged
                         )
                     }
                     composable(MeshRoutes.CHATS) {

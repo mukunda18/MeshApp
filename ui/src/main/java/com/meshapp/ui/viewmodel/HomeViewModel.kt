@@ -235,10 +235,10 @@ class HomeViewModel(
 
     private fun connectionStatus(meshState: MeshState, activePeers: Int): String {
         return when {
-            meshState != MeshState.RUNNING -> "Mesh is offline"
-            activePeers == 0 -> "Running - no nearby nodes"
-            activePeers == 1 -> "Running - 1 nearby node"
-            else -> "Running - $activePeers nearby nodes"
+            meshState != MeshState.RUNNING -> "Mesh is off. Turn it on to connect."
+            activePeers == 0 -> "Mesh is on. Waiting for nearby devices."
+            activePeers == 1 -> "1 nearby device connected"
+            else -> "$activePeers nearby devices connected"
         }
     }
 

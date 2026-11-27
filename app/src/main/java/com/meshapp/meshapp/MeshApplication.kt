@@ -1,12 +1,16 @@
 package com.meshapp.meshapp
 
 import android.app.Application
+import android.app.Activity
 import android.content.Intent
+import android.os.Bundle
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -31,7 +35,11 @@ class MeshApplication : Application() {
     /** Application-scoped coroutine scope. Cancelled in onTerminate (emulator / test only). */
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
+    private val _uiVisible = MutableStateFlow(false)
+    val uiVisible = _uiVisible.asStateFlow()
+
     private val containerDeferred = CompletableDeferred<AppContainer>()
+    private var startedActivityCount = 0
 
     /** Singleton DI container. Set once the background build completes. */
     lateinit var container: AppContainer
@@ -45,6 +53,24 @@ class MeshApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+            override fun onActivityResumed(activity: Activity) = Unit
+            override fun onActivityPaused(activity: Activity) = Unit
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+            override fun onActivityDestroyed(activity: Activity) = Unit
+
+            override fun onActivityStarted(activity: Activity) {
+                startedActivityCount++
+                _uiVisible.value = true
+            }
+
+            override fun onActivityStopped(activity: Activity) {
+                startedActivityCount = (startedActivityCount - 1).coerceAtLeast(0)
+                _uiVisible.value = startedActivityCount > 0
+            }
+        })
 
         // Build the DI container off the main thread. SQLite open, EC keypair
         // generation and KeyStore access must not block the first frame.

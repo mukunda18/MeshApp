@@ -23,12 +23,13 @@ import androidx.compose.material.icons.filled.DeviceHub
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.SettingsEthernet
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -47,9 +48,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.meshapp.ui.components.MeshFooterNavigation
 import com.meshapp.ui.components.StatusDot
-import com.meshapp.ui.theme.MeshBg0
+import com.meshapp.ui.state.SoundFeedbackSettings
 import com.meshapp.ui.theme.MeshBg1
 import com.meshapp.ui.theme.MeshBg2
 import com.meshapp.ui.theme.MeshBg3
@@ -66,143 +66,135 @@ import com.meshapp.ui.viewmodel.HomeViewModel
 @Composable
 fun ProfileScreen(
     viewModel: HomeViewModel = viewModel(),
-    onNavigateHome: () -> Unit,
-    onNavigateChats: () -> Unit,
     onNavigateNetworkInterfaces: () -> Unit,
     onNavigateAbout: () -> Unit,
     themeMode: MeshThemeMode = MeshThemeMode.System,
-    onThemeModeChanged: (MeshThemeMode) -> Unit = {}
+    onThemeModeChanged: (MeshThemeMode) -> Unit = {},
+    soundSettings: SoundFeedbackSettings = SoundFeedbackSettings(),
+    onSoundSettingsChanged: (SoundFeedbackSettings) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showEditNameDialog by remember { mutableStateOf(false) }
     var showThemeDialog by remember { mutableStateOf(false) }
+    var showSoundsDialog by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf("") }
 
-    Scaffold(
-        containerColor = MeshBg0,
-        bottomBar = {
-            MeshFooterNavigation(
-                currentRoute = "profile",
-                onHome = onNavigateHome,
-                onChats = onNavigateChats,
-                onProfile = {}
-            )
-        }
-    ) { paddingValues ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(horizontal = MeshSpacing.md),
-            verticalArrangement = Arrangement.spacedBy(MeshSpacing.sm)
-        ) {
-            item {
-                Column(
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = MeshSpacing.md),
+        verticalArrangement = Arrangement.spacedBy(MeshSpacing.sm)
+    ) {
+        item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = MeshSpacing.sm),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = MeshSpacing.sm),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        .size(80.dp)
+                        .clip(CircleShape)
+                        .background(MeshGreen),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(80.dp)
-                            .clip(CircleShape)
-                            .background(MeshGreen),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = uiState.profile.avatarInitials,
-                            color = MeshGreenOnAccent,
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
                     Text(
-                        text = uiState.profile.name,
-                        color = MeshTextPrimary,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(top = MeshSpacing.xs + 2.dp)
+                        text = uiState.profile.avatarInitials,
+                        color = MeshGreenOnAccent,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
                     )
                 }
+                Text(
+                    text = uiState.profile.name,
+                    color = MeshTextPrimary,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = MeshSpacing.xs + 2.dp)
+                )
             }
+        }
 
-            item {
-                SectionTitle("DEVICE INFO")
-            }
+        item {
+            SectionTitle("DEVICE INFO")
+        }
 
-            item {
-                Surface(
-                    shape = MeshShapes.card,
-                    color = MeshBg1,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, MeshBorder, MeshShapes.card)
-                ) {
-                    Column {
-                        InfoRow(
-                            title = "Device Name",
-                            value = uiState.profile.name,
-                            icon = Icons.Filled.DeviceHub,
-                            onClick = {
-                                newName = uiState.profile.name
-                                showEditNameDialog = true
-                            }
-                        )
-                        DividerLine()
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(MeshSpacing.sm),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.SettingsEthernet,
-                                contentDescription = null,
-                                tint = MeshMuted,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Text(
-                                text = "Status",
-                                color = MeshTextPrimary,
-                                style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier.padding(start = MeshSpacing.sm)
-                            )
-                            Spacer(modifier = Modifier.weight(1f))
-                            StatusDot(isOnline = true, size = 8.dp)
-                            Text(
-                                text = " Online",
-                                color = MeshGreen,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
+        item {
+            Surface(
+                shape = MeshShapes.card,
+                color = MeshBg1,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, MeshBorder, MeshShapes.card)
+            ) {
+                Column {
+                    InfoRow(
+                        title = "Device Name",
+                        value = uiState.profile.name,
+                        icon = Icons.Filled.DeviceHub,
+                        onClick = {
+                            newName = uiState.profile.name
+                            showEditNameDialog = true
                         }
+                    )
+                    DividerLine()
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(MeshSpacing.sm),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.SettingsEthernet,
+                            contentDescription = null,
+                            tint = MeshMuted,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = "Mesh status",
+                            color = MeshTextPrimary,
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.padding(start = MeshSpacing.sm)
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
+                        StatusDot(isOnline = uiState.isMeshOn, size = 8.dp)
+                        Text(
+                            text = if (uiState.isMeshOn) " Active" else " Off",
+                            color = if (uiState.isMeshOn) MeshGreen else MeshMuted,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
             }
+        }
 
-            item {
-                SectionTitle("OPTIONS")
-            }
+        item {
+            SectionTitle("OPTIONS")
+        }
 
-            item {
-                Surface(
-                    shape = MeshShapes.card,
-                    color = MeshBg1,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, MeshBorder, MeshShapes.card)
-                        .padding(bottom = MeshSpacing.sm)
-                ) {
-                    Column {
-                        OptionRow("Theme: ${themeMode.label}", Icons.Filled.Palette) {
-                            showThemeDialog = true
-                        }
-                        DividerLine()
-                        OptionRow("Network Interfaces", Icons.Filled.Router, onNavigateNetworkInterfaces)
-                        DividerLine()
-                        OptionRow("About", Icons.Filled.Info, onNavigateAbout)
+        item {
+            Surface(
+                shape = MeshShapes.card,
+                color = MeshBg1,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, MeshBorder, MeshShapes.card)
+                    .padding(bottom = MeshSpacing.sm)
+            ) {
+                Column {
+                    OptionRow("Theme: ${themeMode.label}", Icons.Filled.Palette) {
+                        showThemeDialog = true
                     }
+                    DividerLine()
+                    OptionRow("Sounds & alerts", Icons.AutoMirrored.Filled.VolumeUp) {
+                        showSoundsDialog = true
+                    }
+                    DividerLine()
+                    OptionRow("Network Interfaces", Icons.Filled.Router, onNavigateNetworkInterfaces)
+                    DividerLine()
+                    OptionRow("About", Icons.Filled.Info, onNavigateAbout)
                 }
             }
         }
@@ -295,6 +287,81 @@ fun ProfileScreen(
                 }
             },
             containerColor = MeshBg1
+        )
+    }
+
+    if (showSoundsDialog) {
+        AlertDialog(
+            onDismissRequest = { showSoundsDialog = false },
+            title = { Text("Sounds & alerts", color = MeshTextPrimary) },
+            text = {
+                Column {
+                    Text(
+                        "Sounds follow Android notification settings. Background alerts require notifications to be allowed.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MeshMuted,
+                        modifier = Modifier.padding(bottom = MeshSpacing.xs)
+                    )
+                    SoundToggleRow(
+                        title = "Message sounds",
+                        subtitle = "Play a sound for incoming messages",
+                        checked = soundSettings.messageSoundsEnabled,
+                        onCheckedChange = { enabled ->
+                            onSoundSettingsChanged(
+                                soundSettings.copy(messageSoundsEnabled = enabled)
+                            )
+                        }
+                    )
+                    SoundToggleRow(
+                        title = "Incoming call ringtone",
+                        subtitle = "Play a ringtone for incoming calls",
+                        checked = soundSettings.callRingtonesEnabled,
+                        onCheckedChange = { enabled ->
+                            onSoundSettingsChanged(
+                                soundSettings.copy(callRingtonesEnabled = enabled)
+                            )
+                        }
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSoundsDialog = false }) {
+                    Text("Done", color = MeshGreen)
+                }
+            },
+            containerColor = MeshBg1
+        )
+    }
+}
+
+@Composable
+private fun SoundToggleRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = MeshSpacing.xxs),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                color = MeshTextPrimary,
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Text(
+                text = subtitle,
+                color = MeshMuted,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange
         )
     }
 }

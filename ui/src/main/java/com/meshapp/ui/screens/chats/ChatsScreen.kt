@@ -113,7 +113,7 @@ fun ChatsScreen(
                 if (showSections) {
                     item(key = "section_online") {
                         SectionLabel(
-                            text = "Online",
+                            text = "Reachable",
                             count = onlineNodes.size
                         )
                     }
@@ -132,7 +132,7 @@ fun ChatsScreen(
                 if (showSections) {
                     item(key = "section_offline") {
                         SectionLabel(
-                            text = "Offline",
+                            text = "Unavailable",
                             count = offlineNodes.size
                         )
                     }

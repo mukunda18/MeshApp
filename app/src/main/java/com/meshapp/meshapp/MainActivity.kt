@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.view.WindowCompat
 import com.meshapp.ui.navigation.MeshAppNavHost
+import com.meshapp.ui.state.SoundFeedbackSettings
 import com.meshapp.ui.theme.MeshAppTheme
 import com.meshapp.ui.theme.MeshThemeMode
 import com.meshapp.ui.theme.THEME_MODE_KEY
@@ -78,6 +79,12 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themePreferences = remember {
                 getSharedPreferences(THEME_PREFERENCES, MODE_PRIVATE)
+            }
+            val soundPreferences = remember {
+                SoundPreferences(applicationContext)
+            }
+            var soundSettings by remember(soundPreferences) {
+                mutableStateOf(soundPreferences.load())
             }
             var themeMode by remember(themePreferences) {
                 mutableStateOf(MeshThemeMode.fromPreference(themePreferences.getString(THEME_MODE_KEY, null)))
@@ -150,6 +157,12 @@ class MainActivity : ComponentActivity() {
                         chatsViewModelFactory = ready.chats,
                         conversationViewModelFactory = ready.conversation,
                         themeMode = themeMode,
+                        soundSettings = soundSettings,
+                        onSoundSettingsChanged = { selectedSettings: SoundFeedbackSettings ->
+                            soundPreferences.save(selectedSettings)
+                            soundSettings = selectedSettings
+                            MeshForegroundService.refreshNotification(applicationContext)
+                        },
                         onThemeModeChanged = { selectedMode ->
                             themePreferences.edit()
                                 .putString(THEME_MODE_KEY, selectedMode.name)
