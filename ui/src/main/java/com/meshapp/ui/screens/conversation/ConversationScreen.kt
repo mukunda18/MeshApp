@@ -13,7 +13,9 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -802,45 +804,27 @@ private fun VoiceMessageContent(
         val rnd = Random(transfer.transferId.hashCode())
         List(barCount) { 0.28f + rnd.nextFloat() * 0.72f }
     }
-
-    val infiniteTransition = rememberInfiniteTransition(label = "voice-pulse")
-    val ringScale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.3f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1100, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "ring-scale"
-    )
-    val barShimmer by infiniteTransition.animateFloat(
-        initialValue = 0.55f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(650, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "bar-shimmer"
-    )
+    val playbackProgress = remember(transfer.transferId) { Animatable(0f) }
+    LaunchedEffect(isPlaying, transfer.transferId, transfer.durationMs) {
+        if (isPlaying) {
+            playbackProgress.snapTo(0f)
+            playbackProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(
+                    durationMillis = transfer.durationMs.coerceIn(1L, Int.MAX_VALUE.toLong()).toInt(),
+                    easing = LinearEasing
+                )
+            )
+        } else {
+            playbackProgress.snapTo(0f)
+        }
+    }
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier.size(44.dp),
             contentAlignment = Alignment.Center
         ) {
-            if (isPlaying) {
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .graphicsLayer {
-                            scaleX = ringScale
-                            scaleY = ringScale
-                            alpha = (1f - (ringScale - 1f) / 0.3f).coerceIn(0f, 1f)
-                        }
-                        .clip(CircleShape)
-                        .background(MeshGreen.copy(alpha = 0.35f))
-                )
-            }
             Box(
                 modifier = Modifier
                     .size(38.dp)
@@ -867,27 +851,49 @@ private fun VoiceMessageContent(
         Spacer(modifier = Modifier.size(MeshSpacing.sm))
 
         Column {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            BoxWithConstraints(
                 modifier = Modifier
                     .height(24.dp)
                     .width(96.dp)
             ) {
-                bars.forEach { barHeight ->
-                    val barColor = if (isPlaying) MeshGreen.copy(alpha = barShimmer) else MeshMuted.copy(alpha = 0.5f)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    bars.forEachIndexed { index, barHeight ->
+                        val hasPlayed = isPlaying &&
+                            index.toFloat() / barCount < playbackProgress.value
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(barHeight)
+                                .clip(RoundedCornerShape(1.dp))
+                                .background(
+                                    if (hasPlayed) MeshGreen else MeshMuted.copy(alpha = 0.5f)
+                                )
+                        )
+                    }
+                }
+                if (isPlaying) {
                     Box(
                         modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(barHeight)
-                            .clip(RoundedCornerShape(1.dp))
-                            .background(barColor)
+                            .offset(x = maxWidth * playbackProgress.value.coerceAtMost(0.98f))
+                            .width(2.dp)
+                            .fillMaxHeight()
+                            .background(MeshGreen)
                     )
                 }
             }
             Spacer(modifier = Modifier.height(3.dp))
             Text(
-                text = "%.0fs".format(transfer.durationMs / 1000f),
+                text = "%.0fs".format(
+                    if (isPlaying) {
+                        transfer.durationMs * playbackProgress.value / 1000f
+                    } else {
+                        transfer.durationMs / 1000f
+                    }
+                ),
                 color = MeshTextSecondary,
                 style = MaterialTheme.typography.labelSmall
             )

@@ -17,7 +17,8 @@ class HomeViewModelFactory(
     private val nodesStore: NodesStore,
     private val appName: String,
     private val deviceName: String,
-    private val nodeId: String
+    private val nodeId: String,
+    private val showFirstRunNameDialog: Boolean = false
 ) : ViewModelProvider.Factory {
 
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -32,7 +33,8 @@ class HomeViewModelFactory(
                 nodesStore = nodesStore,
                 appName = appName,
                 deviceName = deviceName,
-                nodeId = nodeId
+                nodeId = nodeId,
+                showFirstRunNameDialog = showFirstRunNameDialog
             ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")

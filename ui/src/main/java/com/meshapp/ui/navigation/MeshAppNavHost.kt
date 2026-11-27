@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Router
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -35,13 +36,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuDefaults
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -79,6 +83,7 @@ import com.meshapp.ui.theme.MeshGreenOnAccent
 import com.meshapp.ui.theme.MeshShapes
 import com.meshapp.ui.theme.MeshSpacing
 import com.meshapp.ui.theme.MeshTextPrimary
+import com.meshapp.ui.theme.MeshTextSecondary
 import com.meshapp.ui.viewmodel.ChatsViewModel
 import com.meshapp.ui.viewmodel.ConversationViewModel
 import com.meshapp.ui.viewmodel.HomeViewModel
@@ -104,6 +109,7 @@ fun MeshAppNavHost(
             viewModel()
         }
         val uiState by homeViewModel.uiState.collectAsStateWithLifecycle()
+        var firstRunName by rememberSaveable { mutableStateOf("") }
 
         val isRootTab = currentRoute in listOf(MeshRoutes.HOME, MeshRoutes.CHATS)
 
@@ -306,6 +312,46 @@ fun MeshAppNavHost(
                     onHangup = { homeViewModel.hangupCall() },
                     onMinimize = { homeViewModel.minimizeCall() }
                 )
+
+                if (uiState.showFirstRunNameDialog) {
+                    AlertDialog(
+                        onDismissRequest = { homeViewModel.completeFirstRunNameSetup() },
+                        title = { Text("Enter your name") },
+                        text = {
+                            Column {
+                                Text(
+                                    text = "This name is shown to nearby nodes. You can change it anytime in Profile.",
+                                    color = MeshTextSecondary,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Spacer(modifier = Modifier.height(MeshSpacing.sm))
+                                OutlinedTextField(
+                                    value = firstRunName,
+                                    onValueChange = { firstRunName = it },
+                                    label = { Text("Your name") },
+                                    singleLine = true
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(
+                                enabled = firstRunName.isNotBlank(),
+                                onClick = {
+                                    homeViewModel.completeFirstRunNameSetup(firstRunName)
+                                }
+                            ) {
+                                Text("Continue")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = { homeViewModel.completeFirstRunNameSetup() }
+                            ) {
+                                Text("Use default")
+                            }
+                        }
+                    )
+                }
 
                 // minimized call return pill
                 if (uiState.isCallMinimized && uiState.voiceCallState !is CallState.Idle) {

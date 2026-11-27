@@ -44,6 +44,16 @@ class AppContainer(context: Context) {
     // IdentityManager uses PersistentIdentityStore for encrypted SharedPreferences storage.
     val identityManager: IdentityManager = IdentityManager(PersistentIdentityStore(appContext))
 
+    val shouldShowFirstRunNameDialog: Boolean = run {
+        val preferences = appContext.getSharedPreferences(FIRST_RUN_PREFERENCES, Context.MODE_PRIVATE)
+        if (!identityManager.hasStoredIdentity()) {
+            preferences.edit()
+                .putBoolean(FIRST_RUN_NAME_PENDING, true)
+                .apply()
+        }
+        preferences.getBoolean(FIRST_RUN_NAME_PENDING, false)
+    }
+
     val identity: Identity = try {
         // Sanitize Build.MODEL for use as the default node name.
         identityManager.getOrGenerate(
@@ -130,5 +140,7 @@ class AppContainer(context: Context) {
     companion object {
         const val UDP_PORT = 49152
         const val TCP_PORT = 49153
+        private const val FIRST_RUN_PREFERENCES = "meshapp_first_run"
+        private const val FIRST_RUN_NAME_PENDING = "name_setup_pending"
     }
 }

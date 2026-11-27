@@ -6,6 +6,7 @@ import com.meshapp.voice.CallState
 data class HomeUiState(
     val isMeshOn: Boolean = false,
     val profile: ProfileUiState = ProfileUiState(),
+    val showFirstRunNameDialog: Boolean = false,
     val appName: String = "Mesh App",
     val meshStatusLabel: String = "STOPPED",
     val connectionStatus: String = "No nearby nodes",

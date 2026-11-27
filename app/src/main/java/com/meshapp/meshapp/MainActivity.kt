@@ -78,7 +78,8 @@ class MainActivity : ComponentActivity() {
                             nodesStore = container.nodesStore,
                             appName = getString(R.string.app_name),
                             deviceName = container.identity.name,
-                            nodeId = container.identity.nodeId.toString()
+                            nodeId = container.identity.nodeId.toString(),
+                            showFirstRunNameDialog = container.shouldShowFirstRunNameDialog
                         ),
                         chats = ChatsViewModelFactory(
                             messagingService = container.messagingService,
