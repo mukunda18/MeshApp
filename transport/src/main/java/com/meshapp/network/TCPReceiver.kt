@@ -7,7 +7,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.delay
@@ -30,10 +29,7 @@ class TCPReceiver(
     private val tcpReadTimeoutMs: Int,
     private val tcpMaxPacketSize: Int
 ) {
-    private val incomingChannel = Channel<Envelope>(
-        capacity = bufferCapacity,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-    )
+    private val incomingChannel = Channel<Envelope>(capacity = bufferCapacity)
 
     val incoming: ReceiveChannel<Envelope> get() = incomingChannel
 
@@ -57,7 +53,7 @@ class TCPReceiver(
                 try {
                     val clientSocket = serverSocket.accept()
                     MeshLogger.info("TCPReceiver", "Accepted new TCP connection from ${clientSocket.remoteSocketAddress}")
-                    val client = Client(clientSocket, scope, tcpMaxPacketSize, tcpReadTimeoutMs, { incomingChannel.trySend(it) }, removeChannel)
+                    val client = Client(clientSocket, scope, tcpMaxPacketSize, tcpReadTimeoutMs, { incomingChannel.send(it) }, removeChannel)
                     clientsMutex.withLock { activeClients.add(client) }
                     client.start()
                 } catch (_: SocketTimeoutException) {

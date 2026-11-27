@@ -20,12 +20,48 @@ import java.net.Socket
 import java.net.SocketException
 import java.net.SocketTimeoutException
 
+private const val MAX_FRAME_READ_DURATION_MS = 30_000L
+
+internal data class PacketReadResult(
+    val bytesRead: Int,
+    val complete: Boolean,
+    val timedOut: Boolean = false
+)
+
+internal fun readFully(
+    input: InputStream,
+    buffer: ByteArray,
+    off: Int,
+    len: Int,
+    allowIdleTimeout: Boolean = false
+): PacketReadResult {
+    if (len == 0) return PacketReadResult(bytesRead = 0, complete = true)
+
+    val deadlineNanos = System.nanoTime() + MAX_FRAME_READ_DURATION_MS * 1_000_000
+    var total = 0
+    while (total < len) {
+        try {
+            val read = input.read(buffer, off + total, len - total)
+            if (read == -1) return PacketReadResult(bytesRead = total, complete = false)
+            total += read
+        } catch (_: SocketTimeoutException) {
+            if (allowIdleTimeout && total == 0) {
+                return PacketReadResult(bytesRead = 0, complete = false, timedOut = true)
+            }
+            if (System.nanoTime() >= deadlineNanos) {
+                return PacketReadResult(bytesRead = total, complete = false, timedOut = true)
+            }
+        }
+    }
+    return PacketReadResult(bytesRead = total, complete = true)
+}
+
 class Client(
     private val socket: Socket,
     private val scope: CoroutineScope,
     private val maxPacketSize: Int,
     private val readTimeoutMs: Int,
-    private val onMessage: (Envelope) -> Unit,
+    private val onMessage: suspend (Envelope) -> Unit,
     private val removeChannel: SendChannel<Client>
 ) {
     private var job: Job? = null
@@ -45,9 +81,19 @@ class Client(
             try {
                 while (isActive) {
                     if (offset < HeaderProtocol.HEADER_SIZE) {
-                        val result = readFully(input, buffer, offset, HeaderProtocol.HEADER_SIZE - offset)
-                        offset += result.second
-                        if (!result.first) break
+                        val result = readFully(
+                            input,
+                            buffer,
+                            offset,
+                            HeaderProtocol.HEADER_SIZE - offset,
+                            allowIdleTimeout = offset == 0
+                        )
+                        offset += result.bytesRead
+                        if (!result.complete) {
+                            if (result.timedOut && offset == 0) continue
+                            if (offset > 0) Log.w("Client", "Connection closed with an incomplete TCP header")
+                            break
+                        }
                     } else {
                         val r = HeaderParser.parse(buffer)
                         if (r is ParseResult.Failure) break
@@ -57,8 +103,11 @@ class Client(
                         if (payloadLength + HeaderProtocol.HEADER_SIZE > maxPacketSize) break
                         
                         val result = readFully(input, buffer, offset, payloadLength + HeaderProtocol.HEADER_SIZE - offset)
-                        offset += result.second
-                        if (!result.first) break
+                        offset += result.bytesRead
+                        if (!result.complete) {
+                            Log.w("Client", "Connection closed with an incomplete TCP packet payload")
+                            break
+                        }
                         
                         onMessage(Envelope(
                             packet = Packet(
@@ -85,21 +134,6 @@ class Client(
         job?.cancel()
         job = null
         socket.close()
-    }
-
-    private fun readFully(input: InputStream, buffer: ByteArray, off: Int, len: Int): Pair<Boolean, Int> {
-        if (len == 0) return Pair(true, 0)
-        var total = 0
-        while (total < len) {
-            try {
-                val read = input.read(buffer, off + total, len - total)
-                if (read == -1) return Pair(false, total)
-                total += read
-            } catch (_: SocketTimeoutException) {
-                return Pair(true, total)
-            }
-        }
-        return Pair(true, total)
     }
 }
 

@@ -128,7 +128,7 @@ Defines the shared data structures used across the module:
 
 1. The application creates a RoutingModule with the local node identity and a transport implementation.
 2. The module starts background loops for:
-   - route expiry
+   - route expiry pruning
    - outbound queue processing
    - peer reaping
    - HELLO broadcasting
@@ -141,19 +141,10 @@ Defines the shared data structures used across the module:
 - The current transport layer is expected to provide the sender IP address together with inbound packets.
 - Route discovery relies on HELLO and RREQ/RREP control packets.
 - Packet freshness is checked before processing to avoid acting on stale traffic.
+- The module starts its own route, peer, and received-packet pruning loops.
 - The module depends on the model, packetProcessor, and transport modules.
 
 ## Typical usage
 
-A normal startup sequence looks like this:
-
-```kotlin
-val routingModule = RoutingModule(selfNodeId, selfPublicKey, selfName, transport)
-routingModule.start(scope, displayName)
-```
-
-When the module is no longer needed, it can be stopped with:
-
-```kotlin
-routingModule.stop()
-```
+Normally `MeshService` constructs and owns `RoutingModule`. It starts the module
+with the application coroutine scope and stops it when the mesh service stops.

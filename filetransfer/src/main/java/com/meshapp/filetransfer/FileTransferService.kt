@@ -320,12 +320,13 @@ class FileTransferService(
                 }
 
                 var delivered = false
-                repeat(CHUNK_SEND_MAX_ATTEMPTS) { attempt ->
+                for (attempt in 0 until CHUNK_SEND_MAX_ATTEMPTS) {
                     val payload = Payload.FileChunk(
                         FileChunkPacket(record.transferId, index, record.metadata.totalChunks, data)
                     )
                     delivered = meshService.sendFileChunk(peerId, payload)
-                    if (!delivered) {
+                    if (delivered) break
+                    if (attempt < CHUNK_SEND_MAX_ATTEMPTS - 1) {
                         delay(CHUNK_RETRY_BASE_DELAY_MS * (attempt + 1))
                     }
                 }

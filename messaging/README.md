@@ -13,8 +13,8 @@ This module provides:
 - delivery status tracking for queued, sent, delivered, and failed messages
 - UI-friendly history and thread-list commands
 - public streams for message, status, and conversation updates
-- a security boundary for encrypting/signing outbound messages and decoding
-  inbound messages
+- integration with the concrete `Security` implementation for
+  encrypting/signing outbound messages and validating inbound messages
 
 ## Main Classes
 
@@ -49,7 +49,10 @@ It depends on:
 - local node ID
 - `MeshService`
 - `ConversationStore`
-- `MessageSecurityCodec`
+- `Security`
+- `NodesStore`
+- `identityResolutionTimeoutMs`
+- `streamBufferCapacity`
 - a coroutine dispatcher
 
 On `start()`, it:
@@ -57,6 +60,7 @@ On `start()`, it:
 - loads stored conversations into `conversationsStream`
 - starts a scoped listener for `MeshService.incomingMessageStream`
 - starts a scoped listener for `MeshService.deliveryStatusStream`
+- starts a scoped listener for call and file signal streams
 
 On `stop()`, it:
 
@@ -70,6 +74,8 @@ On `stop()`, it:
 - `start()`
 - `stop()`
 - `send(destinationNodeID, plaintext)`
+- `sendCallSignal(destinationNodeID, signal)`
+- `sendFileSignal(destinationNodeID, signal)`
 - `listConversations()`
 - `getHistory(nodeID)`
 
@@ -78,6 +84,8 @@ On `stop()`, it:
 - `messagesStream`: emits incoming messages, outgoing messages, and persisted message updates
 - `deliveryStatusStream`: emits queued, sent, delivered, and failed status updates
 - `conversationsStream`: emits thread summaries with last message and unread count
+- `callSignalsStream`: emits incoming call signaling messages
+- `fileSignalsStream`: emits incoming file-transfer signaling messages
 
 ## Runtime Flow
 
@@ -85,7 +93,7 @@ On `stop()`, it:
 
 1. UI calls `MessagingService.send(destinationNodeID, plaintext)`.
 2. `MessagingService` creates a local compose timestamp and local message ID.
-3. `MessageSecurityCodec.encode(...)` produces an opaque `Payload`.
+3. `Security.encode(...)` produces a signed, encrypted message envelope.
 4. `MeshService.sendMessage(destinationNodeID, payload)` queues the packet for mesh delivery.
 5. The returned mesh message ID is used for delivery tracking.
 6. The outgoing message is persisted as `QUEUED`.
@@ -97,8 +105,8 @@ On `stop()`, it:
 ### Receiving a message
 
 1. `MeshService` emits a packet on `incomingMessageStream`.
-2. `MessagingService` passes the packet to `MessageSecurityCodec.decode(...)`.
-3. The codec is responsible for signature verification, decryption, and timestamp freshness.
+2. `MessagingService` passes the packet to `Security.decode(...)`.
+3. The implementation is responsible for signature verification, decryption, and timestamp freshness.
 4. The decoded plaintext is converted to a `Message`.
 5. The message is persisted in the conversation matching the sender node ID.
 6. `messagesStream` and `conversationsStream` are updated.
@@ -115,31 +123,10 @@ On `stop()`, it:
 
 ## Security Boundary
 
-The messaging module defines `MessageSecurityCodec` instead of directly
-depending on a concrete security implementation.
-
-```kotlin
-interface MessageSecurityCodec {
-    fun encode(
-        plaintext: String,
-        recipientNodeID: NodeId,
-        messageID: MessageId
-    ): Payload
-
-    fun decode(packet: Packet): DecodedMessage
-}
-```
-
-The security module should provide an implementation that:
-
-- signs and encrypts outbound plaintext
-- verifies Ed25519 signatures on inbound packets
-- decrypts inbound payloads
-- checks inner message timestamp freshness
-- returns `DecodedMessage` only after validation succeeds
-
-This keeps `messaging` testable and lets `AppContainer` wire the final security
-implementation without creating a compile-time dependency cycle.
+`MessagingService` depends on the concrete `Security` implementation. `Security`
+uses P-256 ECDSA signatures and P-256 ECDH plus AES-256-GCM to protect message
+payloads. The application container constructs one `Security` instance and shares
+it with mesh routing and messaging.
 
 ## Integration Notes
 
@@ -150,8 +137,11 @@ val conversationStore = ConversationStore(context)
 val messagingService = MessagingService(
     ownNodeId = config.ownNodeId,
     meshService = meshService,
+    security = security,
     conversationStore = conversationStore,
-    securityCodec = securityCodec
+    nodesStore = nodesStore,
+    identityResolutionTimeoutMs = config.identityResolutionTimeoutMs,
+    streamBufferCapacity = config.streamBufferCapacity
 )
 ```
 
@@ -169,8 +159,6 @@ through the public streams.
 
 ## Current Limitations
 
-- `MessageSecurityCodec` is an integration boundary; the concrete security
-  implementation still needs to be provided by the `security` module.
 - Unread counts currently count delivered incoming messages. A future read
   receipt/read-marker model should replace that with explicit read state.
 - Full Gradle verification requires a local JDK. Without `JAVA_HOME` or `java`

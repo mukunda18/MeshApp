@@ -1,13 +1,13 @@
 # MeshApp
 
-MeshApp is a decentralized, peer-to-peer (P2P) messaging system engineered for the Android ecosystem. It facilitates secure, resilient communication in environments devoid of centralized infrastructure or ubiquitous internet connectivity. By synthesizing an ad-hoc mesh network over local Wi-Fi, MeshApp orchestrates multi-hop packet propagation, enabling a self-organizing and self-healing autonomous network topology.
+MeshApp is an Android peer-to-peer messaging application that communicates over a local Wi-Fi mesh. It combines UDP discovery, TCP packet delivery, reactive routing, encrypted chat, live voice calls, voice messages, file transfer, and a Compose user interface without requiring an internet connection.
 
 ## Core Pillars
 
-*   **Reliability**: Enforced via an AODV (Ad-hoc On-demand Distance Vector) routing engine and reliable TCP unicast primitives for deterministic data delivery.
-*   **Security**: Cryptographically secured through End-to-End Encryption (E2EE) utilizing Elliptic Curve Diffie-Hellman (ECDH) key exchange, AES-256-GCM for authenticated confidentiality, and ECDSA for digital signatures.
-*   **Transparency**: Protocol semantics are exposed via reactive, observable streams (Kotlin Flows), facilitating real-time introspection of the distributed network state.
-*   **Decentralization**: An architecturally flat network topology where every node functions as a router/relay, eliminating single points of failure (SPOFs).
+*   **Reliability**: AODV-inspired route discovery, peer management, ACK handling, and TCP unicast delivery.
+*   **Security**: Persistent P-256 identities, ECDSA packet signatures, ECDH key agreement, and AES-256-GCM payload encryption.
+*   **Transparency**: Kotlin coroutines and Flows expose mesh state, delivery status, peer changes, routing events, conversations, and logs.
+*   **Decentralization**: Nodes discover nearby peers and can relay packets for other nodes; the app has no required mesh server.
 
 ---
 
@@ -27,6 +27,9 @@ The system adheres to a **Layered Modular Architecture** ensuring strict separat
 | **`:packetProcessor`** | Binary serialization engine: Deterministic wire-format encoding and decoding. |
 | **`:model`** | Unified domain primitives: `NodeId`, `MessageId`, and strongly-typed packet structures. |
 | **`:logger`** | Centralized diagnostics utility for protocol event logging and system telemetry. |
+| **`:voice`** | Live voice call signaling, call state, audio processing, and encrypted voice frames. |
+| **`:voicemessage`** | Microphone recording, local voice-message files, playback, and shared audio sessions. |
+| **`:filetransfer`** | File offers, chunk transfer, checksums, retry handling, and transfer persistence. |
 
 ---
 
@@ -35,7 +38,7 @@ The system adheres to a **Layered Modular Architecture** ensuring strict separat
 MeshApp utilizes a bespoke binary protocol optimized for low-latency overhead and high-density packet throughput in autonomous environments.
 
 ### 1. Fixed Header (122 Bytes)
-Every packet initiates with a mandatory 122-byte deterministic header (Big-Endian).
+Every packet starts with a mandatory 122-byte deterministic header. Multi-byte integers use network byte order.
 
 | Offset | Field | Size | Description |
 | :--- | :--- | :--- | :--- |
@@ -52,12 +55,17 @@ Every packet initiates with a mandatory 122-byte deterministic header (Big-Endia
 | 112 | Timestamp | 8B | Unix epoch creation time for temporal verification |
 | 120 | Payload Len | 2B | Byte-count of the encapsulated payload |
 
+The implementation also reserves header type `0x07` for voice packets and
+`0x08` for file chunks.
+
 ### 2. Packet Types
 *   **HELLO (0x01)**: Peer discovery and topology synchronization. Encapsulates identity and routing vector snapshots.
 *   **MSG (0x02)**: Encrypted messaging payload utilizing the Secure Envelope format.
 *   **RREQ / RREP (0x03/0x04)**: Reactive path discovery via controlled flooding and targeted response.
 *   **ACK (0x05)**: Positive acknowledgment of successful packet delivery.
 *   **RERR (0x06)**: Asynchronous route error propagation for topology invalidation.
+*   **VOICE (0x07)**: An encrypted live-call voice frame.
+*   **FILE_CHUNK (0x08)**: A chunk of an ongoing file transfer.
 
 ---
 
@@ -66,9 +74,9 @@ Every packet initiates with a mandatory 122-byte deterministic header (Big-Endia
 The cryptographic security model ensures Confidentiality, Integrity, Authenticity, and Non-repudiation with Anti-Replay mechanisms.
 
 ### 1. Identity & Key Management
-- **Asymmetric Cryptography**: Utilizing **NIST P-256 (secp256r1)** for persistent identity generation.
+- **Asymmetric Cryptography**: Utilizing **NIST P-256 (secp256r1)** for persistent identity generation and packet signatures.
 - **NodeId Derivation**: A node's immutable identifier is synthesized via a **SHA-256 hash** of its Static Public Key.
-- **Identity Persistence**: Keys are managed within the Android Keystore, providing hardware-backed security.
+- **Identity Persistence**: Identity data is AES-GCM encrypted by an Android Keystore-backed master key before being stored in SharedPreferences.
 
 ### 2. End-to-End Encryption (E2EE)
 Payloads are encapsulated within a multi-layered **Secure Envelope**:
@@ -115,10 +123,12 @@ The project utilized an **Incremental Process Model** characterized by iterative
 ## Getting Started
 
 1.  **Clone the repository**.
-2.  **Open in Android Studio** (Ladybug or newer recommended).
-3.  **Build and Deploy** to at least two Android devices on the same Wi-Fi subnet.
-4.  **Discovery**: Nodes will autonomously discover peers via HELLO broadcasts.
-5.  **Secure Communication**: Establish a cryptographically secured conversation with any discovered node.
+2.  **Install JDK 21** and open the project in Android Studio.
+3.  **Build with Gradle**: `./gradlew assembleDebug`
+4.  **Deploy** to at least two Android devices on the same Wi-Fi subnet.
+5.  **Grant permissions** for local networking and, for voice features, microphone access.
+6.  **Discovery**: Nodes will autonomously discover peers via HELLO broadcasts.
+7.  **Communication**: Establish a conversation with any discovered node.
 
 ---
 
